@@ -75,6 +75,8 @@ async function main() {
     assert(!appShell.includes(route), `app nav should not include ${route}`);
   }
   assert(appShell.includes("Meta WhatsApp connection"), "workspace header should frame connection as Meta onboarding");
+  assert(appShell.includes("hasMetaConnection"), "workspace header should receive the saved Meta connection state");
+  assert(appShell.includes("Connected"), "workspace header should show connected Meta state after OAuth");
   assert(!appShell.includes("WhatsApp leads · browser worker"), "workspace header should not merge Meta connection with worker ops");
   assert(!appShell.includes("CopilotDock"), "copilot dock should not be part of the clean user-facing shell");
 
@@ -99,7 +101,10 @@ async function main() {
   }
 
   const connectPage = await readFile(join(root, "apps/web/src/app/app/connect/page.tsx"), "utf8");
+  assert(connectPage.includes("listMetaOAuthConnections"), "connection page should read saved Meta OAuth connections");
   assert(connectPage.includes("Connect Meta / WhatsApp"), "connection config should lead with customer Meta onboarding");
+  assert(connectPage.includes("Connected"), "connection config should show connected state after OAuth");
+  assert(connectPage.includes("Reconnect Meta account"), "connection config should allow reconnecting without pretending setup is missing");
   assert(connectPage.includes("Advanced developer details"), "connection config should demote webhook details to an advanced section");
   assert(connectPage.includes("/api/meta/whatsapp/webhook"), "connection config may expose the WhatsApp webhook callback only as advanced details");
   assert(!connectPage.includes("Connect WhatsApp leads and the browser worker"), "connection config should not present worker setup as the main Meta connection flow");
@@ -110,14 +115,23 @@ async function main() {
   }
 
   const leadsPage = await readFile(join(root, "apps/web/src/app/app/leads/page.tsx"), "utf8");
-  assert(leadsPage.includes("listMetaWhatsAppInboundMessages"), "leads page should read WhatsApp webhook messages");
-  assert(leadsPage.includes("Ad-originated"), "leads page should distinguish ad-originated messages");
+  assert(leadsPage.includes("listMetaWhatsAppConversations"), "leads page should read aggregated WhatsApp conversations");
+  assert(leadsPage.includes("All WhatsApp conversations"), "leads page should track all conversations, not only ad leads");
+  assert(leadsPage.includes("web.whatsapp.com/send"), "lead rows should open the WhatsApp Web conversation");
+  assert(leadsPage.includes("Exclude contact"), "leads page should let non-lead contacts be excluded");
+  assert(leadsPage.includes("Restore as lead"), "excluded contacts should be restorable without deleting the conversation");
+  assert(!leadsPage.includes("Incoming WhatsApp leads from Meta ads"), "leads page should not imply only Meta ad leads are tracked");
   for (const adminCopy of ["Raw webhook message", "rawPreview", "message.raw"]) {
     assert(!leadsPage.includes(adminCopy), `leads page should not expose admin/raw webhook copy: ${adminCopy}`);
   }
 
   const magnetPage = await readFile(join(root, "apps/web/src/app/app/magnet/page.tsx"), "utf8");
   const leadMagnetLab = await readFile(join(root, "apps/web/src/components/lead-magnet-lab.tsx"), "utf8");
+  const leadsTableIndex = leadMagnetLab.indexOf('data-testid="lead-magnet-leads-table"');
+  const briefFormIndex = leadMagnetLab.indexOf('data-testid="lead-brief-form"');
+  assert(leadsTableIndex >= 0, "Lead Magnet should expose a stable leads-table section");
+  assert(briefFormIndex >= 0, "Lead Magnet should keep the search form");
+  assert(leadsTableIndex < briefFormIndex, "Lead Magnet leads table should appear before the search form");
   for (const adminCopy of ["agency owner workflow", "owner summary"]) {
     assert(!magnetPage.includes(adminCopy), `magnet page should not expose admin copy: ${adminCopy}`);
     assert(!leadMagnetLab.includes(adminCopy), `magnet component should not expose admin copy: ${adminCopy}`);

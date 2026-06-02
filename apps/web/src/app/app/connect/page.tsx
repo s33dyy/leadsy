@@ -14,6 +14,7 @@ import { ExtensionPairing } from "@/components/extension-pairing";
 import { Badge, Panel, SectionTitle } from "@/components/ui";
 import { getCurrentSession } from "@/lib/auth";
 import { listExtensionTokens } from "@/lib/extension-store";
+import { listMetaOAuthConnections } from "@/lib/meta-oauth-store";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +50,9 @@ function metaStatusCopy(status?: string | string[]) {
 export default async function ConnectPage({ searchParams }: ConnectPageProps) {
   const session = await getCurrentSession();
   const tokens = session ? await listExtensionTokens(session.tenantId, session.id) : [];
+  const metaConnections = session ? await listMetaOAuthConnections(session.tenantId, session.id) : [];
+  const latestMetaConnection = metaConnections[0];
+  const hasMetaConnection = Boolean(latestMetaConnection);
   const origin = await appOrigin();
   const webhookUrl = `${origin}/api/meta/whatsapp/webhook`;
   const metaConnectUrl = process.env.META_EMBEDDED_SIGNUP_URL?.trim();
@@ -59,7 +63,9 @@ export default async function ConnectPage({ searchParams }: ConnectPageProps) {
       <Panel className="p-5 md:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <SectionTitle eyebrow="Meta connection" title="Connect Meta / WhatsApp" />
-          <Badge tone={metaConnectUrl ? "teal" : "amber"}>{metaConnectUrl ? "Ready to connect" : "Onboarding pending"}</Badge>
+          <Badge tone={hasMetaConnection ? "lime" : metaConnectUrl ? "teal" : "amber"}>
+            {hasMetaConnection ? "Connected" : metaConnectUrl ? "Ready to connect" : "Onboarding pending"}
+          </Badge>
         </div>
 
         <div className="mt-6 grid gap-4 xl:grid-cols-[1fr_0.72fr]">
@@ -102,7 +108,7 @@ export default async function ConnectPage({ searchParams }: ConnectPageProps) {
                   href={metaConnectUrl}
                   className="inline-flex h-11 items-center justify-center gap-2 rounded-[6px] border border-teal-300/30 bg-teal-300/[0.14] px-4 text-sm font-medium text-teal-50 hover:border-teal-200 hover:bg-teal-300/[0.2]"
                 >
-                  Connect Meta account
+                  {hasMetaConnection ? "Reconnect Meta account" : "Connect Meta account"}
                   <ExternalLink size={16} />
                 </a>
               ) : (
@@ -115,7 +121,9 @@ export default async function ConnectPage({ searchParams }: ConnectPageProps) {
                 </span>
               )}
               <span className="text-sm leading-6 text-[var(--muted-2)]">
-                {metaConnectUrl
+                {hasMetaConnection
+                  ? `Connected ${latestMetaConnection?.updatedAt ? new Date(latestMetaConnection.updatedAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "to Meta"}.`
+                  : metaConnectUrl
                   ? "Opens Meta's authorization flow for this workspace."
                   : "Meta connection is being enabled for this workspace."}
               </span>

@@ -19,7 +19,15 @@ const navItems = [
   { href: "/app/worker", label: "Worker", icon: Bot }
 ];
 
-export function AppShell({ children, session }: { children: ReactNode; session: SessionUser }) {
+export function AppShell({
+  children,
+  session,
+  hasMetaConnection = false
+}: {
+  children: ReactNode;
+  session: SessionUser;
+  hasMetaConnection?: boolean;
+}) {
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       <div className="noise" />
@@ -70,10 +78,14 @@ export function AppShell({ children, session }: { children: ReactNode; session: 
             </div>
             <a
               href="/app/connect"
-              className="inline-flex h-10 items-center gap-2 rounded-[6px] border border-amber-300/30 bg-amber-300/10 px-3 text-sm text-amber-100 hover:bg-amber-300/15"
+              className={`inline-flex h-10 items-center gap-2 rounded-[6px] border px-3 text-sm ${
+                hasMetaConnection
+                  ? "border-teal-300/30 bg-teal-300/10 text-teal-100 hover:bg-teal-300/15"
+                  : "border-amber-300/30 bg-amber-300/10 text-amber-100 hover:bg-amber-300/15"
+              }`}
             >
               <Cable size={16} />
-              Connect
+              {hasMetaConnection ? "Connected" : "Connect"}
             </a>
             <a
               href="/logout"

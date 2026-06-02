@@ -1304,6 +1304,7 @@ export function LeadMagnetLab({ initialWorkspace, initialError = "", initialNoti
     { id: "good", label: "Good", count: usableLeads.length },
     { id: "proof", label: "Needs proof", count: needsProofLeads.length || needsProofEvents.length }
   ];
+  const leadTableRows = [...usableLeads, ...needsProofLeads].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 
   const topMetrics = [
     { label: "Status", value: loading === "discover" ? "Searching" : ownerStatusLabel, tone: loading === "discover" ? "lime" : campaignGoodCount ? "lime" : latestRun ? "amber" : "teal" },
@@ -1346,9 +1347,107 @@ export function LeadMagnetLab({ initialWorkspace, initialError = "", initialNoti
         </div>
       ) : null}
 
+      <div data-testid="lead-magnet-leads-table" className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2 text-sm font-semibold text-white">
+              <DatabaseZap size={16} className="text-[var(--teal)]" />
+              Leads table
+            </div>
+            <p className="mt-1 text-xs leading-5 text-[var(--muted-2)]">
+              Good leads stay first. Needs Proof stays visible until it is fixed or deleted.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Badge tone="lime">{usableLeads.length} good</Badge>
+            <Badge tone="amber">{needsProofLeads.length} proof</Badge>
+          </div>
+        </div>
+        {leadTableRows.length ? (
+          <div className="overflow-x-auto rounded-[8px] border border-[var(--line)] bg-white/[0.03]">
+            <table className="min-w-[920px] w-full border-collapse text-left">
+              <thead className="border-b border-[var(--line)] bg-black/20">
+                <tr className="mono text-[10px] uppercase text-[var(--muted)]">
+                  <th className="px-3 py-3 font-medium">Lead</th>
+                  <th className="px-3 py-3 font-medium">Fit</th>
+                  <th className="px-3 py-3 font-medium">Contact</th>
+                  <th className="px-3 py-3 font-medium">Next action</th>
+                  <th className="px-3 py-3 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {leadTableRows.map((lead) => (
+                  <tr key={lead.id} className="border-b border-[var(--line)] last:border-b-0">
+                    <td className="max-w-[260px] px-3 py-3 align-top">
+                      <div className="truncate text-sm font-semibold text-white">{lead.businessName}</div>
+                      <div className="mt-1 flex min-w-0 items-start gap-1 text-xs text-[var(--muted)]">
+                        <MapPin size={12} className="mt-0.5 shrink-0" />
+                        <span className="min-w-0 break-words">{lead.city} · {lead.category}</span>
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 align-top">
+                      <div className="flex flex-wrap gap-2">
+                        <Badge tone={lead.qualityDecision?.status === "good" ? "lime" : "amber"}>
+                          {lead.qualityDecision?.status === "good" ? "good" : "needs proof"}
+                        </Badge>
+                        <Badge tone={scoreTone(lead.score.overall)}>{lead.score.overall}</Badge>
+                      </div>
+                    </td>
+                    <td className="max-w-[220px] px-3 py-3 align-top text-xs leading-5 text-[var(--muted-2)]">
+                      <div className="break-words">WhatsApp: <span className="text-white">{lead.whatsapp ?? lead.phone ?? "not found"}</span></div>
+                      <div className="break-words">Email: <span className="text-white">{lead.email ?? "not found"}</span></div>
+                    </td>
+                    <td className="max-w-[300px] px-3 py-3 align-top">
+                      <p className="line-clamp-2 break-words text-xs leading-5 text-[var(--muted-2)]">{lead.nextAction}</p>
+                    </td>
+                    <td className="px-3 py-3 align-top">
+                      <div className="grid min-w-[220px] gap-2 sm:grid-cols-3">
+                        <button
+                          type="button"
+                          onClick={() => openLeadView(lead)}
+                          className={`inline-flex h-8 items-center justify-center gap-2 rounded-[6px] border border-[var(--line)] bg-white/[0.04] px-2 text-xs font-medium text-white hover:border-[var(--line-strong)] ${buttonMotion}`}
+                        >
+                          <Bot size={13} />
+                          View
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => startLeadEdit(lead)}
+                          disabled={busy}
+                          className={`inline-flex h-8 items-center justify-center gap-2 rounded-[6px] border border-teal-300/25 bg-teal-300/10 px-2 text-xs font-medium text-teal-100 hover:bg-teal-300/15 disabled:cursor-not-allowed disabled:opacity-55 ${buttonMotion}`}
+                        >
+                          <Pencil size={13} />
+                          Update
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteLead(lead.id)}
+                          disabled={busy}
+                          className={`inline-flex h-8 items-center justify-center gap-2 rounded-[6px] border border-rose-300/25 bg-rose-300/10 px-2 text-xs font-medium text-rose-100 hover:bg-rose-300/15 disabled:cursor-not-allowed disabled:opacity-55 ${buttonMotion}`}
+                        >
+                          <Trash2 size={13} />
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyState
+            icon={Radar}
+            title="No leads saved yet"
+            detail="Search public sources or import a small real list. Saved leads will stay at the top of this page."
+          />
+        )}
+      </div>
+
       <div className="min-w-0 space-y-4 overflow-x-hidden">
         <form
           id="lead-brief-form"
+          data-testid="lead-brief-form"
           action="/api/lead-magnet/brief/form"
           method="post"
           onSubmit={handleBriefFormSubmit}

@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { leadsyDataDir } from "./data-dir";
 
 const inboundFile = join(leadsyDataDir, "meta-whatsapp-inbound.json");
+const messageFields = new Set(["messages", "message_echoes", "smb_message_echoes"]);
 
 export type MetaWhatsAppReferral = {
   sourceType?: string;
@@ -19,6 +20,8 @@ export type MetaWhatsAppInboundMessage = {
   whatsappBusinessAccountId?: string;
   phoneNumberId?: string;
   displayPhoneNumber?: string;
+  contactId: string;
+  direction: "inbound" | "outbound";
   from: string;
   waId?: string;
   profileName?: string;
@@ -31,12 +34,44 @@ export type MetaWhatsAppInboundMessage = {
   raw: unknown;
 };
 
-type InboundState = {
+export type MetaWhatsAppLeadStatus = "lead" | "excluded";
+
+export type MetaWhatsAppContactLeadStatus = {
+  tenantId: string;
+  ownerId: string;
+  contactId: string;
+  leadStatus: MetaWhatsAppLeadStatus;
+  excludedAt?: string;
+  updatedAt: string;
+};
+
+export type MetaWhatsAppConversation = {
+  contactId: string;
+  leadStatus: MetaWhatsAppLeadStatus;
+  excludedAt?: string;
+  whatsappUrl: string;
+  profileName?: string;
+  waId?: string;
+  phoneNumberId?: string;
+  displayPhoneNumber?: string;
+  whatsappBusinessAccountId?: string;
+  messageCount: number;
+  inboundCount: number;
+  outboundCount: number;
+  adOriginated: boolean;
+  lastMessageAt: string;
+  lastMessageText?: string;
+  lastMessageType: string;
   messages: MetaWhatsAppInboundMessage[];
 };
 
+type InboundState = {
+  messages: MetaWhatsAppInboundMessage[];
+  contactStatuses: MetaWhatsAppContactLeadStatus[];
+};
+
 function emptyState(): InboundState {
-  return { messages: [] };
+  return { messages: [], contactStatuses: [] };
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -75,11 +110,17 @@ function textForMessage(message: Record<string, unknown>) {
   const text = asRecord(message.text);
   const button = asRecord(message.button);
   const interactive = asRecord(message.interactive);
+  const image = asRecord(message.image);
+  const document = asRecord(message.document);
+  const video = asRecord(message.video);
   return (
     asString(text?.body) ||
     asString(button?.text) ||
     asString(interactive?.button_reply && asRecord(interactive.button_reply)?.title) ||
-    asString(interactive?.list_reply && asRecord(interactive.list_reply)?.title)
+    asString(interactive?.list_reply && asRecord(interactive.list_reply)?.title) ||
+    asString(image?.caption) ||
+    asString(document?.caption) ||
+    asString(video?.caption)
   );
 }
 
@@ -102,7 +143,10 @@ async function readState(): Promise<InboundState> {
     const raw = await readFile(inboundFile, "utf8");
     if (!raw.trim()) return emptyState();
     const parsed = JSON.parse(raw) as Partial<InboundState>;
-    return { messages: Array.isArray(parsed.messages) ? parsed.messages : [] };
+    return {
+      messages: Array.isArray(parsed.messages) ? parsed.messages.map(normalizeMessage) : [],
+      contactStatuses: Array.isArray(parsed.contactStatuses) ? parsed.contactStatuses : []
+    };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT" || error instanceof SyntaxError) {
       return emptyState();
@@ -116,6 +160,29 @@ async function writeState(state: InboundState) {
   const tempFile = `${inboundFile}.${randomUUID()}.tmp`;
   await writeFile(tempFile, `${JSON.stringify(state, null, 2)}\n`);
   await rename(tempFile, inboundFile);
+}
+
+function normalizeMessage(message: MetaWhatsAppInboundMessage): MetaWhatsAppInboundMessage {
+  const contactId = message.contactId || message.from || message.waId || "unknown";
+  return {
+    ...message,
+    contactId,
+    from: message.from || contactId,
+    direction: message.direction ?? "inbound"
+  };
+}
+
+function statusKey(input: Pick<MetaWhatsAppContactLeadStatus, "tenantId" | "ownerId" | "contactId">) {
+  return `${input.tenantId}:${input.ownerId}:${input.contactId}`;
+}
+
+function cleanPhoneForWhatsApp(value: string) {
+  return value.replace(/\D/g, "");
+}
+
+export function whatsappConversationUrl(contactId: string) {
+  const phone = cleanPhoneForWhatsApp(contactId);
+  return phone ? `https://web.whatsapp.com/send?phone=${phone}` : "https://web.whatsapp.com/";
 }
 
 export function verifyMetaWebhookChallenge(input: {
@@ -147,7 +214,8 @@ export function extractMetaWhatsAppInboundMessages(payload: unknown, receivedAt 
     const whatsappBusinessAccountId = asString(entry?.id);
     for (const changeValue of asArray(entry?.changes)) {
       const change = asRecord(changeValue);
-      if (asString(change?.field) !== "messages") continue;
+      const field = asString(change?.field);
+      if (!field || !messageFields.has(field)) continue;
       const value = asRecord(change?.value);
       if (!value) continue;
       const metadata = asRecord(value.metadata);
@@ -157,16 +225,21 @@ export function extractMetaWhatsAppInboundMessages(payload: unknown, receivedAt 
       for (const messageValue of asArray(value.messages)) {
         const message = asRecord(messageValue);
         const from = asString(message?.from);
+        const recipientId = asString(message?.recipient_id) || asString(message?.to);
+        const direction = field === "messages" ? "inbound" : "outbound";
+        const contactId = direction === "outbound" ? recipientId || from : from;
         const messageId = asString(message?.id);
-        if (!message || !from || !messageId) continue;
-        const contact = contactForMessage(contacts, from);
+        if (!message || !contactId || !messageId) continue;
+        const contact = contactForMessage(contacts, contactId);
         const profile = asRecord(contact?.profile);
         records.push({
           id: `mwa_${randomUUID().slice(0, 12)}`,
           whatsappBusinessAccountId,
           phoneNumberId,
           displayPhoneNumber,
-          from,
+          contactId,
+          direction,
+          from: contactId,
           waId: asString(contact?.wa_id),
           profileName: asString(profile?.name),
           messageId,
@@ -198,4 +271,74 @@ export async function saveMetaWhatsAppInboundMessages(payload: unknown, received
 
 export async function listMetaWhatsAppInboundMessages() {
   return (await readState()).messages;
+}
+
+export async function setMetaWhatsAppContactLeadStatus(input: {
+  tenantId: string;
+  ownerId: string;
+  contactId: string;
+  leadStatus: MetaWhatsAppLeadStatus;
+}) {
+  const state = await readState();
+  const now = new Date().toISOString();
+  const cleanContactId = input.contactId.trim();
+  const nextStatus: MetaWhatsAppContactLeadStatus = {
+    tenantId: input.tenantId,
+    ownerId: input.ownerId,
+    contactId: cleanContactId,
+    leadStatus: input.leadStatus,
+    excludedAt: input.leadStatus === "excluded" ? now : undefined,
+    updatedAt: now
+  };
+  const key = statusKey(nextStatus);
+  state.contactStatuses = [nextStatus, ...state.contactStatuses.filter((status) => statusKey(status) !== key)].slice(0, 5000);
+  await writeState(state);
+  return nextStatus;
+}
+
+export async function listMetaWhatsAppConversations(input: { tenantId: string; ownerId: string }) {
+  const state = await readState();
+  const statuses = new Map(
+    state.contactStatuses
+      .filter((status) => status.tenantId === input.tenantId && status.ownerId === input.ownerId)
+      .map((status) => [status.contactId, status])
+  );
+  const grouped = new Map<string, MetaWhatsAppInboundMessage[]>();
+
+  for (const message of state.messages) {
+    const contactId = message.contactId || message.from || message.waId;
+    if (!contactId) continue;
+    grouped.set(contactId, [...(grouped.get(contactId) ?? []), normalizeMessage({ ...message, contactId })]);
+  }
+
+  return [...grouped.entries()]
+    .map(([contactId, messages]): MetaWhatsAppConversation => {
+      const sortedMessages = messages.sort((left, right) => left.sentAt.localeCompare(right.sentAt));
+      const lastMessage = sortedMessages.at(-1);
+      const latestProfile = [...sortedMessages].reverse().find((message) => message.profileName);
+      const latestWaId = [...sortedMessages].reverse().find((message) => message.waId);
+      const latestPhone = [...sortedMessages].reverse().find((message) => message.phoneNumberId || message.displayPhoneNumber);
+      const latestWaba = [...sortedMessages].reverse().find((message) => message.whatsappBusinessAccountId);
+      const status = statuses.get(contactId);
+      return {
+        contactId,
+        leadStatus: status?.leadStatus ?? "lead",
+        excludedAt: status?.excludedAt,
+        whatsappUrl: whatsappConversationUrl(contactId),
+        profileName: latestProfile?.profileName,
+        waId: latestWaId?.waId,
+        phoneNumberId: latestPhone?.phoneNumberId,
+        displayPhoneNumber: latestPhone?.displayPhoneNumber,
+        whatsappBusinessAccountId: latestWaba?.whatsappBusinessAccountId,
+        messageCount: sortedMessages.length,
+        inboundCount: sortedMessages.filter((message) => message.direction === "inbound").length,
+        outboundCount: sortedMessages.filter((message) => message.direction === "outbound").length,
+        adOriginated: sortedMessages.some((message) => message.referral?.sourceType === "ad" || Boolean(message.referral?.ctwaClid || message.referral?.sourceId)),
+        lastMessageAt: lastMessage?.receivedAt ?? lastMessage?.sentAt ?? new Date(0).toISOString(),
+        lastMessageText: lastMessage?.messageText,
+        lastMessageType: lastMessage?.messageType ?? "unknown",
+        messages: sortedMessages
+      };
+    })
+    .sort((left, right) => right.lastMessageAt.localeCompare(left.lastMessageAt));
 }
