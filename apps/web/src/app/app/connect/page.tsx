@@ -17,6 +17,10 @@ import { listExtensionTokens } from "@/lib/extension-store";
 
 export const dynamic = "force-dynamic";
 
+type ConnectPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
 function cleanOrigin(value?: string) {
   return value?.trim().replace(/\/$/, "");
 }
@@ -33,12 +37,22 @@ async function appOrigin() {
   return `${protocol}://${host}`;
 }
 
-export default async function ConnectPage() {
+function metaStatusCopy(status?: string | string[]) {
+  const value = Array.isArray(status) ? status[0] : status;
+  if (value === "connected") return "Meta authorization completed. Leadsy can now receive WhatsApp webhook messages after the Meta subscription is active.";
+  if (value === "cancelled") return "Meta authorization was cancelled before access was granted.";
+  if (value === "unconfigured") return "Meta authorization needs app credentials before it can finish.";
+  if (value === "error") return "Meta authorization could not finish. Try connecting again.";
+  return undefined;
+}
+
+export default async function ConnectPage({ searchParams }: ConnectPageProps) {
   const session = await getCurrentSession();
   const tokens = session ? await listExtensionTokens(session.tenantId, session.id) : [];
   const origin = await appOrigin();
   const webhookUrl = `${origin}/api/meta/whatsapp/webhook`;
   const metaConnectUrl = process.env.META_EMBEDDED_SIGNUP_URL?.trim();
+  const metaStatus = metaStatusCopy((await searchParams)?.meta);
 
   return (
     <div className="space-y-6">
@@ -106,6 +120,11 @@ export default async function ConnectPage() {
                   : "Meta connection is being enabled for this workspace."}
               </span>
             </div>
+            {metaStatus ? (
+              <div className="mt-4 rounded-[8px] border border-teal-300/25 bg-teal-300/[0.08] px-3 py-2 text-sm leading-6 text-teal-50">
+                {metaStatus}
+              </div>
+            ) : null}
           </section>
 
           <section className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
