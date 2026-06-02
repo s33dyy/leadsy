@@ -66,7 +66,7 @@ export function AppShell({ children, session }: { children: ReactNode; session: 
           <div className="flex items-center gap-2">
             <div className="hidden items-center gap-2 rounded-[8px] border border-[var(--line)] bg-white/[0.03] px-3 py-2 text-sm text-[var(--muted-2)] md:flex">
               <Activity size={16} className="text-[var(--teal)]" />
-              WhatsApp leads · browser worker
+              Meta WhatsApp connection
             </div>
             <a
               href="/app/connect"
