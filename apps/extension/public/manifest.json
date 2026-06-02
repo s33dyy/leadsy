@@ -3,7 +3,7 @@
   "name": "Leadsy Worker",
   "description": "Leadsy worker for auto communication and conversation reporting.",
   "version": "0.1.0",
-  "permissions": ["storage", "sidePanel", "tabs", "activeTab"],
+  "permissions": ["storage", "sidePanel", "tabs", "activeTab", "alarms"],
   "host_permissions": ["<all_urls>", "http://localhost:3000/*", "https://*.leadsy.local/*"],
   "background": {
     "service_worker": "assets/background.js",

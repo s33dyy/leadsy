@@ -5,6 +5,7 @@ import { defaultAssistantSettings, getOpenRouterApiKey } from "../core/settings"
 import type { AssistantSettings, ChatMessage, ConversationLog, DomSnapshot, KnowledgeContext } from "../core/types";
 import type { ExtensionTask, ExtensionTaskEventType } from "../core/tasks";
 import { getOrCreateTaskTab } from "./task-tabs";
+import { runTaskQueueOnce } from "./task-runner";
 
 type RuntimeMessage =
   | { type: "leadsy:openSidePanel" }
@@ -14,8 +15,6 @@ type RuntimeMessage =
   | { type: "leadsy:getTasks" }
   | { type: "leadsy:openTask"; taskId: string }
   | { type: "leadsy:getActiveTask" }
-  | { type: "leadsy:prepareTask"; taskId: string; draftMessage: string }
-  | { type: "leadsy:approveTaskSend"; taskId: string }
   | {
       type: "leadsy:logTaskEvent";
       taskId: string;
@@ -57,6 +56,17 @@ type RuntimeMessage =
 chrome.runtime.onInstalled.addListener(() => {
   chrome.action.setBadgeText({ text: "" });
   void chrome.sidePanel?.setPanelBehavior?.({ openPanelOnActionClick: true });
+  void startTaskRunner();
+});
+
+chrome.runtime.onStartup?.addListener(() => {
+  void startTaskRunner();
+});
+
+chrome.alarms?.onAlarm.addListener((alarm) => {
+  if (alarm.name === taskRunnerAlarmName) {
+    void runTaskRunner().catch(() => undefined);
+  }
 });
 
 chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendResponse) => {
@@ -88,10 +98,6 @@ async function handleMessage(message: RuntimeMessage, sender: chrome.runtime.Mes
       return openTask(message.taskId);
     case "leadsy:getActiveTask":
       return getActiveTask();
-    case "leadsy:prepareTask":
-      return prepareTask(message.taskId, message.draftMessage);
-    case "leadsy:approveTaskSend":
-      return approveTaskSend(message.taskId);
     case "leadsy:logTaskEvent":
       return logTaskEvent(message);
     case "leadsy:completeTask":
@@ -118,6 +124,8 @@ async function handleMessage(message: RuntimeMessage, sender: chrome.runtime.Mes
 
 const activeTaskKey = "leadsyActiveTask";
 const activeTaskTabKey = "leadsyActiveTaskTabId";
+const taskRunnerAlarmName = "leadsyTaskRunner";
+let taskRunnerRunning = false;
 
 async function workerClient(): Promise<WorkerModelClient & { syncConversation?: LeadsyWorkerClient["syncConversation"] }> {
   const settings = await loadConnectionSettings();
@@ -228,28 +236,6 @@ async function getActiveTask() {
   return stored[activeTaskKey] as ExtensionTask | undefined;
 }
 
-async function prepareTask(taskId: string, draftMessage: string) {
-  const task = await fetchLeadsyJson<ExtensionTask>(`/api/extension/tasks/${encodeURIComponent(taskId)}/prepare`, {
-    method: "POST",
-    body: JSON.stringify({ draftMessage })
-  });
-  await chrome.storage.local.set({ [activeTaskKey]: task });
-  return task;
-}
-
-async function approveTaskSend(taskId: string) {
-  const task = await fetchLeadsyJson<ExtensionTask>(`/api/extension/tasks/${encodeURIComponent(taskId)}/approve-send`, {
-    method: "POST",
-    body: JSON.stringify({ action: "approve" })
-  });
-  await chrome.storage.local.set({ [activeTaskKey]: task });
-  const tabId = await getActiveTaskTabId();
-  if (tabId) {
-    await chrome.tabs.sendMessage(tabId, { type: "leadsy:sendPreparedTask", task }).catch(() => undefined);
-  }
-  return task;
-}
-
 async function logTaskEvent(input: {
   type: "leadsy:logTaskEvent";
   taskId: string;
@@ -267,12 +253,6 @@ async function logTaskEvent(input: {
       payload: input.payload
     })
   });
-}
-
-async function getActiveTaskTabId() {
-  const stored = await chrome.storage.local.get(activeTaskTabKey);
-  const tabId = stored[activeTaskTabKey];
-  return typeof tabId === "number" ? tabId : undefined;
 }
 
 async function completeTask(input: {
@@ -298,4 +278,26 @@ async function completeTask(input: {
   await chrome.storage.local.remove(activeTaskKey);
   await chrome.storage.local.remove(activeTaskTabKey);
   return task;
+}
+
+async function startTaskRunner() {
+  await chrome.alarms?.create(taskRunnerAlarmName, { periodInMinutes: 0.5 });
+  void runTaskRunner().catch(() => undefined);
+}
+
+async function runTaskRunner() {
+  if (taskRunnerRunning) return;
+  taskRunnerRunning = true;
+  try {
+    await runTaskQueueOnce({
+      getActiveTask,
+      getTasks: async () => {
+        const payload = await fetchLeadsyJson<{ tasks: ExtensionTask[] }>("/api/extension/tasks");
+        return payload.tasks;
+      },
+      openTask
+    });
+  } finally {
+    taskRunnerRunning = false;
+  }
 }

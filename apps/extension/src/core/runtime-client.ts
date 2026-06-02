@@ -64,13 +64,6 @@ export class RuntimeWorkerClient implements WorkerModelClient {
     });
   }
 
-  async prepareTask(input: { taskId: string; draftMessage: string }): Promise<ExtensionTask> {
-    return sendRuntimeMessage<ExtensionTask>({
-      type: "leadsy:prepareTask",
-      ...input
-    });
-  }
-
   async logTaskEvent(input: {
     taskId: string;
     eventType: ExtensionTaskEventType;

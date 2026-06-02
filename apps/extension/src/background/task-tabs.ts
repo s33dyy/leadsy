@@ -7,13 +7,14 @@ export async function getOrCreateTaskTab(task: ExtensionTask) {
   }
 
   if (task.platform === "whatsapp-web" || isWhatsAppUrl(targetUrl)) {
-    const existing = await chrome.tabs.query({ url: "https://web.whatsapp.com/*" });
-    const sameTarget = existing.find((tab) => tab.id && tab.url && sameWhatsAppTarget(tab.url, targetUrl));
+    const existing = await chrome.tabs.query({});
+    const whatsappTabs = existing.filter((tab) => tab.id && looksLikeWhatsAppTab(tab));
+    const sameTarget = whatsappTabs.find((tab) => tab.id && tabUrl(tab) && sameWhatsAppTarget(tabUrl(tab), targetUrl));
     if (sameTarget?.id) {
       return focusTab(sameTarget.id);
     }
 
-    const reusable = existing.find((tab) => tab.id);
+    const reusable = whatsappTabs.find((tab) => tab.id);
     if (reusable?.id) {
       return focusTab(reusable.id, targetUrl);
     }
@@ -41,6 +42,15 @@ function sameWhatsAppTarget(left: string, right: string) {
   const leftPhone = whatsappPhone(left);
   const rightPhone = whatsappPhone(right);
   return Boolean(leftPhone && rightPhone && leftPhone === rightPhone) || normalizeUrl(left) === normalizeUrl(right);
+}
+
+function looksLikeWhatsAppTab(tab: chrome.tabs.Tab) {
+  const url = tabUrl(tab);
+  return (url && isWhatsAppUrl(url)) || /\bwhatsapp\b/i.test(tab.title || "");
+}
+
+function tabUrl(tab: chrome.tabs.Tab) {
+  return tab.url || tab.pendingUrl || "";
 }
 
 function whatsappPhone(value: string) {

@@ -12,6 +12,7 @@ export interface StatusChipController {
 }
 
 export function createStatusChip(handlers: StatusChipHandlers): StatusChipController {
+  void handlers;
   const host = document.createElement("aside");
   host.setAttribute("data-leadsy-status-chip", "true");
   const shadow = host.attachShadow({ mode: "open" });
@@ -50,17 +51,6 @@ export function createStatusChip(handlers: StatusChipHandlers): StatusChipContro
         text-overflow: ellipsis;
         white-space: nowrap;
       }
-      button {
-        appearance: none;
-        background: rgba(255,255,255,0.08);
-        border: 1px solid rgba(255,255,255,0.12);
-        border-radius: 999px;
-        color: #ffffff;
-        cursor: pointer;
-        font: inherit;
-        min-height: 22px;
-        padding: 2px 7px;
-      }
     `;
     const chip = document.createElement("section");
     chip.className = "chip";
@@ -72,18 +62,9 @@ export function createStatusChip(handlers: StatusChipHandlers): StatusChipContro
     chip.innerHTML = `
       <span class="dot"></span>
       <span class="text">Leadsy: ${escapeHtml(labelForMode(state.mode))}</span>
-      <button type="button" data-action="open">Open</button>
-      ${state.mode === "auto_active" ? `<button type="button" data-action="pause">Pause</button>` : ""}
     `;
     shadow.append(style, chip);
   }
-
-  shadow.addEventListener("click", (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLElement)) return;
-    if (target.getAttribute("data-action") === "open") handlers.onOpenPanel();
-    if (target.getAttribute("data-action") === "pause") handlers.onPause();
-  });
 
   render();
 

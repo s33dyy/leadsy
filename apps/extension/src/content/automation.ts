@@ -25,10 +25,7 @@ import type { ExtensionTask } from "../core/tasks";
 
 export type StateListener = (state: OverlayState) => void;
 
-export type TaskPreparationResult =
-  | { status: "prepared"; draftMessage: string }
-  | { status: "blocked"; reason: "target_not_on_whatsapp" | "composer_missing" | "send_button_missing"; summary: string };
-type TaskBlockedResult = Extract<TaskPreparationResult, { status: "blocked" }>;
+type TaskBlockedResult = { status: "blocked"; reason: "target_not_on_whatsapp" | "composer_missing" | "send_button_missing"; summary: string };
 export type TaskExecutionResult = { status: "sent"; externalId: string; sentAt: string } | TaskBlockedResult;
 type TaskComposerControls = {
   composer: HTMLElement;
@@ -68,7 +65,6 @@ export class ChatAutomationController {
   private observer?: MutationObserver;
   private profile?: ChatSiteProfile;
   private log?: ConversationLog;
-  private pendingDecision?: ResponderDecision;
   private processTimer?: ReturnType<typeof setTimeout>;
   private mode: OverlayState["mode"] = "unarmed";
 
@@ -150,22 +146,6 @@ export class ChatAutomationController {
     this.setState({ mode: "auto_active", statusText: "Resumed. Watching for incoming messages." });
   }
 
-  async approvePending(): Promise<void> {
-    if (!this.pendingDecision || !this.profile || !this.log) {
-      return;
-    }
-
-    await this.sendReply(this.pendingDecision.replyText, this.profile);
-    this.log.approvalState = "approved";
-    this.pendingDecision = undefined;
-    await this.store.saveLog(this.log);
-    this.setState({ mode: "auto_active", statusText: "First reply approved. Auto mode is active." });
-  }
-
-  async sendApprovedTask(task: ExtensionTask): Promise<{ externalId: string; sentAt: string }> {
-    return this.sendPreparedTask(task);
-  }
-
   async executeTask(task: ExtensionTask): Promise<TaskExecutionResult> {
     const blocker = detectTaskBlocker(task);
     if (blocker) {
@@ -228,92 +208,6 @@ export class ChatAutomationController {
     return { status: "sent", externalId, sentAt };
   }
 
-  async prepareTaskForApproval(task: ExtensionTask): Promise<TaskPreparationResult> {
-    const blocker = detectTaskBlocker(task);
-    if (blocker) {
-      this.setState({ mode: "paused", statusText: "Task blocked.", lastReason: blocker.summary });
-      return blocker;
-    }
-
-    if (!taskCanBePrepared(task.status)) {
-      throw new Error("Task is not ready for worker preparation.");
-    }
-
-    const controls = await findTaskComposerControls(task, this.profile, 30000);
-    if (!controls.composer) {
-      const result: TaskPreparationResult = {
-        status: "blocked",
-        reason: "composer_missing",
-        summary: "Composer is not available on this chat page."
-      };
-      this.setState({ mode: "paused", statusText: "Task paused.", lastReason: result.summary });
-      return result;
-    }
-
-    focusAndInsertText(controls.composer, task.draftMessage);
-    const sendButton = controls.sendButton || (await findTaskSendButton(task, this.profile, 8000));
-    if (!sendButton) {
-      const result: TaskPreparationResult = {
-        status: "blocked",
-        reason: "send_button_missing",
-        summary: "Send button is not available after preparing the task draft."
-      };
-      this.setState({ mode: "paused", statusText: "Task paused.", lastReason: result.summary });
-      return result;
-    }
-
-    this.setState({
-      mode: "needs_approval",
-      statusText: "Draft prepared. Approve send in the worker panel.",
-      pendingReply: task.draftMessage,
-      lastReason: `Task ${task.id} is ready to send.`
-    });
-    return { status: "prepared", draftMessage: task.draftMessage };
-  }
-
-  async sendPreparedTask(task: ExtensionTask): Promise<{ externalId: string; sentAt: string }> {
-    if (this.profile && this.log) {
-      await this.sendReply(task.draftMessage, this.profile);
-      const sentAt = new Date().toISOString();
-      const externalId = `task:${task.id}:${Date.now()}`;
-      this.log.messages = [
-        ...this.log.messages,
-        {
-          id: externalId,
-          direction: "outgoing",
-          text: task.draftMessage,
-          timestamp: Date.parse(sentAt),
-          sourceUrl: window.location.href
-        }
-      ];
-      this.log.updatedAt = Date.now();
-      await this.store.saveLog(this.log);
-      await this.syncToLeadsy("reply-sent", `Worker sent approved task ${task.id}.`);
-      this.setState({ mode: "auto_active", statusText: "Approved task sent. Watching for replies." });
-      return { externalId, sentAt };
-    }
-
-    const controls = await findTaskComposerControls(task, this.profile, 12000);
-    if (!controls.composer) {
-      throw new Error("Composer is not available on this chat page.");
-    }
-    focusAndInsertText(controls.composer, task.draftMessage);
-    const sendButton = controls.sendButton || (await findTaskSendButton(task, this.profile, 5000));
-    if (!sendButton) {
-      throw new Error("Send button is not available after inserting task draft.");
-    }
-    clickSendControl(sendButton);
-    const sentAt = new Date().toISOString();
-    const externalId = `task:${task.id}:${Date.now()}`;
-    this.setState({ mode: "auto_active", statusText: "Approved task sent. Monitoring this chat page." });
-    return { externalId, sentAt };
-  }
-
-  rejectPending(): void {
-    this.pendingDecision = undefined;
-    this.setState({ mode: "paused", statusText: "First reply rejected. Automation paused." });
-  }
-
   async clearLogs(): Promise<void> {
     await this.store.clearAll();
     this.log = undefined;
@@ -329,10 +223,7 @@ export class ChatAutomationController {
   private async loadOrCreateLog(siteFingerprint: string, profileId: string): Promise<ConversationLog> {
     const existing = await this.store.getLog(siteFingerprint);
     if (existing) {
-      if (
-        !this.settings.requireFirstReplyApproval &&
-        (existing.approvalState === "unapproved" || existing.approvalState === "needs_first_approval")
-      ) {
+      if (existing.approvalState !== "approved") {
         existing.approvalState = "approved";
         existing.updatedAt = Date.now();
         await this.store.saveLog(existing);
@@ -344,7 +235,7 @@ export class ChatAutomationController {
     const log: ConversationLog = {
       chatFingerprint: siteFingerprint,
       profileId,
-      approvalState: this.settings.requireFirstReplyApproval ? "unapproved" : "approved",
+      approvalState: "approved",
       messages: [],
       createdAt: now,
       updatedAt: now
@@ -401,7 +292,7 @@ export class ChatAutomationController {
 
     const unansweredIncoming = getUnansweredIncomingTurn(merged);
     const latestIncoming = unansweredIncoming.at(-1);
-    if (!latestIncoming || latestIncoming.id === this.log.lastHandledIncomingId || this.pendingDecision) {
+    if (!latestIncoming || latestIncoming.id === this.log.lastHandledIncomingId) {
       if (this.mode === "detecting") {
         const incomingCount = merged.filter((message) => message.direction === "incoming").length;
         this.setState({
@@ -424,20 +315,6 @@ export class ChatAutomationController {
     if (decision.action === "pause") {
       await this.syncToLeadsy("reply-paused", decision.reason);
       this.pause(decision.reason);
-      return;
-    }
-
-    if (this.settings.requireFirstReplyApproval && this.log.approvalState !== "approved") {
-      this.pendingDecision = decision;
-      this.log.approvalState = "needs_first_approval";
-      await this.store.saveLog(this.log);
-      await this.syncToLeadsy("reply-generated", decision.reason);
-      this.setState({
-        mode: "needs_approval",
-        statusText: "Approve the first generated reply.",
-        pendingReply: decision.replyText,
-        lastReason: `${decision.reason} Latest incoming: "${latestIncoming.text.slice(0, 120)}"`
-      });
       return;
     }
 
@@ -591,7 +468,7 @@ function focusAndInsertText(composer: HTMLElement, text: string): void {
 }
 
 function taskCanBePrepared(status: ExtensionTask["status"]) {
-  return status === "queued" || status === "in_progress" || status === "awaiting_send_approval";
+  return status === "queued" || status === "in_progress" || status === "approved";
 }
 
 function detectTaskBlocker(task: ExtensionTask): TaskBlockedResult | undefined {

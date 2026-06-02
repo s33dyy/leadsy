@@ -73,7 +73,7 @@ describe("ChatAutomationController", () => {
     controller.pause("test cleanup");
   });
 
-  it("prepares and sends an initiation task on an empty WhatsApp compose page", async () => {
+  it("executes an initiation task on an empty WhatsApp compose page without approval", async () => {
     document.body.innerHTML = `
       <main>
         <footer>
@@ -98,16 +98,12 @@ describe("ChatAutomationController", () => {
     });
 
     await controller.arm();
-    const prepared = await controller.prepareTaskForApproval(task);
+    const result = await controller.executeTask(task);
 
-    expect(prepared.status).toBe("prepared");
+    expect(result.status).toBe("sent");
     expect(document.querySelector<HTMLElement>('[aria-placeholder="Type a message"]')?.textContent).toBe(task.draftMessage);
-    expect(sendClicks).toBe(0);
-    expect(states).toContain("needs_approval");
-
-    await controller.sendPreparedTask(task);
-
     expect(sendClicks).toBe(1);
+    expect(states).not.toContain("needs_approval");
     controller.pause("test cleanup");
   });
 
@@ -127,7 +123,7 @@ describe("ChatAutomationController", () => {
       }
     });
 
-    const prepared = await controller.prepareTaskForApproval({
+    const result = await controller.executeTask({
       ...task,
       id: "exttask_invalid",
       contact: {
@@ -136,13 +132,13 @@ describe("ChatAutomationController", () => {
       }
     });
 
-    expect(prepared).toMatchObject({
+    expect(result).toMatchObject({
       status: "blocked",
       reason: "target_not_on_whatsapp"
     });
   });
 
-  it("requires approval for the first generated reply before sending into the page", async () => {
+  it("does not require extension approval for the first generated reply", async () => {
     document.body.innerHTML = `
       <section data-message-list>
         <p data-message data-direction="incoming">Can you help with pricing?</p>
@@ -179,11 +175,7 @@ describe("ChatAutomationController", () => {
 
     await controller.arm();
 
-    expect(states).toContain("needs_approval");
-    expect(sendClicks).toBe(0);
-
-    await controller.approvePending();
-
+    expect(states).not.toContain("needs_approval");
     expect(document.querySelector<HTMLElement>("[data-composer]")?.textContent).toBe(decision.replyText);
     expect(sendClicks).toBe(1);
     controller.pause("test cleanup");
@@ -228,7 +220,7 @@ describe("ChatAutomationController", () => {
     controller.pause("test cleanup");
   });
 
-  it("auto-sends subsequent replies after the first reply is approved", async () => {
+  it("auto-sends subsequent replies without extension approval", async () => {
     document.body.innerHTML = `
       <section data-message-list>
         <p data-message data-direction="incoming">Can you help with pricing?</p>
@@ -267,7 +259,6 @@ describe("ChatAutomationController", () => {
     });
 
     await controller.arm();
-    await controller.approvePending();
 
     document.querySelector("[data-message-list]")?.insertAdjacentHTML(
       "beforeend",
@@ -320,13 +311,12 @@ describe("ChatAutomationController", () => {
     });
 
     await controller.arm();
-    await controller.approvePending();
 
     expect(sendClicks).toBe(1);
     controller.pause("test cleanup");
   });
 
-  it("generates a first pending reply for visible unanswered incoming messages on arm", async () => {
+  it("sends a first visible unanswered incoming reply on arm", async () => {
     document.body.innerHTML = `
       <section data-message-list>
         <p data-message data-direction="outgoing">Hi, how can I help?</p>
@@ -336,6 +326,10 @@ describe("ChatAutomationController", () => {
       <div data-composer contenteditable="true"></div>
       <button data-send>Send</button>
     `;
+    let sendClicks = 0;
+    document.querySelector("[data-send]")?.addEventListener("click", () => {
+      sendClicks += 1;
+    });
 
     const decision: ResponderDecision = {
       action: "send",
@@ -356,7 +350,9 @@ describe("ChatAutomationController", () => {
 
     await controller.arm();
 
-    expect(states).toContain("needs_approval");
+    expect(states).not.toContain("needs_approval");
+    expect(document.querySelector<HTMLElement>("[data-composer]")?.textContent).toBe(decision.replyText);
+    expect(sendClicks).toBe(1);
     controller.pause("test cleanup");
   });
 });

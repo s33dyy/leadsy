@@ -44,7 +44,7 @@ type ExtensionTaskEvent = {
 const columns = [
   { key: "ready", title: "Ready queue", statuses: ["queued", "approved"] },
   { key: "preparing", title: "Preparing", statuses: ["in_progress"] },
-  { key: "approval", title: "Needs send approval", statuses: ["awaiting_send_approval", "draft", "awaiting_approval"] },
+  { key: "approval", title: "Waiting in Leadsy", statuses: ["awaiting_send_approval", "draft", "awaiting_approval"] },
   { key: "blocked", title: "Blocked", statuses: ["blocked", "failed"] },
   { key: "completed", title: "Done", statuses: ["sent", "monitoring", "cancelled"] }
 ] as const;
@@ -199,7 +199,7 @@ function TaskMeta({ task }: { task: ExtensionTask }) {
     return (
       <div className="mt-3 flex items-center gap-2 text-xs text-amber-100">
         <Clock3 size={13} />
-        Send approval is waiting in the extension worker.
+        Approval is waiting in Leadsy.
       </div>
     );
   }

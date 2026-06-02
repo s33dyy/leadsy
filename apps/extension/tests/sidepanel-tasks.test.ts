@@ -34,7 +34,7 @@ describe("side panel task queue", () => {
     document.body.innerHTML = `<div id="app"></div>`;
   });
 
-  it("renders queued worker tasks without task approval and lets them be opened", async () => {
+  it("renders queued worker tasks without requiring a task action in the extension", async () => {
     const sendMessage = vi.fn(async (message: { type: string; taskId?: string }) => {
       if (message.type === "leadsy:getSettings") {
         return {
@@ -48,9 +48,6 @@ describe("side panel task queue", () => {
       }
       if (message.type === "leadsy:getTasks") {
         return { ok: true, value: [queuedTask] };
-      }
-      if (message.type === "leadsy:openTask") {
-        return { ok: true, value: { status: "in_progress" } };
       }
       return { ok: true, value: undefined };
     });
@@ -69,17 +66,12 @@ describe("side panel task queue", () => {
     expect(document.querySelector(".task-row .meta")?.textContent).toContain("initiate conversation");
     expect(document.querySelectorAll(".preview")).toHaveLength(0);
 
-    const button = document.querySelector<HTMLButtonElement>('[data-task-open="exttask_1"]');
-    expect(button).not.toBeNull();
-    expect(button?.textContent).toContain("Run task");
-    button?.click();
-
-    await vi.waitFor(() => {
-      expect(sendMessage).toHaveBeenCalledWith({ type: "leadsy:openTask", taskId: "exttask_1" });
-    });
+    expect(document.querySelector<HTMLButtonElement>('[data-task-open="exttask_1"]')).toBeNull();
+    expect(document.body.textContent).not.toContain("Run task");
+    expect(sendMessage).not.toHaveBeenCalledWith({ type: "leadsy:openTask", taskId: "exttask_1" });
   });
 
-  it("shows a send approval action for prepared tasks", async () => {
+  it("does not expose send approval actions in the extension", async () => {
     const sendMessage = vi.fn(async (message: { type: string; taskId?: string }) => {
       if (message.type === "leadsy:getSettings") {
         return {
@@ -94,9 +86,6 @@ describe("side panel task queue", () => {
       if (message.type === "leadsy:getTasks") {
         return { ok: true, value: [preparedTask] };
       }
-      if (message.type === "leadsy:approveTaskSend") {
-        return { ok: true, value: { ...preparedTask, status: "in_progress", sendApprovedAt: "2026-06-02T08:01:00.000Z" } };
-      }
       return { ok: true, value: undefined };
     });
     vi.stubGlobal("chrome", {
@@ -109,12 +98,8 @@ describe("side panel task queue", () => {
     await vi.waitFor(() => expect(document.body.textContent).toContain("Prepared Buyer"));
 
     const button = document.querySelector<HTMLButtonElement>('[data-task-approve-send="exttask_2"]');
-    expect(button).not.toBeNull();
-    expect(button?.textContent).toContain("Approve send");
-    button?.click();
-
-    await vi.waitFor(() => {
-      expect(sendMessage).toHaveBeenCalledWith({ type: "leadsy:approveTaskSend", taskId: "exttask_2" });
-    });
+    expect(button).toBeNull();
+    expect(document.body.textContent).not.toContain("Approve send");
+    expect(document.body.textContent).not.toContain("Needs send approval");
   });
 });

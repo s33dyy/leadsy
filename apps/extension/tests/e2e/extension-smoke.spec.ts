@@ -89,9 +89,9 @@ test("built extension side panel renders the worker queue console", async () => 
     await page.goto("chrome-extension://mbaohfhbjmflbalfaefeeiglddhahkji/sidepanel.html");
 
     await expect(page.getByRole("heading", { name: "Leadsy Worker" })).toBeVisible();
-    await expect(page.getByText("Queue, prepare, approve send, report.")).toBeVisible();
+    await expect(page.getByText("Auto-runs queued Leadsy work and reports results.")).toBeVisible();
     await expect(page.getByRole("button", { name: "Refresh" })).toBeVisible();
-    await expect(page.getByText("Needs send approval")).toBeVisible();
+    await expect(page.getByText("Waiting in Leadsy")).toBeVisible();
   } finally {
     await context.close();
     await rm(userDataDir, { recursive: true, force: true });

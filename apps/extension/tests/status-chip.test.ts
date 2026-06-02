@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createStatusChip } from "../src/content/status-chip";
 
 describe("createStatusChip", () => {
-  it("mounts a tiny non-blocking chip instead of a large sticky control panel", () => {
+  it("mounts a tiny non-interactive chip instead of a control panel", () => {
     const chip = createStatusChip({
       onOpenPanel: vi.fn(),
       onPause: vi.fn()
@@ -23,5 +23,6 @@ describe("createStatusChip", () => {
     expect(panel?.style.width).toBe("");
     expect(host?.shadowRoot?.textContent).not.toContain("Clear logs");
     expect(host?.shadowRoot?.textContent).not.toContain("Approve first reply");
+    expect(host?.shadowRoot?.querySelector("button")).toBeNull();
   });
 });

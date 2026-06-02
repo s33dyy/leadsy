@@ -32,11 +32,7 @@ async function bootWorker() {
         .catch((error) => sendResponse({ ok: false, error: error instanceof Error ? error.message : "Could not execute active task." }));
       return true;
     }
-    if (message.type !== "leadsy:sendPreparedTask") return false;
-    void sendPreparedTask(controller, message.task)
-      .then((value) => sendResponse({ ok: true, value }))
-      .catch((error) => sendResponse({ ok: false, error: error instanceof Error ? error.message : "Could not send prepared task." }));
-    return true;
+    return false;
   });
 
   const activeTask = await runtimeClient.getActiveTask().catch(() => undefined);
@@ -91,22 +87,6 @@ async function executeActiveTask(controller: ChatAutomationController, activeTas
   }
 }
 
-async function sendPreparedTask(controller: ChatAutomationController, task?: ExtensionTask) {
-  if (!task) throw new Error("No prepared task was provided.");
-  const result = await controller.sendPreparedTask(task);
-  await runtimeClient.completeTask({
-    taskId: task.id,
-    status: "sent",
-    resultSummary: "Worker sent the owner-approved task draft.",
-    outboundMessage: {
-      externalId: result.externalId,
-      body: task.draftMessage,
-      sentAt: result.sentAt
-    }
-  });
-  void controller.arm().catch(() => undefined);
-}
-
 function taskCanBePrepared(status: ExtensionTask["status"]) {
-  return status === "queued" || status === "in_progress";
+  return status === "queued" || status === "in_progress" || status === "approved";
 }
