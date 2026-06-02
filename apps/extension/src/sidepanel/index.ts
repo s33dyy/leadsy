@@ -31,7 +31,7 @@ app.innerHTML = `
       color: #eef4f8;
       font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
-    .shell { display: grid; gap: 12px; padding: 12px; }
+    .shell { display: grid; gap: 10px; min-width: 0; padding: 10px; }
     .topbar {
       align-items: center;
       border-bottom: 1px solid #27313a;
@@ -40,13 +40,13 @@ app.innerHTML = `
       justify-content: space-between;
       padding-bottom: 10px;
     }
-    h1 { font-size: 16px; line-height: 1.25; margin: 0; }
+    h1 { font-size: 16px; line-height: 1.2; margin: 0; }
     p { color: #aab5bf; font-size: 12px; line-height: 1.45; margin: 0; }
     .muted { color: #87939f; }
     .status { color: #aab5bf; font-size: 12px; line-height: 1.4; min-height: 18px; }
     .ok { color: #a6ffcf; }
     .error { color: #ff8da0; }
-    .grid { display: grid; gap: 10px; }
+    .grid { display: grid; gap: 9px; }
     .panel {
       background: rgba(255,255,255,0.035);
       border: 1px solid #27313a;
@@ -64,9 +64,9 @@ app.innerHTML = `
       border-radius: 7px;
       padding: 8px;
     }
-    .metric strong { display: block; font-size: 18px; line-height: 1; }
+    .metric strong { display: block; font-size: 17px; line-height: 1; }
     .metric span { color: #87939f; display: block; font-size: 10px; margin-top: 4px; }
-    .tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+    .tabs { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 2px; }
     button, a.button {
       align-items: center;
       background: rgba(32,230,190,0.12);
@@ -87,23 +87,28 @@ app.innerHTML = `
     button.tab { color: #b8c3cd; min-height: 30px; }
     button.tab.active { background: rgba(32,230,190,0.16); border-color: rgba(32,230,190,0.44); color: #effffb; }
     button:disabled { cursor: not-allowed; opacity: 0.55; }
-    .task-list { display: grid; gap: 6px; max-height: 42vh; overflow: auto; }
+    .task-list { display: grid; gap: 6px; max-height: 46vh; min-height: 96px; overflow: auto; padding-right: 2px; }
     .task-row {
+      align-items: center;
       background: rgba(255,255,255,0.03);
       border: 1px solid #27313a;
       border-radius: 7px;
       cursor: pointer;
       display: grid;
-      gap: 7px;
-      padding: 9px;
+      gap: 8px;
+      grid-template-columns: minmax(0, 1fr) auto;
+      min-height: 54px;
+      padding: 8px 9px;
       text-align: left;
       width: 100%;
+      white-space: normal;
     }
-    .task-row.selected { border-color: rgba(32,230,190,0.5); }
-    .task-head { align-items: center; display: flex; gap: 8px; justify-content: space-between; min-width: 0; }
-    .title { color: #fff; font-size: 13px; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .preview { color: #dce6ef; font-size: 12px; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .meta { color: #87939f; font-size: 10px; overflow: hidden; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+    .task-row:hover { background: rgba(255,255,255,0.055); }
+    .task-row.selected { background: rgba(32,230,190,0.08); border-color: rgba(32,230,190,0.58); }
+    .task-main { display: grid; gap: 4px; min-width: 0; }
+    .task-head { align-items: flex-start; display: flex; gap: 8px; justify-content: space-between; min-width: 0; }
+    .title { color: #fff; font-size: 12.5px; font-weight: 750; line-height: 1.2; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .meta { color: #87939f; font-size: 9px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
     .pill {
       border: 1px solid #34414d;
       border-radius: 999px;
@@ -116,7 +121,7 @@ app.innerHTML = `
     .pill.queued, .pill.in_progress { border-color: rgba(32,230,190,0.35); color: #d8fff6; }
     .pill.awaiting_send_approval { border-color: rgba(255,190,80,0.45); color: #ffe1a6; }
     .pill.blocked, .pill.failed { border-color: rgba(255,120,140,0.45); color: #ffc2cb; }
-    .detail { display: grid; gap: 9px; }
+    .detail { display: grid; gap: 8px; }
     .detail h2 { font-size: 14px; line-height: 1.25; margin: 0; }
     .draft {
       background: rgba(0,0,0,0.22);
@@ -126,6 +131,8 @@ app.innerHTML = `
       font-size: 12px;
       line-height: 1.5;
       margin: 0;
+      max-height: 150px;
+      overflow: auto;
       padding: 9px;
       white-space: pre-wrap;
     }
@@ -145,6 +152,24 @@ app.innerHTML = `
     }
     .row { align-items: center; display: flex; gap: 8px; justify-content: space-between; }
     .toggle { align-items: center; display: flex; gap: 8px; text-transform: none; }
+    .settings summary {
+      color: #dce6ef;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 700;
+      list-style: none;
+    }
+    .settings summary::-webkit-details-marker { display: none; }
+    .settings summary::after {
+      color: #87939f;
+      content: "Open";
+      float: right;
+      font-size: 10px;
+      font-weight: 500;
+      text-transform: uppercase;
+    }
+    .settings[open] summary::after { content: "Close"; }
+    .settings-grid { display: grid; gap: 9px; margin-top: 10px; }
   </style>
   <section class="shell">
     <div class="topbar">
@@ -167,25 +192,28 @@ app.innerHTML = `
       <p>Select a task to inspect the draft, target, and worker action.</p>
     </section>
 
-    <form class="panel grid" id="settings-form">
-      <label>
-        Leadsy URL
-        <input id="base-url" name="baseUrl" autocomplete="off" />
-      </label>
-      <label>
-        Extension token
-        <input id="token" name="token" autocomplete="off" type="password" />
-      </label>
-      <label class="toggle">
-        <input id="fallback" name="fallback" type="checkbox" />
-        Use OpenRouter fallback if Leadsy is offline
-      </label>
-      <div class="row">
-        <button type="submit">Save</button>
-        <button class="secondary" id="check" type="button">Check</button>
-      </div>
-      <a class="button secondary" href="http://localhost:3000/app/extension" target="_blank" rel="noreferrer">Open Leadsy</a>
-    </form>
+    <details class="panel settings" id="settings-panel">
+      <summary>Connection settings</summary>
+      <form class="settings-grid" id="settings-form">
+        <label>
+          Leadsy URL
+          <input id="base-url" name="baseUrl" autocomplete="off" />
+        </label>
+        <label>
+          Extension token
+          <input id="token" name="token" autocomplete="off" type="password" />
+        </label>
+        <label class="toggle">
+          <input id="fallback" name="fallback" type="checkbox" />
+          Use OpenRouter fallback if Leadsy is offline
+        </label>
+        <div class="row">
+          <button type="submit">Save</button>
+          <button class="secondary" id="check" type="button">Check</button>
+        </div>
+        <a class="button secondary" href="http://localhost:3000/app/extension" target="_blank" rel="noreferrer">Open Leadsy</a>
+      </form>
+    </details>
   </section>
 `;
 
@@ -315,12 +343,11 @@ function renderTaskRow(task: ExtensionTask) {
   const selectedClass = task.id === selectedTaskId ? " selected" : "";
   return `
     <button class="task-row${selectedClass}" type="button" data-task-select="${escapeHtml(task.id)}">
-      <span class="task-head">
+      <span class="task-main">
         <span class="title">${escapeHtml(taskContactLabel(task))}</span>
-        <span class="pill ${escapeHtml(task.status)}">${escapeHtml(statusLabel(task.status))}</span>
+        <span class="meta">${escapeHtml(taskActionLabel(task))} - ${escapeHtml(task.platform.replace(/-/g, " "))} - ${escapeHtml(task.priority)}</span>
       </span>
-      <span class="preview">${escapeHtml(task.draftMessage)}</span>
-      <span class="meta">${escapeHtml(taskActionLabel(task))} - ${escapeHtml(task.platform.replace(/-/g, " "))} - ${escapeHtml(task.priority)}</span>
+      <span class="pill ${escapeHtml(task.status)}">${escapeHtml(statusLabel(task.status))}</span>
     </button>
   `;
 }

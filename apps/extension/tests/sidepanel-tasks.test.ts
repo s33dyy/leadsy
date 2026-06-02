@@ -64,6 +64,10 @@ describe("side panel task queue", () => {
     await vi.waitFor(() => expect(document.body.textContent).toContain("Asha Buyer"));
     expect(document.body.textContent).toContain("Hi Asha, I can send pricing here");
     expect(document.body.textContent).not.toContain("Waiting approval");
+    expect(document.querySelectorAll(".task-row")).toHaveLength(1);
+    expect(document.querySelector(".task-row")?.textContent).not.toContain("Hi Asha, I can send pricing here");
+    expect(document.querySelector(".task-row .meta")?.textContent).toContain("initiate conversation");
+    expect(document.querySelectorAll(".preview")).toHaveLength(0);
 
     const button = document.querySelector<HTMLButtonElement>('[data-task-open="exttask_1"]');
     expect(button).not.toBeNull();
