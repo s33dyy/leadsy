@@ -66,18 +66,23 @@ jobs:
           node-version: 22
 
       - name: Check Railway token
+        id: railway-token
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
           if [ -z "$RAILWAY_TOKEN" ]; then
-            echo "::error::Set the RAILWAY_TOKEN repository secret before deploying."
-            exit 1
+            echo "::warning::RAILWAY_TOKEN is not set; skipping Railway CLI deploy. Railway's GitHub integration can still deploy this push."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          echo "present=true" >> "$GITHUB_OUTPUT"
 
       - name: Install Railway CLI
+        if: steps.railway-token.outputs.present == 'true'
         run: npm install -g @railway/cli
 
       - name: Deploy to Railway
+        if: steps.railway-token.outputs.present == 'true'
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
