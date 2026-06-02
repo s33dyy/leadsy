@@ -98,6 +98,58 @@ test("built extension side panel renders the worker queue console", async () => 
   }
 });
 
+test("built extension prepares an active worker task on an empty WhatsApp compose page", async () => {
+  test.skip(!existsSync(join(extensionPath, "manifest.json")), "Run npm run build before smoke testing.");
+
+  const userDataDir = await mkdtemp(join(tmpdir(), "leadsy-extension-task-prepare-smoke-"));
+  const context = await chromium.launchPersistentContext(userDataDir, {
+    channel: "chromium",
+    headless: true,
+    args: [
+      `--disable-extensions-except=${extensionPath}`,
+      `--load-extension=${extensionPath}`,
+      "--no-first-run",
+      "--no-default-browser-check"
+    ]
+  });
+
+  try {
+    const draftMessage = "Hi Asha, can I send the launch plan here?";
+    const extensionPage = await context.newPage();
+    await extensionPage.goto("chrome-extension://mbaohfhbjmflbalfaefeeiglddhahkji/sidepanel.html");
+    await extensionPage.evaluate((draft) => {
+      return chrome.storage.local.set({
+        leadsyActiveTask: {
+          id: "exttask_smoke_prepare",
+          type: "initiate_conversation",
+          status: "in_progress",
+          priority: "normal",
+          platform: "whatsapp-web",
+          targetUrl: "https://web.whatsapp.com/send?phone=919830000000",
+          contact: {
+            displayName: "Asha Buyer",
+            phone: "+919830000000"
+          },
+          draftMessage: draft,
+          contextSummary: "Smoke task.",
+          createdAt: "2026-06-02T08:00:00.000Z",
+          updatedAt: "2026-06-02T08:00:00.000Z"
+        }
+      });
+    }, draftMessage);
+
+    const page = await context.newPage();
+    await page.route("https://web.whatsapp.com/**", (route) => route.fulfill({ body: emptyWhatsappComposeHtml(), contentType: "text/html" }));
+    await page.goto("https://web.whatsapp.com/send?phone=919830000000");
+
+    await expect(page.locator('[aria-placeholder="Type a message"]')).toHaveText(draftMessage);
+    await expect(page.locator("[data-send-clicks]")).toHaveText("0");
+  } finally {
+    await context.close();
+    await rm(userDataDir, { recursive: true, force: true });
+  }
+});
+
 function chatHtml() {
   return `
     <!doctype html>
@@ -110,6 +162,29 @@ function chatHtml() {
           </section>
           <div data-composer contenteditable="true"></div>
           <button data-send>Send</button>
+        </main>
+      </body>
+    </html>
+  `;
+}
+
+function emptyWhatsappComposeHtml() {
+  return `
+    <!doctype html>
+    <html>
+      <body>
+        <main>
+          <footer>
+            <div aria-placeholder="Type a message" contenteditable="true" role="textbox"></div>
+            <button aria-label="Send" onclick="window.sendClicks = (window.sendClicks || 0) + 1">Send</button>
+            <span data-send-clicks>0</span>
+            <script>
+              window.sendClicks = 0;
+              setInterval(() => {
+                document.querySelector("[data-send-clicks]").textContent = String(window.sendClicks || 0);
+              }, 50);
+            </script>
+          </footer>
         </main>
       </body>
     </html>

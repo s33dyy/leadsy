@@ -26,6 +26,12 @@ async function bootWorker() {
 
   chip.mount(document.documentElement);
   chrome.runtime.onMessage.addListener((message: { type?: string; task?: ExtensionTask }, _sender, sendResponse) => {
+    if (message.type === "leadsy:prepareActiveTask") {
+      void prepareActiveTask(controller)
+        .then(() => sendResponse({ ok: true }))
+        .catch((error) => sendResponse({ ok: false, error: error instanceof Error ? error.message : "Could not prepare active task." }));
+      return true;
+    }
     if (message.type !== "leadsy:sendPreparedTask") return false;
     void sendPreparedTask(controller, message.task)
       .then((value) => sendResponse({ ok: true, value }))
@@ -33,12 +39,16 @@ async function bootWorker() {
     return true;
   });
 
-  await controller.arm();
-  await prepareActiveTask(controller);
+  const activeTask = await runtimeClient.getActiveTask().catch(() => undefined);
+  if (activeTask && taskCanBePrepared(activeTask.status)) {
+    await prepareActiveTask(controller, activeTask);
+  } else {
+    await controller.arm();
+  }
 }
 
-async function prepareActiveTask(controller: ChatAutomationController) {
-  const task = await runtimeClient.getActiveTask().catch(() => undefined);
+async function prepareActiveTask(controller: ChatAutomationController, activeTask?: ExtensionTask) {
+  const task = activeTask || (await runtimeClient.getActiveTask().catch(() => undefined));
   if (!task || !taskCanBePrepared(task.status)) return;
 
   try {
@@ -87,6 +97,7 @@ async function sendPreparedTask(controller: ChatAutomationController, task?: Ext
       sentAt: result.sentAt
     }
   });
+  void controller.arm().catch(() => undefined);
 }
 
 function taskCanBePrepared(status: ExtensionTask["status"]) {

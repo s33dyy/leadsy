@@ -76,6 +76,44 @@ describe("ChatAutomationController", () => {
     controller.pause("test cleanup");
   });
 
+  it("prepares and sends an initiation task on an empty WhatsApp compose page", async () => {
+    document.body.innerHTML = `
+      <main>
+        <footer>
+          <div aria-placeholder="Type a message" contenteditable="true" role="textbox"></div>
+          <button aria-label="Send">Send</button>
+        </footer>
+      </main>
+    `;
+
+    let sendClicks = 0;
+    document.querySelector('[aria-label="Send"]')?.addEventListener("click", () => {
+      sendClicks += 1;
+    });
+
+    const states: string[] = [];
+    const controller = new ChatAutomationController((state) => states.push(state.mode), {
+      store: new ConversationStore("leadsy-empty-whatsapp-initiation-test"),
+      openRouter: {
+        detectProfile: vi.fn(async () => profile),
+        decideReply: vi.fn()
+      }
+    });
+
+    await controller.arm();
+    const prepared = await controller.prepareTaskForApproval(task);
+
+    expect(prepared.status).toBe("prepared");
+    expect(document.querySelector<HTMLElement>('[aria-placeholder="Type a message"]')?.textContent).toBe(task.draftMessage);
+    expect(sendClicks).toBe(0);
+    expect(states).toContain("needs_approval");
+
+    await controller.sendPreparedTask(task);
+
+    expect(sendClicks).toBe(1);
+    controller.pause("test cleanup");
+  });
+
   it("blocks WhatsApp tasks when the page says the number is not on WhatsApp", async () => {
     document.body.innerHTML = `
       <div role="dialog">

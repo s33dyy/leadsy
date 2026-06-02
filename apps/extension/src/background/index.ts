@@ -192,6 +192,7 @@ async function openTask(taskId: string) {
   const tab = await chrome.tabs.create({ url: task.targetUrl });
   if (tab.id) {
     await chrome.storage.local.set({ [activeTaskTabKey]: tab.id });
+    nudgeTaskPreparationWhenTabLoads(tab.id);
   }
   await logTaskEvent({
     type: "leadsy:logTaskEvent",
@@ -200,6 +201,25 @@ async function openTask(taskId: string) {
     summary: `Worker opened ${task.targetUrl}.`
   }).catch(() => undefined);
   return task;
+}
+
+function nudgeTaskPreparationWhenTabLoads(tabId: number) {
+  const sendPrepareMessage = () =>
+    chrome.tabs
+      .sendMessage(tabId, { type: "leadsy:prepareActiveTask" })
+      .catch(() => undefined);
+
+  const listener = (updatedTabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
+    if (updatedTabId !== tabId || changeInfo.status !== "complete") return;
+    chrome.tabs.onUpdated.removeListener(listener);
+    void sendPrepareMessage();
+  };
+
+  chrome.tabs.onUpdated.addListener(listener);
+  globalThis.setTimeout(() => {
+    chrome.tabs.onUpdated.removeListener(listener);
+    void sendPrepareMessage();
+  }, 2500);
 }
 
 async function getActiveTask() {
