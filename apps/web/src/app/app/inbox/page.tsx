@@ -3,13 +3,14 @@ import { followUpTasks, whatsappConversations } from "@leadsy/domain";
 import { WhatsAppInbox } from "@/components/whatsapp-inbox";
 import { Badge, EmptyState, Panel, SectionTitle } from "@/components/ui";
 import { getCurrentSession } from "@/lib/auth";
-import { listExtensionConversations } from "@/lib/extension-store";
+import { listExtensionConversations, listExtensionTasks } from "@/lib/extension-store";
 
 export const dynamic = "force-dynamic";
 
 export default async function InboxPage() {
   const session = await getCurrentSession();
   const extensionConversations = session ? await listExtensionConversations(session.tenantId, session.id) : [];
+  const extensionTasks = session ? await listExtensionTasks(session.tenantId, session.id) : [];
   return (
     <div className="space-y-6">
       <Panel className="p-5 md:p-6">
@@ -42,7 +43,25 @@ export default async function InboxPage() {
 
       <Panel className="p-5">
         <SectionTitle eyebrow="follow-up queue" title="Lead retention worklist" />
-        {followUpTasks.length ? (
+        {extensionTasks.length ? (
+        <div className="mt-5 grid gap-3 md:grid-cols-3">
+          {extensionTasks.map((task) => (
+            <div key={task.id} className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                  <MessageCircle size={16} className="text-[var(--teal)]" />
+                  {task.contact.displayName || task.contact.handle || task.contact.phone || "Worker task"}
+                </div>
+                <Badge tone={task.status === "blocked" || task.status === "failed" ? "amber" : "teal"}>{task.status}</Badge>
+              </div>
+              <div className="mono mt-3 text-[11px] text-[var(--muted)]">
+                {task.platform.replace(/-/g, " ")} · {task.type.replace(/_/g, " ")}
+              </div>
+              <p className="mt-3 text-sm leading-6 text-[var(--muted-2)]">{task.draftMessage}</p>
+            </div>
+          ))}
+        </div>
+        ) : followUpTasks.length ? (
         <div className="mt-5 grid gap-3 md:grid-cols-3">
           {followUpTasks.map((task) => (
             <div key={task.id} className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">

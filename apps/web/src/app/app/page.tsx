@@ -20,7 +20,7 @@ import {
 } from "@leadsy/domain";
 import { listAgencyClients } from "@/lib/agency-client-store";
 import { getCurrentSession } from "@/lib/auth";
-import { listExtensionConversations } from "@/lib/extension-store";
+import { listExtensionConversations, listExtensionTasks } from "@/lib/extension-store";
 import { getLeadMagnetWorkspace } from "@/lib/lead-magnet-store";
 import { Badge, EmptyState, MetricCard, MiniBars, Panel, ProgressBar, SectionTitle } from "@/components/ui";
 
@@ -42,6 +42,7 @@ export default async function CommandCenterPage() {
     ? await getLeadMagnetWorkspace(session.tenantId, session.id)
     : { brief: null, leads: [], runs: [], drafts: [], agentRuns: [] };
   const workerConversations = session ? await listExtensionConversations(session.tenantId, session.id) : [];
+  const workerTasks = session ? await listExtensionTasks(session.tenantId, session.id) : [];
   const totalAdSpend = agencyClients.reduce((sum, client) => sum + client.monthlyAdSpend, 0);
   const totalLeads = agencyClients.reduce((sum, client) => sum + client.monthlyLeads, 0);
   const blendedCpl = totalLeads ? Math.round(totalAdSpend / totalLeads) : 0;
@@ -81,7 +82,12 @@ export default async function CommandCenterPage() {
               delta={workerConversations.length ? "synced" : "none yet"}
               tone={workerConversations.length ? "good" : "flat"}
             />
-            <MetricCard label="Dead Lead Drift" value="0" delta="no drift" tone="flat" />
+            <MetricCard
+              label="Worker Tasks"
+              value={workerTasks.length.toLocaleString("en-IN")}
+              delta={workerTasks.length ? "queued" : "none yet"}
+              tone={workerTasks.length ? "good" : "flat"}
+            />
           </div>
         </Panel>
 
@@ -92,7 +98,7 @@ export default async function CommandCenterPage() {
               "Open Find Leads and save your agency lead brief.",
               "Connect OpenRouter or paste a real list.",
               "Run discovery and review evidence-backed lead dossiers.",
-              "Approve AI-drafted WhatsApp, DM, or email messages manually."
+              "Queue worker tasks, then approve prepared sends inside the extension as it opens chats and reports back."
             ].map((insight, index) => (
               <div key={insight} className="flex gap-3 rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-3">
                 <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] bg-teal-300/10 text-xs text-teal-100">

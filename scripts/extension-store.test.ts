@@ -9,8 +9,17 @@ async function main() {
 
   try {
   const {
+    approveExtensionTaskSend,
+    cancelExtensionTask,
+    claimExtensionTask,
+    completeExtensionTask,
+    createExtensionTask,
     createExtensionToken,
+    logExtensionTaskEvent,
+    listExtensionTasks,
     listExtensionConversations,
+    listExtensionTaskEvents,
+    prepareExtensionTask,
     resolveExtensionBearerToken,
     syncExtensionConversation
   } = await import("../apps/web/src/lib/extension-store");
@@ -108,6 +117,148 @@ async function main() {
   assert.equal(conversations[0].messages.length, 3, "message sync should dedupe by external id");
   assert.equal(conversations[0].conversation.messageCount, 3);
   assert.equal(conversations[0].conversation.lastMessagePreview, "Need this by Friday.");
+
+  const task = await createExtensionTask({
+    tenantId: "tenant_test",
+    ownerId: "usr_owner",
+    type: "initiate_conversation",
+    status: "queued",
+    priority: "high",
+    leadId: "lead_asha",
+    platform: "whatsapp-web",
+    targetUrl: "https://web.whatsapp.com/send?phone=919830000000",
+    contact: {
+      displayName: "Asha Buyer",
+      phone: "+919830000000"
+    },
+    draftMessage: "Hi Asha, should I send the pricing options here?",
+    contextSummary: "Imported lead with pricing interest.",
+    dueAt: "2026-06-02T08:00:00.000Z"
+  });
+
+  const duplicateTask = await createExtensionTask({
+    tenantId: "tenant_test",
+    ownerId: "usr_owner",
+    type: "initiate_conversation",
+    status: "queued",
+    priority: "high",
+    leadId: "lead_asha",
+    platform: "whatsapp-web",
+    targetUrl: "https://web.whatsapp.com/send?phone=919830000000",
+    contact: {
+      displayName: "Asha Buyer",
+      phone: "+919830000000"
+    },
+    draftMessage: "Hi Asha, should I send the pricing options here?",
+    contextSummary: "Imported lead with pricing interest."
+  });
+
+  assert.equal(duplicateTask.id, task.id, "same lead/type should update one active task");
+  assert.equal(duplicateTask.status, "queued", "generated tasks should enter the worker queue without task approval");
+
+  const claimed = await claimExtensionTask({
+    tenantId: "tenant_test",
+    ownerId: "usr_owner",
+    taskId: task.id
+  });
+  assert.equal(claimed.status, "in_progress");
+
+  const prepared = await prepareExtensionTask({
+    tenantId: "tenant_test",
+    ownerId: "usr_owner",
+    taskId: task.id,
+    draftMessage: "Hi Asha, I can send pricing here. What team size should I quote for?"
+  });
+  assert.equal(prepared.status, "awaiting_send_approval");
+  assert.equal(prepared.preparedAt?.startsWith("2026-"), true);
+  assert.equal(prepared.draftMessage, "Hi Asha, I can send pricing here. What team size should I quote for?");
+
+  await assert.rejects(
+    () =>
+      completeExtensionTask({
+        tenantId: "tenant_test",
+        ownerId: "usr_owner",
+        taskId: task.id,
+        status: "sent",
+        resultSummary: "Worker sent without send approval."
+      }),
+    /send approval/i,
+    "worker cannot send a prepared task until the owner approves that outbound message"
+  );
+
+  const sendApproved = await approveExtensionTaskSend({
+    tenantId: "tenant_test",
+    ownerId: "usr_owner",
+    taskId: task.id
+  });
+  assert.equal(sendApproved.status, "in_progress");
+  assert.equal(sendApproved.sendApprovedAt?.startsWith("2026-"), true);
+
+  const completed = await completeExtensionTask({
+    tenantId: "tenant_test",
+    ownerId: "usr_owner",
+    taskId: task.id,
+    status: "sent",
+    resultSummary: "Worker sent the approved WhatsApp opener.",
+    outboundMessage: {
+      externalId: "task_out_1",
+      body: "Hi Asha, I can send pricing here. What team size should I quote for?",
+      sentAt: "2026-06-02T08:01:00.000Z"
+    }
+  });
+  assert.equal(completed.status, "sent");
+  assert.equal(completed.resultSummary, "Worker sent the approved WhatsApp opener.");
+  assert.equal(completed.completedAt, "2026-06-02T08:01:00.000Z");
+
+  const blocked = await createExtensionTask({
+    tenantId: "tenant_test",
+    ownerId: "usr_owner",
+    type: "follow_up",
+    status: "queued",
+    priority: "normal",
+    platform: "instagram-web",
+    contact: {
+      displayName: "No Profile Lead"
+    },
+    draftMessage: "Following up on your enquiry.",
+    contextSummary: "Missing Instagram profile URL."
+  });
+  await logExtensionTaskEvent({
+    tenantId: "tenant_test",
+    ownerId: "usr_owner",
+    taskId: blocked.id,
+    type: "worker_blocked",
+    reason: "target_not_on_whatsapp",
+    summary: "The number +91 124 425 2720 is not on WhatsApp."
+  });
+  await completeExtensionTask({
+    tenantId: "tenant_test",
+    ownerId: "usr_owner",
+    taskId: blocked.id,
+    status: "blocked",
+    resultSummary: "The number +91 124 425 2720 is not on WhatsApp.",
+    reason: "target_not_on_whatsapp"
+  });
+
+  const taskEvents = await listExtensionTaskEvents("tenant_test", "usr_owner", blocked.id);
+  assert.equal(taskEvents.length, 2);
+  assert.equal(taskEvents.some((event) => event.reason === "target_not_on_whatsapp"), true);
+
+  const cancelled = await cancelExtensionTask({
+    tenantId: "tenant_test",
+    ownerId: "usr_owner",
+    taskId: blocked.id,
+    resultSummary: "Owner decided not to contact this lead."
+  });
+  assert.equal(cancelled.status, "cancelled");
+
+  const tasks = await listExtensionTasks("tenant_test", "usr_owner");
+  assert.equal(tasks.length, 2);
+  assert.deepEqual(
+    tasks.map((item) => item.status).sort(),
+    ["cancelled", "sent"],
+    "task list should include completed lifecycle states"
+  );
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

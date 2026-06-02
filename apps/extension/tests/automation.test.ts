@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ChatAutomationController } from "../src/content/automation";
 import { defaultAssistantSettings } from "../src/core/settings";
 import { ConversationStore } from "../src/core/storage";
+import type { ExtensionTask } from "../src/core/tasks";
 import type { ChatSiteProfile, ResponderDecision } from "../src/core/types";
 
 const profile: ChatSiteProfile = {
@@ -22,6 +23,90 @@ const profile: ChatSiteProfile = {
 const approvalSettings = { ...defaultAssistantSettings, requireFirstReplyApproval: true };
 
 describe("ChatAutomationController", () => {
+  const task: ExtensionTask = {
+    id: "exttask_prepare",
+    type: "initiate_conversation",
+    status: "in_progress",
+    priority: "high",
+    platform: "whatsapp-web",
+    targetUrl: "https://web.whatsapp.com/send?phone=919830000000",
+    contact: {
+      displayName: "Asha Buyer",
+      phone: "+919830000000"
+    },
+    draftMessage: "Hi Asha, I can send pricing here. What team size should I quote for?",
+    contextSummary: "Imported lead with pricing interest.",
+    createdAt: "2026-06-02T08:00:00.000Z",
+    updatedAt: "2026-06-02T08:00:00.000Z"
+  };
+
+  it("prepares an active worker task without sending until send approval arrives", async () => {
+    document.body.innerHTML = `
+      <section data-message-list>
+        <p data-message data-direction="outgoing">Hello</p>
+      </section>
+      <div data-composer contenteditable="true"></div>
+      <button data-send>Send</button>
+    `;
+
+    let sendClicks = 0;
+    document.querySelector("[data-send]")?.addEventListener("click", () => {
+      sendClicks += 1;
+    });
+
+    const controller = new ChatAutomationController(() => undefined, {
+      store: new ConversationStore("leadsy-task-prepare-test"),
+      openRouter: {
+        detectProfile: vi.fn(async () => profile),
+        decideReply: vi.fn()
+      }
+    });
+
+    await controller.arm();
+    const prepared = await controller.prepareTaskForApproval(task);
+
+    expect(prepared.status).toBe("prepared");
+    expect(document.querySelector<HTMLElement>("[data-composer]")?.textContent).toBe(task.draftMessage);
+    expect(sendClicks).toBe(0);
+
+    const sent = await controller.sendPreparedTask(task);
+
+    expect(sent.externalId).toContain(task.id);
+    expect(sendClicks).toBe(1);
+    controller.pause("test cleanup");
+  });
+
+  it("blocks WhatsApp tasks when the page says the number is not on WhatsApp", async () => {
+    document.body.innerHTML = `
+      <div role="dialog">
+        <p>The number +91 124 425 2720 isn't on WhatsApp.</p>
+        <button>OK</button>
+      </div>
+    `;
+
+    const controller = new ChatAutomationController(() => undefined, {
+      store: new ConversationStore("leadsy-task-invalid-whatsapp-test"),
+      openRouter: {
+        detectProfile: vi.fn(async () => profile),
+        decideReply: vi.fn()
+      }
+    });
+
+    const prepared = await controller.prepareTaskForApproval({
+      ...task,
+      id: "exttask_invalid",
+      contact: {
+        displayName: "Invalid Buyer",
+        phone: "+91 124 425 2720"
+      }
+    });
+
+    expect(prepared).toMatchObject({
+      status: "blocked",
+      reason: "target_not_on_whatsapp"
+    });
+  });
+
   it("requires approval for the first generated reply before sending into the page", async () => {
     document.body.innerHTML = `
       <section data-message-list>

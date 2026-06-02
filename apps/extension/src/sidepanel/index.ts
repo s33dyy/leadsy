@@ -1,6 +1,8 @@
 import { defaultConnectionSettings, type LeadsyConnectionSettings } from "../core/connection-settings";
+import { taskActionLabel, taskContactLabel, type ExtensionTask } from "../core/tasks";
 
 type RuntimeResponse<T> = { ok: true; value: T } | { ok: false; error: string };
+type FilterKey = "ready" | "preparing" | "approval" | "blocked" | "done";
 
 const app = document.querySelector<HTMLElement>("#app");
 
@@ -8,67 +10,164 @@ if (!app) {
   throw new Error("Side panel root was not found.");
 }
 
+const filters: Array<{ key: FilterKey; label: string; statuses: ExtensionTask["status"][] }> = [
+  { key: "ready", label: "Ready", statuses: ["queued"] },
+  { key: "preparing", label: "Preparing", statuses: ["in_progress"] },
+  { key: "approval", label: "Needs send approval", statuses: ["awaiting_send_approval"] },
+  { key: "blocked", label: "Blocked", statuses: ["blocked", "failed"] },
+  { key: "done", label: "Done", statuses: ["sent", "monitoring", "cancelled"] }
+];
+
+let currentTasks: ExtensionTask[] = [];
+let activeFilter: FilterKey = "ready";
+let selectedTaskId = "";
+
 app.innerHTML = `
   <style>
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      background: #07090b;
+      background: #080a0c;
       color: #eef4f8;
       font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
-    .shell { display: grid; gap: 14px; padding: 14px; }
-    .header { border-bottom: 1px solid #26313b; padding-bottom: 12px; }
-    h1 { font-size: 18px; line-height: 1.25; margin: 0; }
-    p { color: #b6c0ca; font-size: 13px; line-height: 1.55; margin: 6px 0 0; }
-    label { color: #87919e; display: grid; font-size: 11px; gap: 6px; letter-spacing: 0; text-transform: uppercase; }
-    input {
-      background: rgba(255,255,255,0.04);
-      border: 1px solid #26313b;
-      border-radius: 6px;
-      color: #fff;
-      font: inherit;
-      min-height: 36px;
-      outline: none;
-      padding: 7px 9px;
-      text-transform: none;
+    .shell { display: grid; gap: 12px; padding: 12px; }
+    .topbar {
+      align-items: center;
+      border-bottom: 1px solid #27313a;
+      display: flex;
+      gap: 10px;
+      justify-content: space-between;
+      padding-bottom: 10px;
     }
-    .row { align-items: center; display: flex; gap: 8px; justify-content: space-between; }
-    .card {
+    h1 { font-size: 16px; line-height: 1.25; margin: 0; }
+    p { color: #aab5bf; font-size: 12px; line-height: 1.45; margin: 0; }
+    .muted { color: #87939f; }
+    .status { color: #aab5bf; font-size: 12px; line-height: 1.4; min-height: 18px; }
+    .ok { color: #a6ffcf; }
+    .error { color: #ff8da0; }
+    .grid { display: grid; gap: 10px; }
+    .panel {
       background: rgba(255,255,255,0.035);
-      border: 1px solid #26313b;
+      border: 1px solid #27313a;
       border-radius: 8px;
-      display: grid;
-      gap: 12px;
-      padding: 12px;
+      padding: 10px;
     }
+    .metrics {
+      display: grid;
+      gap: 6px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .metric {
+      background: rgba(255,255,255,0.035);
+      border: 1px solid #27313a;
+      border-radius: 7px;
+      padding: 8px;
+    }
+    .metric strong { display: block; font-size: 18px; line-height: 1; }
+    .metric span { color: #87939f; display: block; font-size: 10px; margin-top: 4px; }
+    .tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
     button, a.button {
       align-items: center;
       background: rgba(32,230,190,0.12);
-      border: 1px solid rgba(32,230,190,0.32);
+      border: 1px solid rgba(32,230,190,0.34);
       border-radius: 6px;
-      color: #d8fff6;
+      color: #ddfff8;
       cursor: pointer;
       display: inline-flex;
       font: inherit;
-      font-size: 13px;
+      font-size: 12px;
       justify-content: center;
-      min-height: 34px;
-      padding: 7px 10px;
+      min-height: 32px;
+      padding: 7px 9px;
       text-decoration: none;
+      white-space: nowrap;
     }
     button.secondary, a.secondary { background: rgba(255,255,255,0.04); border-color: #34414d; color: #dce6ef; }
-    .status { color: #b6c0ca; font-size: 13px; line-height: 1.5; min-height: 20px; }
-    .ok { color: #a6ff6a; }
-    .error { color: #ff8da0; }
+    button.tab { color: #b8c3cd; min-height: 30px; }
+    button.tab.active { background: rgba(32,230,190,0.16); border-color: rgba(32,230,190,0.44); color: #effffb; }
+    button:disabled { cursor: not-allowed; opacity: 0.55; }
+    .task-list { display: grid; gap: 6px; max-height: 42vh; overflow: auto; }
+    .task-row {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid #27313a;
+      border-radius: 7px;
+      cursor: pointer;
+      display: grid;
+      gap: 7px;
+      padding: 9px;
+      text-align: left;
+      width: 100%;
+    }
+    .task-row.selected { border-color: rgba(32,230,190,0.5); }
+    .task-head { align-items: center; display: flex; gap: 8px; justify-content: space-between; min-width: 0; }
+    .title { color: #fff; font-size: 13px; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .preview { color: #dce6ef; font-size: 12px; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .meta { color: #87939f; font-size: 10px; overflow: hidden; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+    .pill {
+      border: 1px solid #34414d;
+      border-radius: 999px;
+      color: #b6c0ca;
+      flex: 0 0 auto;
+      font-size: 10px;
+      padding: 3px 7px;
+      text-transform: uppercase;
+    }
+    .pill.queued, .pill.in_progress { border-color: rgba(32,230,190,0.35); color: #d8fff6; }
+    .pill.awaiting_send_approval { border-color: rgba(255,190,80,0.45); color: #ffe1a6; }
+    .pill.blocked, .pill.failed { border-color: rgba(255,120,140,0.45); color: #ffc2cb; }
+    .detail { display: grid; gap: 9px; }
+    .detail h2 { font-size: 14px; line-height: 1.25; margin: 0; }
+    .draft {
+      background: rgba(0,0,0,0.22);
+      border: 1px solid #27313a;
+      border-radius: 7px;
+      color: #f2f8fc;
+      font-size: 12px;
+      line-height: 1.5;
+      margin: 0;
+      padding: 9px;
+      white-space: pre-wrap;
+    }
+    .actions { display: flex; flex-wrap: wrap; gap: 7px; }
+    label { color: #87939f; display: grid; font-size: 10px; gap: 5px; text-transform: uppercase; }
+    input {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid #27313a;
+      border-radius: 6px;
+      color: #fff;
+      font: inherit;
+      min-height: 34px;
+      outline: none;
+      padding: 7px 8px;
+      text-transform: none;
+      width: 100%;
+    }
+    .row { align-items: center; display: flex; gap: 8px; justify-content: space-between; }
     .toggle { align-items: center; display: flex; gap: 8px; text-transform: none; }
   </style>
   <section class="shell">
-    <div class="header">
-      <h1>Leadsy Worker</h1>
-      <p>Leadsy is the operation layer. This extension is the field worker that sends and reports conversations.</p>
+    <div class="topbar">
+      <div>
+        <h1>Leadsy Worker</h1>
+        <p>Queue, prepare, approve send, report.</p>
+      </div>
+      <button class="secondary" id="refresh-tasks" type="button">Refresh</button>
     </div>
-    <form class="card" id="settings-form">
+
+    <section class="metrics" id="metrics"></section>
+    <div class="status" id="status"></div>
+
+    <section class="panel grid">
+      <div class="tabs" id="filters"></div>
+      <div class="task-list" id="task-list">Connect Leadsy to load worker tasks.</div>
+    </section>
+
+    <section class="panel detail" id="task-detail">
+      <p>Select a task to inspect the draft, target, and worker action.</p>
+    </section>
+
+    <form class="panel grid" id="settings-form">
       <label>
         Leadsy URL
         <input id="base-url" name="baseUrl" autocomplete="off" />
@@ -79,21 +178,14 @@ app.innerHTML = `
       </label>
       <label class="toggle">
         <input id="fallback" name="fallback" type="checkbox" />
-        Use local OpenRouter fallback when Leadsy is offline
+        Use OpenRouter fallback if Leadsy is offline
       </label>
       <div class="row">
         <button type="submit">Save</button>
         <button class="secondary" id="check" type="button">Check</button>
       </div>
-      <div class="status" id="status"></div>
+      <a class="button secondary" href="http://localhost:3000/app/extension" target="_blank" rel="noreferrer">Open Leadsy</a>
     </form>
-    <section class="card">
-      <div>
-        <strong>Current mode</strong>
-        <p>Full-auto replies are allowed only when Leadsy returns a safe send decision. Pauses and errors are reported back to Leadsy.</p>
-      </div>
-      <a class="button secondary" href="http://localhost:3000/app/extension" target="_blank" rel="noreferrer">Open pairing page</a>
-    </section>
   </section>
 `;
 
@@ -103,6 +195,11 @@ const tokenInput = app.querySelector<HTMLInputElement>("#token")!;
 const fallbackInput = app.querySelector<HTMLInputElement>("#fallback")!;
 const status = app.querySelector<HTMLElement>("#status")!;
 const checkButton = app.querySelector<HTMLButtonElement>("#check")!;
+const taskList = app.querySelector<HTMLElement>("#task-list")!;
+const taskDetail = app.querySelector<HTMLElement>("#task-detail")!;
+const refreshTasksButton = app.querySelector<HTMLButtonElement>("#refresh-tasks")!;
+const metrics = app.querySelector<HTMLElement>("#metrics")!;
+const filtersContainer = app.querySelector<HTMLElement>("#filters")!;
 
 void load();
 
@@ -115,11 +212,20 @@ checkButton.addEventListener("click", () => {
   void checkConnection();
 });
 
+refreshTasksButton.addEventListener("click", () => {
+  void refreshTasks();
+});
+
 async function load() {
   const settings = await send<LeadsyConnectionSettings>({ type: "leadsy:getSettings" });
   baseUrlInput.value = settings.baseUrl || defaultConnectionSettings.baseUrl;
   tokenInput.value = settings.token;
   fallbackInput.checked = settings.fallbackEnabled;
+  renderFilters();
+  renderTasks([]);
+  if (settings.token) {
+    await refreshTasks();
+  }
 }
 
 async function save() {
@@ -129,7 +235,7 @@ async function save() {
     fallbackEnabled: fallbackInput.checked
   };
   await send<LeadsyConnectionSettings>({ type: "leadsy:saveSettings", settings });
-  setStatus("Saved. Leadsy will be used first for replies.", "ok");
+  setStatus("Saved. Refresh tasks to pull the latest queue.", "ok");
 }
 
 async function checkConnection() {
@@ -137,14 +243,171 @@ async function checkConnection() {
     await save();
     const context = await send<{ leadCount: number; conversationCount: number; tokenLabel: string }>({ type: "leadsy:getContext" });
     setStatus(`Connected as ${context.tokenLabel}. ${context.leadCount} leads, ${context.conversationCount} conversations.`, "ok");
+    await refreshTasks();
   } catch (error) {
     setStatus(error instanceof Error ? error.message : "Could not connect to Leadsy.", "error");
   }
 }
 
+async function refreshTasks() {
+  try {
+    const tasks = await send<ExtensionTask[]>({ type: "leadsy:getTasks" });
+    currentTasks = tasks;
+    if (!selectedTaskId || !tasks.some((task) => task.id === selectedTaskId)) {
+      selectedTaskId = tasks[0]?.id || "";
+    }
+    renderTasks(tasks);
+    setStatus(`Loaded ${tasks.length} worker tasks.`, "ok");
+  } catch (error) {
+    taskList.textContent = error instanceof Error ? error.message : "Could not load tasks.";
+    setStatus("Task refresh failed.", "error");
+  }
+}
+
+function renderFilters() {
+  filtersContainer.innerHTML = filters
+    .map((filter) => `<button class="tab ${filter.key === activeFilter ? "active" : ""}" type="button" data-filter="${filter.key}">${filter.label}</button>`)
+    .join("");
+  for (const button of Array.from(filtersContainer.querySelectorAll<HTMLButtonElement>("[data-filter]"))) {
+    button.addEventListener("click", () => {
+      activeFilter = (button.dataset.filter as FilterKey) || "ready";
+      renderFilters();
+      renderTasks(currentTasks);
+    });
+  }
+}
+
+function renderTasks(tasks: ExtensionTask[]) {
+  renderMetrics(tasks);
+  const filter = filters.find((item) => item.key === activeFilter) || filters[0];
+  const visibleTasks = tasks.filter((task) => filter.statuses.includes(task.status));
+  if (!visibleTasks.length) {
+    taskList.textContent = tasks.length ? "No tasks in this lane." : "No worker tasks yet.";
+    renderDetail(tasks.find((task) => task.id === selectedTaskId));
+    return;
+  }
+
+  if (!visibleTasks.some((task) => task.id === selectedTaskId)) {
+    selectedTaskId = visibleTasks[0].id;
+  }
+  taskList.innerHTML = visibleTasks.map(renderTaskRow).join("");
+  for (const row of Array.from(taskList.querySelectorAll<HTMLButtonElement>("[data-task-select]"))) {
+    row.addEventListener("click", () => {
+      selectedTaskId = row.dataset.taskSelect || selectedTaskId;
+      renderTasks(currentTasks);
+    });
+  }
+  renderDetail(tasks.find((task) => task.id === selectedTaskId));
+}
+
+function renderMetrics(tasks: ExtensionTask[]) {
+  const ready = countStatuses(tasks, ["queued"]);
+  const approval = countStatuses(tasks, ["awaiting_send_approval"]);
+  const blocked = countStatuses(tasks, ["blocked", "failed"]);
+  metrics.innerHTML = `
+    <div class="metric"><strong>${ready}</strong><span>Ready</span></div>
+    <div class="metric"><strong>${approval}</strong><span>Approve send</span></div>
+    <div class="metric"><strong>${blocked}</strong><span>Blocked</span></div>
+  `;
+}
+
+function renderTaskRow(task: ExtensionTask) {
+  const selectedClass = task.id === selectedTaskId ? " selected" : "";
+  return `
+    <button class="task-row${selectedClass}" type="button" data-task-select="${escapeHtml(task.id)}">
+      <span class="task-head">
+        <span class="title">${escapeHtml(taskContactLabel(task))}</span>
+        <span class="pill ${escapeHtml(task.status)}">${escapeHtml(statusLabel(task.status))}</span>
+      </span>
+      <span class="preview">${escapeHtml(task.draftMessage)}</span>
+      <span class="meta">${escapeHtml(taskActionLabel(task))} - ${escapeHtml(task.platform.replace(/-/g, " "))} - ${escapeHtml(task.priority)}</span>
+    </button>
+  `;
+}
+
+function renderDetail(task?: ExtensionTask) {
+  if (!task) {
+    taskDetail.innerHTML = `<p>Select a task to inspect the draft, target, and worker action.</p>`;
+    return;
+  }
+
+  taskDetail.innerHTML = `
+    <div class="task-head">
+      <h2>${escapeHtml(taskContactLabel(task))}</h2>
+      <span class="pill ${escapeHtml(task.status)}">${escapeHtml(statusLabel(task.status))}</span>
+    </div>
+    <p class="meta">${escapeHtml(taskActionLabel(task))} - ${escapeHtml(task.platform.replace(/-/g, " "))}</p>
+    <p>${escapeHtml(task.contextSummary)}</p>
+    <p class="draft">${escapeHtml(task.draftMessage)}</p>
+    ${task.targetUrl ? `<p class="muted">${escapeHtml(task.targetUrl)}</p>` : `<p class="muted">No target URL. This will be blocked when run.</p>`}
+    ${task.resultSummary ? `<p class="muted">${escapeHtml(task.resultSummary)}</p>` : ""}
+    <div class="actions">${renderActions(task)}</div>
+  `;
+
+  taskDetail.querySelector<HTMLButtonElement>("[data-task-open]")?.addEventListener("click", () => {
+    void openTask(task.id);
+  });
+  taskDetail.querySelector<HTMLButtonElement>("[data-task-approve-send]")?.addEventListener("click", () => {
+    void approveTaskSend(task.id);
+  });
+}
+
+function renderActions(task: ExtensionTask) {
+  if (task.status === "queued" || task.status === "in_progress") {
+    return `<button type="button" data-task-open="${escapeHtml(task.id)}">${task.status === "queued" ? "Run task" : "Reopen task"}</button>`;
+  }
+  if (task.status === "awaiting_send_approval") {
+    return `<button type="button" data-task-approve-send="${escapeHtml(task.id)}">Approve send</button>`;
+  }
+  if (task.status === "blocked" || task.status === "failed") {
+    return `<button class="secondary" type="button" disabled>${escapeHtml(task.blockedReason || task.status)}</button>`;
+  }
+  return `<button class="secondary" type="button" disabled>${escapeHtml(statusLabel(task.status))}</button>`;
+}
+
+async function openTask(taskId: string) {
+  if (!taskId) return;
+  try {
+    const task = await send<ExtensionTask>({ type: "leadsy:openTask", taskId });
+    setStatus(`Opened ${taskContactLabel(task)}. Prepare the draft in the chat tab.`, "ok");
+    await refreshTasks();
+  } catch (error) {
+    setStatus(error instanceof Error ? error.message : "Could not open task.", "error");
+    await refreshTasks();
+  }
+}
+
+async function approveTaskSend(taskId: string) {
+  if (!taskId) return;
+  try {
+    const task = await send<ExtensionTask>({ type: "leadsy:approveTaskSend", taskId });
+    setStatus(`Send approved for ${taskContactLabel(task)}.`, "ok");
+    await refreshTasks();
+  } catch (error) {
+    setStatus(error instanceof Error ? error.message : "Could not approve send.", "error");
+  }
+}
+
+function countStatuses(tasks: ExtensionTask[], statuses: ExtensionTask["status"][]) {
+  return tasks.filter((task) => statuses.includes(task.status)).length;
+}
+
+function statusLabel(statusValue: ExtensionTask["status"]) {
+  return statusValue.replace(/_/g, " ");
+}
+
 function setStatus(message: string, tone: "ok" | "error") {
   status.textContent = message;
   status.className = `status ${tone}`;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 async function send<T>(message: Record<string, unknown>): Promise<T> {

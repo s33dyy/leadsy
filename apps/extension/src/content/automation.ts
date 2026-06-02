@@ -21,8 +21,14 @@ import type {
   OverlayState,
   ResponderDecision
 } from "../core/types";
+import type { ExtensionTask } from "../core/tasks";
 
 export type StateListener = (state: OverlayState) => void;
+
+export type TaskPreparationResult =
+  | { status: "prepared"; draftMessage: string }
+  | { status: "blocked"; reason: "target_not_on_whatsapp" | "composer_missing" | "send_button_missing"; summary: string };
+type TaskBlockedResult = Extract<TaskPreparationResult, { status: "blocked" }>;
 
 export interface AutomationModelClient {
   detectProfile(snapshot: DomSnapshot, messages: ChatMessage[]): Promise<ChatSiteProfile>;
@@ -96,8 +102,8 @@ export class ChatAutomationController {
 
       if (!validation.valid) {
         this.setState({
-          mode: "error",
-          statusText: "Could not validate chat controls.",
+          mode: "paused",
+          statusText: "Paused. Chat controls are not ready.",
           lastReason: validation.errors.join("; ")
         });
         return;
@@ -149,6 +155,87 @@ export class ChatAutomationController {
     this.pendingDecision = undefined;
     await this.store.saveLog(this.log);
     this.setState({ mode: "auto_active", statusText: "First reply approved. Auto mode is active." });
+  }
+
+  async sendApprovedTask(task: ExtensionTask): Promise<{ externalId: string; sentAt: string }> {
+    return this.sendPreparedTask(task);
+  }
+
+  async prepareTaskForApproval(task: ExtensionTask): Promise<TaskPreparationResult> {
+    const blocker = detectTaskBlocker(task);
+    if (blocker) {
+      this.setState({ mode: "paused", statusText: "Task blocked.", lastReason: blocker.summary });
+      return blocker;
+    }
+
+    if (!this.profile || !this.log) {
+      const result: TaskPreparationResult = {
+        status: "blocked",
+        reason: "composer_missing",
+        summary: "Worker could not validate chat controls on this page."
+      };
+      this.setState({ mode: "paused", statusText: "Task paused.", lastReason: result.summary });
+      return result;
+    }
+    if (!taskCanBePrepared(task.status)) {
+      throw new Error("Task is not ready for worker preparation.");
+    }
+
+    const composer = document.querySelector<HTMLElement>(this.profile.composerSelector);
+    if (!composer) {
+      const result: TaskPreparationResult = {
+        status: "blocked",
+        reason: "composer_missing",
+        summary: "Composer is not available on this chat page."
+      };
+      this.setState({ mode: "paused", statusText: "Task paused.", lastReason: result.summary });
+      return result;
+    }
+
+    focusAndInsertText(composer, task.draftMessage);
+    const sendButton = await findElementWithRetry(this.profile.sendButtonSelector, 1200);
+    if (!sendButton) {
+      const result: TaskPreparationResult = {
+        status: "blocked",
+        reason: "send_button_missing",
+        summary: "Send button is not available after preparing the task draft."
+      };
+      this.setState({ mode: "paused", statusText: "Task paused.", lastReason: result.summary });
+      return result;
+    }
+
+    this.setState({
+      mode: "needs_approval",
+      statusText: "Draft prepared. Approve send in the worker panel.",
+      pendingReply: task.draftMessage,
+      lastReason: `Task ${task.id} is ready to send.`
+    });
+    return { status: "prepared", draftMessage: task.draftMessage };
+  }
+
+  async sendPreparedTask(task: ExtensionTask): Promise<{ externalId: string; sentAt: string }> {
+    if (!this.profile || !this.log) {
+      throw new Error("Worker is not armed on this chat page.");
+    }
+
+    await this.sendReply(task.draftMessage, this.profile);
+    const sentAt = new Date().toISOString();
+    const externalId = `task:${task.id}:${Date.now()}`;
+    this.log.messages = [
+      ...this.log.messages,
+      {
+        id: externalId,
+        direction: "outgoing",
+        text: task.draftMessage,
+        timestamp: Date.parse(sentAt),
+        sourceUrl: window.location.href
+      }
+    ];
+    this.log.updatedAt = Date.now();
+    await this.store.saveLog(this.log);
+    await this.syncToLeadsy("reply-sent", `Worker sent approved task ${task.id}.`);
+    this.setState({ mode: "auto_active", statusText: "Approved task sent. Watching for replies." });
+    return { externalId, sentAt };
   }
 
   rejectPending(): void {
@@ -344,4 +431,25 @@ function focusAndInsertText(composer: HTMLElement, text: string): void {
 
   composer.textContent = text;
   composer.dispatchEvent(new InputEvent("input", { bubbles: true, data: text, inputType: "insertText" }));
+}
+
+function taskCanBePrepared(status: ExtensionTask["status"]) {
+  return status === "queued" || status === "in_progress" || status === "awaiting_send_approval";
+}
+
+function detectTaskBlocker(task: ExtensionTask): TaskBlockedResult | undefined {
+  if (task.platform !== "whatsapp-web") return undefined;
+
+  const bodyText = (document.body?.innerText || document.body?.textContent || "").replace(/\s+/g, " ").trim();
+  if (!bodyText) return undefined;
+
+  const whatsappUnavailable = /(?:isn['’]?t|is not|not)\s+on\s+whatsapp/i.test(bodyText);
+  if (!whatsappUnavailable) return undefined;
+
+  const phone = task.contact.phone ? ` ${task.contact.phone}` : "";
+  return {
+    status: "blocked",
+    reason: "target_not_on_whatsapp",
+    summary: `WhatsApp reports${phone} is not on WhatsApp.`
+  };
 }

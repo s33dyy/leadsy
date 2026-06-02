@@ -1,4 +1,3 @@
-import { createServer, type Server } from "node:http";
 import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -12,7 +11,6 @@ const extensionPath = join(repoRoot, "dist");
 test("built extension injects the worker status chip into a mock chat page", async () => {
   test.skip(!existsSync(join(extensionPath, "manifest.json")), "Run npm run build before smoke testing.");
 
-  const server = await startFixtureServer();
   const userDataDir = await mkdtemp(join(tmpdir(), "leadsy-extension-smoke-"));
   const context = await chromium.launchPersistentContext(userDataDir, {
     channel: "chromium",
@@ -27,19 +25,81 @@ test("built extension injects the worker status chip into a mock chat page", asy
 
   try {
     const page = await context.newPage();
-    await page.goto(server.url);
+    await page.route("https://web.whatsapp.com/**", (route) => route.fulfill({ body: chatHtml(), contentType: "text/html" }));
+    await page.goto("https://web.whatsapp.com/");
 
     await expect(page.locator("[data-leadsy-status-chip]")).toHaveCount(1);
     await expect(page.locator("[data-leadsy-overlay-host]")).toHaveCount(0);
   } finally {
     await context.close();
-    await server.close();
     await rm(userDataDir, { recursive: true, force: true });
   }
 });
 
-async function startFixtureServer(): Promise<{ url: string; close(): Promise<void> }> {
-  const html = `
+test("built extension stays quiet on Leadsy app pages", async () => {
+  test.skip(!existsSync(join(extensionPath, "manifest.json")), "Run npm run build before smoke testing.");
+
+  const userDataDir = await mkdtemp(join(tmpdir(), "leadsy-extension-leadsy-page-smoke-"));
+  const context = await chromium.launchPersistentContext(userDataDir, {
+    channel: "chromium",
+    headless: true,
+    args: [
+      `--disable-extensions-except=${extensionPath}`,
+      `--load-extension=${extensionPath}`,
+      "--no-first-run",
+      "--no-default-browser-check"
+    ]
+  });
+
+  try {
+    const page = await context.newPage();
+    await page.route("http://localhost:3000/**", (route) =>
+      route.fulfill({
+        body: "<!doctype html><html><body><main><h1>Leadsy Lead OS</h1></main></body></html>",
+        contentType: "text/html"
+      })
+    );
+    await page.goto("http://localhost:3000/");
+
+    await expect(page.locator("[data-leadsy-status-chip]")).toHaveCount(0);
+    await expect(page.locator("[data-leadsy-overlay-host]")).toHaveCount(0);
+  } finally {
+    await context.close();
+    await rm(userDataDir, { recursive: true, force: true });
+  }
+});
+
+test("built extension side panel renders the worker queue console", async () => {
+  test.skip(!existsSync(join(extensionPath, "manifest.json")), "Run npm run build before smoke testing.");
+
+  const userDataDir = await mkdtemp(join(tmpdir(), "leadsy-extension-sidepanel-smoke-"));
+  const context = await chromium.launchPersistentContext(userDataDir, {
+    channel: "chromium",
+    headless: true,
+    args: [
+      `--disable-extensions-except=${extensionPath}`,
+      `--load-extension=${extensionPath}`,
+      "--no-first-run",
+      "--no-default-browser-check"
+    ]
+  });
+
+  try {
+    const page = await context.newPage();
+    await page.goto("chrome-extension://mbaohfhbjmflbalfaefeeiglddhahkji/sidepanel.html");
+
+    await expect(page.getByRole("heading", { name: "Leadsy Worker" })).toBeVisible();
+    await expect(page.getByText("Queue, prepare, approve send, report.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Refresh" })).toBeVisible();
+    await expect(page.getByText("Needs send approval")).toBeVisible();
+  } finally {
+    await context.close();
+    await rm(userDataDir, { recursive: true, force: true });
+  }
+});
+
+function chatHtml() {
+  return `
     <!doctype html>
     <html>
       <body>
@@ -54,32 +114,4 @@ async function startFixtureServer(): Promise<{ url: string; close(): Promise<voi
       </body>
     </html>
   `;
-
-  const server = createServer((_request, response) => {
-    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-    response.end(html);
-  });
-
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const address = server.address();
-  if (!address || typeof address === "string") {
-    throw new Error("Could not start fixture server.");
-  }
-
-  return {
-    url: `http://127.0.0.1:${address.port}`,
-    close: () => closeServer(server)
-  };
-}
-
-function closeServer(server: Server): Promise<void> {
-  return new Promise((resolve, reject) => {
-    server.close((error) => {
-      if (error) {
-        reject(error);
-        return;
-      }
-      resolve();
-    });
-  });
 }

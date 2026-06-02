@@ -8,10 +8,18 @@ import type {
   ResponderDecision
 } from "./types";
 import type { WorkerModelClient } from "./leadsy-client";
+import type { LeadsyConnectionSettings } from "./connection-settings";
+import type { ExtensionTask, ExtensionTaskEventType } from "./tasks";
 
 type RuntimeResponse<T> = { ok: true; value: T } | { ok: false; error: string };
 
 export class RuntimeWorkerClient implements WorkerModelClient {
+  async getSettings(): Promise<LeadsyConnectionSettings> {
+    return sendRuntimeMessage<LeadsyConnectionSettings>({
+      type: "leadsy:getSettings"
+    });
+  }
+
   async detectProfile(snapshot: DomSnapshot, messages: ChatMessage[]): Promise<ChatSiteProfile> {
     const response = await sendRuntimeMessage<ChatSiteProfile>({
       type: "leadsy:detectProfile",
@@ -46,6 +54,49 @@ export class RuntimeWorkerClient implements WorkerModelClient {
   }): Promise<void> {
     await sendRuntimeMessage<void>({
       type: "leadsy:syncConversation",
+      ...input
+    });
+  }
+
+  async getActiveTask(): Promise<ExtensionTask | undefined> {
+    return sendRuntimeMessage<ExtensionTask | undefined>({
+      type: "leadsy:getActiveTask"
+    });
+  }
+
+  async prepareTask(input: { taskId: string; draftMessage: string }): Promise<ExtensionTask> {
+    return sendRuntimeMessage<ExtensionTask>({
+      type: "leadsy:prepareTask",
+      ...input
+    });
+  }
+
+  async logTaskEvent(input: {
+    taskId: string;
+    eventType: ExtensionTaskEventType;
+    summary: string;
+    reason?: string;
+    payload?: Record<string, unknown>;
+  }): Promise<void> {
+    await sendRuntimeMessage<void>({
+      type: "leadsy:logTaskEvent",
+      ...input
+    });
+  }
+
+  async completeTask(input: {
+    taskId: string;
+    status: "sent" | "monitoring" | "blocked" | "failed";
+    resultSummary: string;
+    reason?: string;
+    outboundMessage?: {
+      externalId: string;
+      body: string;
+      sentAt: string;
+    };
+  }): Promise<ExtensionTask> {
+    return sendRuntimeMessage<ExtensionTask>({
+      type: "leadsy:completeTask",
       ...input
     });
   }
