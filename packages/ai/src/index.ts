@@ -775,7 +775,7 @@ function locationTokens(brief: LeadBrief) {
     .filter((token) => token.length > 2 && !["near", "and", "the", "for", "with"].includes(token));
 }
 
-function candidateHasRequestedLocation(candidate: Pick<SearchCandidate, "title" | "url">, brief: LeadBrief) {
+function candidateHasRequestedLocation(candidate: Pick<SearchCandidate, "title" | "url" | "snippet">, brief: LeadBrief) {
   const requested = brief.searchLocations.toLowerCase();
   const tokens = locationTokens(brief);
   if (!tokens.length) {
@@ -787,7 +787,7 @@ function candidateHasRequestedLocation(candidate: Pick<SearchCandidate, "title" 
   } catch {
     return false;
   }
-  const haystack = `${candidate.title} ${candidate.url} ${host}`.toLowerCase();
+  const haystack = `${candidate.title} ${candidate.url} ${candidate.snippet ?? ""} ${host}`.toLowerCase();
   if (/australia/.test(requested)) {
     return /australia|australian/.test(haystack) || host.endsWith(".au");
   }
@@ -3922,7 +3922,7 @@ function candidateScore(candidate: SearchCandidate) {
 }
 
 function candidateRejectReason(
-  candidate: Pick<SearchCandidate, "title" | "url">,
+  candidate: Pick<SearchCandidate, "title" | "url" | "snippet">,
   brief?: LeadBrief,
   options?: { allowAlternateEvidence?: boolean }
 ): LeadRejectionReason | undefined {
@@ -3934,7 +3934,7 @@ function candidateRejectReason(
   }
   if (brief && !candidateHasRequestedLocation(candidate, brief)) return "out-of-location";
   const allowAlternateEvidence = Boolean(options?.allowAlternateEvidence && alternateEvidenceHost(candidate.url));
-  const haystack = `${candidate.title} ${candidate.url} ${host}`.toLowerCase();
+  const haystack = `${candidate.title} ${candidate.url} ${candidate.snippet ?? ""} ${host}`.toLowerCase();
   if (socialPlatformHost(host) && !socialProfilePathLooksPublic(candidate.url)) {
     return "non-business-page";
   }

@@ -184,6 +184,22 @@ const creatorClassification = classify_search_result({
 });
 assert.equal(creatorClassification.classification, "creator-profile");
 
+const snippetLocatedSocialProfile = classify_search_result({
+  result: {
+    title: "Smile Care Clinic - Instagram photos and videos",
+    url: "https://www.instagram.com/smilecarebkp",
+    snippet: "Public profile for Smile Care Clinic in Barrackpore, West Bengal with appointment and WhatsApp contact details."
+  },
+  brief: brief({
+    service: "Performance marketing",
+    idealCustomers: "clinics",
+    searchLocations: "Barrackpore West Bengal"
+  }),
+  sourceType: "social-osint"
+});
+assert.equal(snippetLocatedSocialProfile.classification, "social-profile");
+assert.equal(snippetLocatedSocialProfile.reason, undefined, "Snippet location evidence should keep social business profiles in the candidate pool.");
+
 const expanded = expand_directory_page({
   brief: arbitraryBriefs[2],
   page: {
