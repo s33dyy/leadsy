@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+.next
+**/.next
+.git
+.env
+.env.local
+.leadsy-data
+**/.leadsy-data
+graphify-out
+artifacts
+npm-debug.log*
+.DS_Store

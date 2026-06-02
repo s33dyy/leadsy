@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Leadsy Worker",
+  "description": "Leadsy worker for auto communication and conversation reporting.",
+  "version": "0.1.0",
+  "permissions": ["storage", "sidePanel", "tabs", "activeTab"],
+  "host_permissions": ["<all_urls>", "http://localhost:3000/*", "https://*.leadsy.local/*"],
+  "background": {
+    "service_worker": "assets/background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["assets/contentScript.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Leadsy Worker"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  }
+}

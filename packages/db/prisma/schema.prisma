@@ -1,0 +1,404 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  owner
+  admin
+  revops
+  manager
+  sdr
+  viewer
+  client
+}
+
+enum DealStage {
+  qualified
+  discovery
+  technical_win
+  proposal
+  commit
+}
+
+enum Channel {
+  email
+  linkedin
+  phone
+  whatsapp
+  chat
+  ads
+}
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  plan      String   @default("enterprise")
+  createdAt DateTime @default(now())
+  users     User[]
+  accounts  Account[]
+  clients   AgencyClient[]
+  leadMagnetSources LeadMagnetSource[]
+  discoveredLeads   DiscoveredLead[]
+  auditLogs AuditLog[]
+}
+
+model User {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email     String?
+  emailOrPhone String?
+  normalizedLogin String?
+  passwordHash String?
+  clientId  String?
+  client    AgencyClient? @relation("ClientPortalUsers", fields: [clientId], references: [id], onDelete: Cascade)
+  name      String
+  role      Role     @default(sdr)
+  createdAt DateTime @default(now())
+  lastLoginAt DateTime?
+  sessions  AuthSession[]
+  ownedAccounts Account[] @relation("AccountOwner")
+
+  @@unique([tenantId, email])
+  @@unique([tenantId, normalizedLogin])
+  @@index([tenantId, role])
+  @@index([tenantId, clientId])
+}
+
+model AuthSession {
+  id        String   @id @default(cuid())
+  tenantId  String
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  lastSeenAt DateTime @updatedAt
+
+  @@index([tenantId, expiresAt])
+  @@index([userId, expiresAt])
+}
+
+model Account {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ownerId   String?
+  owner     User?    @relation("AccountOwner", fields: [ownerId], references: [id])
+  name      String
+  domain    String
+  industry  String
+  region    String
+  tier      String
+  employees Int
+  intent    Int
+  icpFit    Int
+  health    Int
+  summary   String
+  embedding Unsupported("vector(1536)")?
+  contacts  Contact[]
+  leads     Lead[]
+  deals     Deal[]
+  activities Activity[]
+
+  @@unique([tenantId, domain])
+  @@index([tenantId, intent, icpFit])
+}
+
+model Contact {
+  id          String   @id @default(cuid())
+  tenantId    String
+  accountId   String
+  account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  email       String
+  name        String
+  title       String
+  persona     String
+  phoneStatus String
+  strength    Int
+  leads       Lead[]
+  activities  Activity[]
+
+  @@unique([tenantId, email])
+  @@index([accountId, persona])
+}
+
+model Lead {
+  id          String   @id @default(cuid())
+  tenantId    String
+  accountId   String
+  contactId   String
+  account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  contact     Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  source      String
+  score       Int
+  intentScore Int
+  icpScore    Int
+  status      String
+  reason      String
+  detectedAt  DateTime @default(now())
+
+  @@index([tenantId, score, status])
+}
+
+model Deal {
+  id          String    @id @default(cuid())
+  tenantId    String
+  accountId   String
+  account     Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  name        String
+  value       Int
+  stage       DealStage
+  forecast    String
+  probability Int
+  closeDate   DateTime
+  nextStep    String
+  risk        String
+
+  @@index([tenantId, stage, closeDate])
+}
+
+model Activity {
+  id         String   @id @default(cuid())
+  tenantId   String
+  accountId  String
+  contactId  String?
+  account    Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  contact    Contact? @relation(fields: [contactId], references: [id])
+  type       String
+  title      String
+  detail     String
+  actor      String
+  occurredAt DateTime @default(now())
+
+  @@index([tenantId, occurredAt])
+}
+
+model Campaign {
+  id               String   @id @default(cuid())
+  tenantId         String
+  name             String
+  status           String
+  channels         Channel[]
+  audience         String
+  leads            Int
+  replyRate        Float
+  meetings         Int
+  deliverability   Int
+  aiPersonalization Int
+
+  @@index([tenantId, status])
+}
+
+model AgencyClient {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  tenant             Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name               String
+  vertical           String
+  businessType       String?
+  targetAudience     String?
+  primaryOffer       String?
+  leadLocation       String?
+  monthlyLeadGoal    Int?
+  onboardingCompletedAt DateTime?
+  inviteCode         String?
+  inviteGeneratedAt  DateTime?
+  clientRegisteredAt DateTime?
+  city               String
+  plan               String
+  monthlyAdSpend     Int
+  monthlyLeads       Int
+  costPerLead        Int
+  responseSlaSeconds Int
+  qualificationRate  Float
+  bookingRate        Float
+  conversionRate     Float
+  status             String
+  owner              String
+  portalUsers        User[] @relation("ClientPortalUsers")
+  metaLeads          MetaLead[]
+  leadMagnetSources  LeadMagnetSource[]
+  discoveredLeads    DiscoveredLead[]
+  whatsappConversations WhatsAppConversation[]
+
+  @@index([tenantId, status])
+  @@unique([tenantId, inviteCode])
+  @@unique([tenantId, name])
+}
+
+model LeadMagnetSource {
+  id              String   @id @default(cuid())
+  tenantId        String
+  clientId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client          AgencyClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name            String
+  type            String
+  status          String
+  dailyLimit      Int
+  foundToday      Int      @default(0)
+  qualifiedToday  Int      @default(0)
+  complianceMode  String
+  discoveredLeads DiscoveredLead[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([tenantId, clientId, status])
+}
+
+model DiscoveredLead {
+  id               String   @id @default(cuid())
+  tenantId         String
+  clientId         String
+  sourceId         String
+  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client           AgencyClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  source           LeadMagnetSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  name             String
+  businessName     String?
+  phone            String?
+  instagramHandle  String?
+  city             String
+  segment          String
+  discoveredFrom   String
+  reason           String
+  score            Int
+  fit              Int
+  urgency          Int
+  consentStatus    String
+  outreachStatus   String
+  suggestedMessage String
+  nextAction       String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([tenantId, clientId, score, outreachStatus])
+  @@index([tenantId, phone])
+  @@index([tenantId, instagramHandle])
+}
+
+model MetaLead {
+  id                String   @id @default(cuid())
+  tenantId          String
+  clientId          String
+  client            AgencyClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  platform          String
+  campaignName      String
+  adSetName         String
+  creative          String
+  fullName          String
+  phone             String
+  city              String
+  propertyType      String
+  budget            String
+  preferredLocation String
+  timeline          String
+  rawQuality        String
+  costPerLead       Int
+  status            String
+  receivedAt        DateTime @default(now())
+  qualification     QualificationSnapshot?
+  conversations     WhatsAppConversation[]
+  followUps         FollowUpTask[]
+
+  @@index([tenantId, clientId, receivedAt])
+  @@index([tenantId, phone])
+}
+
+model QualificationSnapshot {
+  id             String   @id @default(cuid())
+  tenantId       String
+  leadId         String   @unique
+  lead           MetaLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  budgetScore    Int
+  locationScore  Int
+  urgencyScore   Int
+  intentScore    Int
+  spamRisk       Int
+  sentiment      String
+  language       String
+  summary        String
+  nextBestAction String
+  escalate       Boolean
+
+  @@index([tenantId, intentScore, urgencyScore])
+}
+
+model WhatsAppConversation {
+  id            String   @id @default(cuid())
+  tenantId      String
+  clientId      String
+  leadId        String
+  client        AgencyClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  lead          MetaLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  contactName   String
+  phone         String
+  status        String
+  assignedTo    String
+  unread        Int      @default(0)
+  aiSummary     String
+  suggestedReply String
+  lastMessageAt DateTime @default(now())
+  messages      WhatsAppMessage[]
+
+  @@index([tenantId, clientId, status])
+  @@index([tenantId, lastMessageAt])
+}
+
+model WhatsAppMessage {
+  id             String   @id @default(cuid())
+  conversationId String
+  conversation   WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  direction      String
+  body           String
+  contentType    String
+  deliveryStatus String
+  sentAt         DateTime @default(now())
+
+  @@index([conversationId, sentAt])
+}
+
+model FollowUpTask {
+  id         String   @id @default(cuid())
+  tenantId   String
+  clientId   String
+  leadId     String
+  lead       MetaLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  channel    String
+  dueAt      DateTime
+  title      String
+  automation String
+  status     String
+
+  @@index([tenantId, clientId, dueAt])
+}
+
+model Workflow {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  definition  Json
+  version     Int      @default(1)
+  active      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  actorId   String
+  action    String
+  resource  String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+}

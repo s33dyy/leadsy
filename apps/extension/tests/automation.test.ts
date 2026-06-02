@@ -1,0 +1,242 @@
+import { describe, expect, it, vi } from "vitest";
+import { ChatAutomationController } from "../src/content/automation";
+import { defaultAssistantSettings } from "../src/core/settings";
+import { ConversationStore } from "../src/core/storage";
+import type { ChatSiteProfile, ResponderDecision } from "../src/core/types";
+
+const profile: ChatSiteProfile = {
+  id: "fixture-profile",
+  siteFingerprint: "https://fixture.test/chat",
+  messageListSelector: "[data-message-list]",
+  messageSelector: "[data-message]",
+  composerSelector: "[data-composer]",
+  sendButtonSelector: "[data-send]",
+  incomingSelector: '[data-direction="incoming"]',
+  outgoingSelector: '[data-direction="outgoing"]',
+  confidence: 0.94,
+  validationStatus: "valid",
+  createdAt: 1,
+  updatedAt: 1
+};
+
+const approvalSettings = { ...defaultAssistantSettings, requireFirstReplyApproval: true };
+
+describe("ChatAutomationController", () => {
+  it("requires approval for the first generated reply before sending into the page", async () => {
+    document.body.innerHTML = `
+      <section data-message-list>
+        <p data-message data-direction="incoming">Can you help with pricing?</p>
+      </section>
+      <div data-composer contenteditable="true"></div>
+      <button data-send>Send</button>
+    `;
+
+    let sendClicks = 0;
+    document.querySelector("[data-send]")?.addEventListener("click", () => {
+      sendClicks += 1;
+    });
+
+    const decision: ResponderDecision = {
+      action: "send",
+      replyText: "Yes. What team size are you buying for?",
+      confidence: 0.9,
+      reason: "lead qualification",
+      tags: ["lead"]
+    };
+    const states: string[] = [];
+    const store = new ConversationStore("leadsy-automation-test");
+    const controller = new ChatAutomationController(
+      (state) => states.push(state.mode),
+      {
+        store,
+        settings: approvalSettings,
+        openRouter: {
+          detectProfile: vi.fn(async () => profile),
+          decideReply: vi.fn(async () => decision)
+        }
+      }
+    );
+
+    await controller.arm();
+
+    expect(states).toContain("needs_approval");
+    expect(sendClicks).toBe(0);
+
+    await controller.approvePending();
+
+    expect(document.querySelector<HTMLElement>("[data-composer]")?.textContent).toBe(decision.replyText);
+    expect(sendClicks).toBe(1);
+    controller.pause("test cleanup");
+  });
+
+  it("auto-sends the first reply after chat controls are validated by default", async () => {
+    document.body.innerHTML = `
+      <section data-message-list>
+        <p data-message data-direction="incoming">Hey, what's up?</p>
+      </section>
+      <div data-composer contenteditable="true"></div>
+      <button data-send>Send</button>
+    `;
+
+    let sendClicks = 0;
+    document.querySelector("[data-send]")?.addEventListener("click", () => {
+      sendClicks += 1;
+    });
+
+    const decision: ResponderDecision = {
+      action: "send",
+      replyText: "Hey! I'm doing well. What's going on?",
+      confidence: 0.9,
+      reason: "friendly general chat",
+      tags: ["friendly"]
+    };
+    const states: string[] = [];
+    const store = new ConversationStore("leadsy-automation-auto-first-test");
+    const controller = new ChatAutomationController((state) => states.push(state.mode), {
+      store,
+      openRouter: {
+        detectProfile: vi.fn(async () => profile),
+        decideReply: vi.fn(async () => decision)
+      }
+    });
+
+    await controller.arm();
+
+    expect(states).not.toContain("needs_approval");
+    expect(document.querySelector<HTMLElement>("[data-composer]")?.textContent).toBe(decision.replyText);
+    expect(sendClicks).toBe(1);
+    controller.pause("test cleanup");
+  });
+
+  it("auto-sends subsequent replies after the first reply is approved", async () => {
+    document.body.innerHTML = `
+      <section data-message-list>
+        <p data-message data-direction="incoming">Can you help with pricing?</p>
+      </section>
+      <div data-composer contenteditable="true"></div>
+      <button data-send>Send</button>
+    `;
+
+    let sendClicks = 0;
+    document.querySelector("[data-send]")?.addEventListener("click", () => {
+      sendClicks += 1;
+    });
+
+    const firstDecision: ResponderDecision = {
+      action: "send",
+      replyText: "Yes. What team size are you buying for?",
+      confidence: 0.9,
+      reason: "lead qualification",
+      tags: ["lead"]
+    };
+    const secondDecision: ResponderDecision = {
+      action: "send",
+      replyText: "Thanks. We can help a 20-person team.",
+      confidence: 0.88,
+      reason: "support and qualification",
+      tags: ["support", "lead"]
+    };
+    const store = new ConversationStore("leadsy-automation-auto-test");
+    const controller = new ChatAutomationController(() => undefined, {
+      store,
+      settings: approvalSettings,
+      openRouter: {
+        detectProfile: vi.fn(async () => profile),
+        decideReply: vi.fn(async () => firstDecision).mockResolvedValueOnce(firstDecision).mockResolvedValueOnce(secondDecision)
+      }
+    });
+
+    await controller.arm();
+    await controller.approvePending();
+
+    document.querySelector("[data-message-list]")?.insertAdjacentHTML(
+      "beforeend",
+      `<p data-message data-direction="incoming">We are a 20-person team.</p>`
+    );
+    await new Promise((resolve) => setTimeout(resolve, 850));
+
+    expect(document.querySelector<HTMLElement>("[data-composer]")?.textContent).toBe(secondDecision.replyText);
+    expect(sendClicks).toBe(2);
+    controller.pause("test cleanup");
+  });
+
+  it("waits for a dynamic send button after inserting reply text", async () => {
+    document.body.innerHTML = `
+      <section data-message-list>
+        <p data-message data-direction="incoming">Can you help with pricing?</p>
+      </section>
+      <div data-composer contenteditable="true"></div>
+    `;
+
+    const composer = document.querySelector("[data-composer]");
+    composer?.addEventListener("input", () => {
+      if (!document.querySelector("[data-send]")) {
+        document.body.insertAdjacentHTML("beforeend", `<button data-send>Send</button>`);
+      }
+    });
+
+    let sendClicks = 0;
+    document.body.addEventListener("click", (event) => {
+      if (event.target instanceof HTMLElement && event.target.matches("[data-send]")) {
+        sendClicks += 1;
+      }
+    });
+
+    const decision: ResponderDecision = {
+      action: "send",
+      replyText: "Yes. What team size are you buying for?",
+      confidence: 0.9,
+      reason: "lead qualification",
+      tags: ["lead"]
+    };
+    const store = new ConversationStore("leadsy-automation-dynamic-send-test");
+    const controller = new ChatAutomationController(() => undefined, {
+      store,
+      settings: approvalSettings,
+      openRouter: {
+        detectProfile: vi.fn(async () => profile),
+        decideReply: vi.fn(async () => decision)
+      }
+    });
+
+    await controller.arm();
+    await controller.approvePending();
+
+    expect(sendClicks).toBe(1);
+    controller.pause("test cleanup");
+  });
+
+  it("generates a first pending reply for visible unanswered incoming messages on arm", async () => {
+    document.body.innerHTML = `
+      <section data-message-list>
+        <p data-message data-direction="outgoing">Hi, how can I help?</p>
+        <p data-message data-direction="incoming">Can you share pricing?</p>
+        <p data-message>Today</p>
+      </section>
+      <div data-composer contenteditable="true"></div>
+      <button data-send>Send</button>
+    `;
+
+    const decision: ResponderDecision = {
+      action: "send",
+      replyText: "Sure. What team size should I quote for?",
+      confidence: 0.9,
+      reason: "lead qualification",
+      tags: ["lead"]
+    };
+    const states: string[] = [];
+    const controller = new ChatAutomationController((state) => states.push(state.mode), {
+      store: new ConversationStore("leadsy-visible-unanswered-test"),
+      settings: approvalSettings,
+      openRouter: {
+        detectProfile: vi.fn(async () => profile),
+        decideReply: vi.fn(async () => decision)
+      }
+    });
+
+    await controller.arm();
+
+    expect(states).toContain("needs_approval");
+    controller.pause("test cleanup");
+  });
+});

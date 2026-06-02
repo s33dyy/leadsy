@@ -1,0 +1,22 @@
+{
+  "name": "@leadsy/lead-magnet-tutorial",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "still": "remotion still src/index.ts LeadMagnetTutorial --frame=450 --scale=0.35 ../../out/lead-magnet-tutorial-still.png",
+    "render": "remotion render src/index.ts LeadMagnetTutorial ../../out/lead-magnet-tutorial.mp4 --concurrency=1"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.470",
+    "remotion": "4.0.470",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "typescript": "^5"
+  }
+}

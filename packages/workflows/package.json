@@ -1,0 +1,13 @@
+{
+  "name": "@leadsy/workflows",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@leadsy/domain": "0.1.0",
+    "@leadsy/events": "0.1.0"
+  }
+}

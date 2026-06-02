@@ -1,0 +1,54 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    ports:
+      - "3000:3000"
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      NODE_ENV: production
+      APP_ENV: local
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      LEADSY_DATA_DIR: /data/leadsy
+      AUTH_SECRET: ${AUTH_SECRET:-leadsy-local-change-this-32-byte-secret}
+      SESSION_COOKIE_NAME: ${SESSION_COOKIE_NAME:-leadsy_session}
+      AI_PROVIDER: ${AI_PROVIDER:-deterministic}
+      AI_GATEWAY_BASE_URL: ${AI_GATEWAY_BASE_URL:-}
+      AI_GATEWAY_API_KEY: ${AI_GATEWAY_API_KEY:-}
+      AI_DEFAULT_MODEL: ${AI_DEFAULT_MODEL:-openai/gpt-5.2}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+      OPENROUTER_RESEARCH_MODEL: ${OPENROUTER_RESEARCH_MODEL:-openai/gpt-5.2}
+      OPENROUTER_FAST_MODEL: ${OPENROUTER_FAST_MODEL:-openai/gpt-5.2}
+      DATABASE_URL: postgresql://leadsy:leadsy@postgres:5432/leadsy?schema=public
+      REDIS_URL: redis://redis:6379
+      EVENT_BUS_DRIVER: in-memory
+      QUEUE_DRIVER: in-memory
+      BROWSER_WORKER_PROVIDER: local-fetch
+      LEAD_DISCOVERY_DAILY_LIMIT: ${LEAD_DISCOVERY_DAILY_LIMIT:-250}
+      OUTBOUND_REQUIRE_APPROVED_SOURCE: "true"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      AUDIT_LOG_SINK: stdout
+    volumes:
+      - ./data/app:/data/leadsy
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: leadsy
+      POSTGRES_PASSWORD: leadsy
+      POSTGRES_DB: leadsy
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./data/redis:/data

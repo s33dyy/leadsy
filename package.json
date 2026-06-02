@@ -1,0 +1,26 @@
+{
+  "name": "leadsy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Leadsy Revenue OS - AI-native revenue intelligence, CRM, outreach, routing, and automation platform.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm --workspace @leadsy/web run dev",
+    "build": "npm --workspace @leadsy/web run build",
+    "lint": "npm --workspace @leadsy/web run lint",
+    "typecheck": "npm --workspace @leadsy/web run typecheck",
+    "test:lead-magnet": "tsx scripts/lead-magnet-agent-tools.test.ts && node scripts/lead-magnet-regression.mjs",
+    "test:extension-store": "tsx scripts/extension-store.test.ts",
+    "seed": "npm --workspace @leadsy/db run seed",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down",
+    "docs": "node -e \"console.log('Architecture docs live in ./docs')\""
+  },
+  "engines": {
+    "node": ">=20.11.0",
+    "npm": ">=10.0.0"
+  }
+}

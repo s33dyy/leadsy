@@ -1,0 +1,42 @@
+{
+  "name": "@leadsy/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --webpack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@leadsy/ai": "0.1.0",
+    "@leadsy/domain": "0.1.0",
+    "@leadsy/events": "0.1.0",
+    "@leadsy/observability": "0.1.0",
+    "@leadsy/security": "0.1.0",
+    "@leadsy/workflows": "0.1.0",
+    "lucide-react": "^1.17.0",
+    "next": "16.2.6",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "server-only": "^0.0.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.6",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  },
+  "optionalDependencies": {
+    "@tailwindcss/oxide-linux-arm64-musl": "^4.3.0",
+    "@tailwindcss/oxide-linux-x64-musl": "^4.3.0",
+    "lightningcss-linux-arm64-musl": "^1.32.0",
+    "lightningcss-linux-x64-musl": "^1.32.0"
+  }
+}

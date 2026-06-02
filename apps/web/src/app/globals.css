@@ -1,0 +1,196 @@
+@import "tailwindcss";
+
+:root {
+  --background: #07090b;
+  --foreground: #eef4f8;
+  --muted: #87919e;
+  --muted-2: #b6c0ca;
+  --surface: #0d1115;
+  --surface-2: #121820;
+  --surface-3: #182029;
+  --line: #26313b;
+  --line-strong: #34414d;
+  --teal: #20e6be;
+  --lime: #a6ff6a;
+  --amber: #f6b64b;
+  --rose: #ff5c7a;
+  --sky: #68b7ff;
+  --violet: #ad8cff;
+  --ink: #07090b;
+  --radius: 8px;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background: var(--background);
+  color-scheme: dark;
+  letter-spacing: 0;
+}
+
+body {
+  min-height: 100%;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px) 0 0 / 48px 48px,
+    linear-gradient(180deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px) 0 0 / 48px 48px,
+    var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button,
+a {
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease,
+    transform 160ms ease,
+    opacity 160ms ease;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 3px;
+}
+
+::selection {
+  background: rgba(32, 230, 190, 0.28);
+}
+
+.noise {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.13;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.84' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.45'/%3E%3C/svg%3E");
+}
+
+.page-shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 70% -10%, rgba(32, 230, 190, 0.12), transparent 32%),
+    radial-gradient(circle at 12% 20%, rgba(246, 182, 75, 0.08), transparent 26%),
+    var(--background);
+}
+
+.panel {
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015)),
+    rgba(13, 17, 21, 0.92);
+  border-radius: var(--radius);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.22);
+}
+
+.panel-quiet {
+  border: 1px solid rgba(52, 65, 77, 0.72);
+  background: rgba(12, 16, 20, 0.74);
+  border-radius: var(--radius);
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.glow-line {
+  position: relative;
+}
+
+.glow-line::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 2px;
+  background: linear-gradient(180deg, var(--teal), var(--amber), var(--rose));
+  border-radius: 999px;
+}
+
+.scanline {
+  position: relative;
+  overflow: hidden;
+}
+
+.scanline::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-120%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+  animation: scan 5s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes scan {
+  0%,
+  52% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+.signal-pulse {
+  animation: signal-pulse 2.8s ease-in-out infinite;
+}
+
+@keyframes signal-pulse {
+  0%,
+  100% {
+    opacity: 0.52;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.route-rail {
+  background-image: repeating-linear-gradient(
+    90deg,
+    rgba(32, 230, 190, 0.52) 0,
+    rgba(32, 230, 190, 0.52) 10px,
+    transparent 10px,
+    transparent 18px
+  );
+}
+
+.scrollbar-dark {
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+.scrollbar-dark::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.scrollbar-dark::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 999px;
+}
+
+@media (max-width: 760px) {
+  body {
+    background-size: 36px 36px;
+  }
+}
