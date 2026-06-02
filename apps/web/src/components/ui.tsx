@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ComponentPropsWithoutRef, ReactNode } from "react";
 import { ArrowDownRight, ArrowUpRight, Minus, type LucideIcon } from "lucide-react";
 
 export function Badge({
@@ -29,12 +29,12 @@ export function Badge({
 
 export function Panel({
   children,
-  className = ""
-}: {
+  className = "",
+  ...props
+}: ComponentPropsWithoutRef<"section"> & {
   children: ReactNode;
-  className?: string;
 }) {
-  return <section className={`panel ${className}`}>{children}</section>;
+  return <section className={`panel ${className}`} {...props}>{children}</section>;
 }
 
 export function SectionTitle({

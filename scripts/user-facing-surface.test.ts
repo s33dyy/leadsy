@@ -116,6 +116,13 @@ async function main() {
 
   const leadsPage = await readFile(join(root, "apps/web/src/app/app/leads/page.tsx"), "utf8");
   assert(leadsPage.includes("listMetaWhatsAppConversations"), "leads page should read aggregated WhatsApp conversations");
+  assert(leadsPage.includes("Lead Operations"), "leads page should be positioned as the main CRM ops surface");
+  assert(leadsPage.includes("CRM pipeline"), "leads page should show a CRM-style pipeline table");
+  assert(leadsPage.includes("Activity timeline"), "leads page should expose logged communication activity");
+  assert(leadsPage.includes("Next action"), "leads page should make next operational action visible");
+  assert(leadsPage.includes("Needs reply"), "leads page should separate conversations that need a response");
+  assert(leadsPage.includes("data-testid=\"lead-crm-table\""), "leads page should expose a stable CRM table section");
+  assert(leadsPage.includes("data-testid=\"lead-record-panel\""), "leads page should expose a stable selected-record panel");
   assert(leadsPage.includes("All WhatsApp conversations"), "leads page should track all conversations, not only ad leads");
   assert(leadsPage.includes("web.whatsapp.com/send"), "lead rows should open the WhatsApp Web conversation");
   assert(leadsPage.includes("Exclude contact"), "leads page should let non-lead contacts be excluded");
