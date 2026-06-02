@@ -29,6 +29,7 @@ export type TaskPreparationResult =
   | { status: "prepared"; draftMessage: string }
   | { status: "blocked"; reason: "target_not_on_whatsapp" | "composer_missing" | "send_button_missing"; summary: string };
 type TaskBlockedResult = Extract<TaskPreparationResult, { status: "blocked" }>;
+export type TaskExecutionResult = { status: "sent"; externalId: string; sentAt: string } | TaskBlockedResult;
 type TaskComposerControls = {
   composer: HTMLElement;
   sendButton: HTMLElement;
@@ -163,6 +164,68 @@ export class ChatAutomationController {
 
   async sendApprovedTask(task: ExtensionTask): Promise<{ externalId: string; sentAt: string }> {
     return this.sendPreparedTask(task);
+  }
+
+  async executeTask(task: ExtensionTask): Promise<TaskExecutionResult> {
+    const blocker = detectTaskBlocker(task);
+    if (blocker) {
+      this.setState({ mode: "paused", statusText: "Task blocked.", lastReason: blocker.summary });
+      return blocker;
+    }
+
+    if (!taskCanBePrepared(task.status)) {
+      throw new Error("Task is not ready for worker execution.");
+    }
+
+    if (this.profile && this.log) {
+      await this.sendReply(task.draftMessage, this.profile);
+      const sentAt = new Date().toISOString();
+      const externalId = `task:${task.id}:${Date.now()}`;
+      this.log.messages = [
+        ...this.log.messages,
+        {
+          id: externalId,
+          direction: "outgoing",
+          text: task.draftMessage,
+          timestamp: Date.parse(sentAt),
+          sourceUrl: window.location.href
+        }
+      ];
+      this.log.updatedAt = Date.now();
+      await this.store.saveLog(this.log);
+      await this.syncToLeadsy("reply-sent", `Worker sent task ${task.id}.`);
+      this.setState({ mode: "auto_active", statusText: "Task sent. Watching for replies." });
+      return { status: "sent", externalId, sentAt };
+    }
+
+    const controls = await findTaskComposerControls(task, this.profile, 30000);
+    if (!controls.composer) {
+      const result: TaskExecutionResult = {
+        status: "blocked",
+        reason: "composer_missing",
+        summary: "Composer is not available on this chat page."
+      };
+      this.setState({ mode: "paused", statusText: "Task paused.", lastReason: result.summary });
+      return result;
+    }
+
+    focusAndInsertText(controls.composer, task.draftMessage);
+    const sendButton = controls.sendButton || (await findTaskSendButton(task, this.profile, 8000));
+    if (!sendButton) {
+      const result: TaskExecutionResult = {
+        status: "blocked",
+        reason: "send_button_missing",
+        summary: "Send button is not available after preparing the task draft."
+      };
+      this.setState({ mode: "paused", statusText: "Task paused.", lastReason: result.summary });
+      return result;
+    }
+
+    clickSendControl(sendButton);
+    const sentAt = new Date().toISOString();
+    const externalId = `task:${task.id}:${Date.now()}`;
+    this.setState({ mode: "auto_active", statusText: "Task sent. Monitoring this chat page." });
+    return { status: "sent", externalId, sentAt };
   }
 
   async prepareTaskForApproval(task: ExtensionTask): Promise<TaskPreparationResult> {

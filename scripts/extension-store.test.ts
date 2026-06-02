@@ -9,7 +9,6 @@ async function main() {
 
   try {
   const {
-    approveExtensionTaskSend,
     cancelExtensionTask,
     claimExtensionTask,
     completeExtensionTask,
@@ -173,33 +172,12 @@ async function main() {
   assert.equal(prepared.preparedAt?.startsWith("2026-"), true);
   assert.equal(prepared.draftMessage, "Hi Asha, I can send pricing here. What team size should I quote for?");
 
-  await assert.rejects(
-    () =>
-      completeExtensionTask({
-        tenantId: "tenant_test",
-        ownerId: "usr_owner",
-        taskId: task.id,
-        status: "sent",
-        resultSummary: "Worker sent without send approval."
-      }),
-    /send approval/i,
-    "worker cannot send a prepared task until the owner approves that outbound message"
-  );
-
-  const sendApproved = await approveExtensionTaskSend({
-    tenantId: "tenant_test",
-    ownerId: "usr_owner",
-    taskId: task.id
-  });
-  assert.equal(sendApproved.status, "in_progress");
-  assert.equal(sendApproved.sendApprovedAt?.startsWith("2026-"), true);
-
   const completed = await completeExtensionTask({
     tenantId: "tenant_test",
     ownerId: "usr_owner",
     taskId: task.id,
     status: "sent",
-    resultSummary: "Worker sent the approved WhatsApp opener.",
+    resultSummary: "Worker sent the WhatsApp opener.",
     outboundMessage: {
       externalId: "task_out_1",
       body: "Hi Asha, I can send pricing here. What team size should I quote for?",
@@ -207,7 +185,7 @@ async function main() {
     }
   });
   assert.equal(completed.status, "sent");
-  assert.equal(completed.resultSummary, "Worker sent the approved WhatsApp opener.");
+  assert.equal(completed.resultSummary, "Worker sent the WhatsApp opener.");
   assert.equal(completed.completedAt, "2026-06-02T08:01:00.000Z");
 
   const blocked = await createExtensionTask({

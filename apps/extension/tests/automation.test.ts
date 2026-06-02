@@ -40,7 +40,7 @@ describe("ChatAutomationController", () => {
     updatedAt: "2026-06-02T08:00:00.000Z"
   };
 
-  it("prepares an active worker task without sending until send approval arrives", async () => {
+  it("executes an active worker task by inserting and sending without send approval", async () => {
     document.body.innerHTML = `
       <section data-message-list>
         <p data-message data-direction="outgoing">Hello</p>
@@ -63,16 +63,13 @@ describe("ChatAutomationController", () => {
     });
 
     await controller.arm();
-    const prepared = await controller.prepareTaskForApproval(task);
+    const sent = await controller.executeTask(task);
 
-    expect(prepared.status).toBe("prepared");
     expect(document.querySelector<HTMLElement>("[data-composer]")?.textContent).toBe(task.draftMessage);
-    expect(sendClicks).toBe(0);
-
-    const sent = await controller.sendPreparedTask(task);
-
-    expect(sent.externalId).toContain(task.id);
     expect(sendClicks).toBe(1);
+    expect(sent.status).toBe("sent");
+    if (sent.status !== "sent") throw new Error("Task should have been sent.");
+    expect(sent.externalId).toContain(task.id);
     controller.pause("test cleanup");
   });
 
