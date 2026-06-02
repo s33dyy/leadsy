@@ -29,7 +29,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ ta
           tenantId: auth.session.tenantId,
           ownerId: auth.session.id,
           taskId,
-          resultSummary: input.resultSummary ?? "Cancelled by owner."
+          resultSummary: input.resultSummary ?? "Cancelled by user."
         })
       : await approveExtensionTask({
           tenantId: auth.session.tenantId,

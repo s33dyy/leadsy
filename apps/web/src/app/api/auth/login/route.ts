@@ -12,14 +12,11 @@ const schema = z.object({
   next: z.string().optional()
 });
 
-function safeNext(next: string | undefined, fallback: string, role: string) {
+function safeNext(next: string | undefined, fallback: string) {
   if (!next || !next.startsWith("/") || next.startsWith("//")) {
     return fallback;
   }
-  if (role === "client") {
-    return next.startsWith("/client") ? next : "/client/onboarding";
-  }
-  return next.startsWith("/client") ? "/app" : next;
+  return next.startsWith("/client") ? fallback : next;
 }
 
 export async function POST(request: NextRequest) {
@@ -40,7 +37,7 @@ export async function POST(request: NextRequest) {
 
   const sessionUser = toSessionUser(user);
   const authSession = await createSignedSession(user);
-  const redirectTo = safeNext(input.next, redirectForSession(sessionUser), user.role);
+  const redirectTo = safeNext(input.next, redirectForSession(sessionUser));
   const response = NextResponse.json({
     user: {
       id: user.id,

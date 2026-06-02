@@ -44,7 +44,7 @@ export default async function LeadMagnetPage({ searchParams }: { searchParams?: 
       <Panel className="p-5 md:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <SectionTitle eyebrow="Lead Magnet Engine" title="Find real leads, research them, and draft messages for approval" />
-          <Badge tone="teal">agency owner workflow</Badge>
+          <Badge tone="teal">workspace workflow</Badge>
         </div>
         <div className="mt-6">
           <LeadMagnetLab initialWorkspace={{ ...workspace, sourceHealth: sourceHealth() }} {...flash} />

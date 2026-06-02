@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Loader2, LogIn } from "lucide-react";
+import { Loader2, LogIn, UserPlus } from "lucide-react";
 
 type LoginFormProps = {
   nextPath?: string;
@@ -13,6 +13,7 @@ export function LoginForm({ nextPath }: LoginFormProps) {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const googleHref = `/api/auth/google${nextPath ? `?next=${encodeURIComponent(nextPath)}` : ""}`;
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -28,7 +29,7 @@ export function LoginForm({ nextPath }: LoginFormProps) {
     if (!response.ok) {
       setLoading(false);
       if (response.status === 428) {
-        window.location.assign("/setup");
+        setError("Create your workspace with Google first.");
         return;
       }
       setError(response.status === 401 ? "Wrong user ID or password." : "Could not log in. Please try again.");
@@ -42,6 +43,20 @@ export function LoginForm({ nextPath }: LoginFormProps) {
   return (
     <form action="/api/auth/login/form" method="post" onSubmit={submit} className="space-y-4">
       <input type="hidden" name="next" value={nextPath ?? ""} />
+      <Link
+        href={googleHref}
+        className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-[6px] border border-[var(--line)] bg-white/[0.05] text-sm font-medium text-white hover:border-[var(--line-strong)] hover:bg-white/[0.08]"
+      >
+        <UserPlus size={16} />
+        Continue with Google
+      </Link>
+
+      <div className="flex items-center gap-3">
+        <span className="h-px flex-1 bg-[var(--line)]" />
+        <span className="mono text-[10px] uppercase text-[var(--muted)]">or password</span>
+        <span className="h-px flex-1 bg-[var(--line)]" />
+      </div>
+
       <label className="block">
         <span className="mono text-[10px] uppercase text-[var(--muted)]">Phone or email</span>
         <input
@@ -82,11 +97,8 @@ export function LoginForm({ nextPath }: LoginFormProps) {
       </button>
 
       <div className="flex flex-wrap items-center justify-between gap-3 pt-2 text-sm text-[var(--muted-2)]">
-        <Link href="/client/register" className="hover:text-white">
-          Client registration
-        </Link>
-        <Link href="/setup" className="hover:text-white">
-          First owner setup
+        <Link href="/extension" className="hover:text-white">
+          Download extension
         </Link>
       </div>
     </form>

@@ -2,38 +2,21 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import {
   Activity,
-  BarChart3,
   Bot,
-  Building2,
   Cable,
-  Crosshair,
-  GitBranch,
-  Camera,
-  LayoutDashboard,
   LogOut,
   Magnet,
   MessageCircle,
-  RadioTower,
   ShieldCheck,
-  Sparkles,
-  Users
+  Sparkles
 } from "lucide-react";
 import type { SessionUser } from "@leadsy/security";
-import { CopilotDock } from "./copilot-dock";
 
 const navItems = [
-  { href: "/app", label: "Ops", icon: LayoutDashboard },
+  { href: "/app/connect", label: "Connect", icon: Cable },
+  { href: "/app/leads", label: "Leads", icon: MessageCircle },
   { href: "/app/magnet", label: "Magnet", icon: Magnet },
-  { href: "/app/inbox", label: "WhatsApp", icon: MessageCircle },
-  { href: "/app/meta", label: "Meta", icon: Camera },
-  { href: "/app/clients", label: "Clients", icon: Building2 },
-  { href: "/app/crm", label: "CRM", icon: Users },
-  { href: "/app/intelligence", label: "Intel", icon: Crosshair },
-  { href: "/app/outreach", label: "Outreach", icon: RadioTower },
-  { href: "/app/workflows", label: "Flows", icon: GitBranch },
-  { href: "/app/analytics", label: "Analytics", icon: BarChart3 },
-  { href: "/app/capture", label: "Capture", icon: Cable },
-  { href: "/app/extension", label: "Worker", icon: Bot }
+  { href: "/app/worker", label: "Worker", icon: Bot }
 ];
 
 export function AppShell({ children, session }: { children: ReactNode; session: SessionUser }) {
@@ -74,23 +57,23 @@ export function AppShell({ children, session }: { children: ReactNode; session: 
       <header className="sticky top-0 z-20 border-b border-[var(--line)] bg-[rgba(7,9,11,0.82)] backdrop-blur-xl lg:pl-[88px]">
         <div className="flex min-h-16 items-center justify-between gap-4 px-4 md:px-8">
           <div>
-            <div className="mono text-[11px] uppercase text-[var(--muted)]">Leadsy Revenue OS</div>
+            <div className="mono text-[11px] uppercase text-[var(--muted)]">Leadsy</div>
             <div className="flex items-center gap-2 text-sm text-[var(--muted-2)]">
               <span className="h-2 w-2 rounded-full bg-[var(--teal)] signal-pulse" />
-              Agency workspace: {session.name}
+              Workspace: {session.name}
             </div>
           </div>
           <div className="flex items-center gap-2">
             <div className="hidden items-center gap-2 rounded-[8px] border border-[var(--line)] bg-white/[0.03] px-3 py-2 text-sm text-[var(--muted-2)] md:flex">
               <Activity size={16} className="text-[var(--teal)]" />
-              Clean workspace · connect sources
+              WhatsApp leads · browser worker
             </div>
             <a
-              href="/app/magnet"
+              href="/app/connect"
               className="inline-flex h-10 items-center gap-2 rounded-[6px] border border-amber-300/30 bg-amber-300/10 px-3 text-sm text-amber-100 hover:bg-amber-300/15"
             >
-              <Bot size={16} />
-              Find leads
+              <Cable size={16} />
+              Connect
             </a>
             <a
               href="/logout"
@@ -107,7 +90,6 @@ export function AppShell({ children, session }: { children: ReactNode; session: 
       <main className="lg:pl-[88px]">
         <div className="px-4 py-6 md:px-8">{children}</div>
       </main>
-      <CopilotDock />
     </div>
   );
 }

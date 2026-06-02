@@ -1,5 +1,4 @@
-import { Activity, ArrowRight, Bot, GitBranch, Camera, Magnet, MessageCircle, Users } from "lucide-react";
-import { metaQualificationWorkflowNodes } from "@leadsy/domain";
+import { Activity, ArrowRight, Bot, Cable, Download, Magnet, MessageCircle, Phone } from "lucide-react";
 import { Badge, ProgressBar } from "./ui";
 
 export function LandingScene() {
@@ -15,10 +14,10 @@ export function LandingScene() {
             </div>
             <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
               {[
-                ["Sources", "0", "awaiting setup"],
-                ["Prospects", "0", "no discovery yet"],
-                ["Conversations", "0", "WhatsApp not connected"],
-                ["Bookings", "0", "no meetings yet"]
+                ["Connect", "1", "webhook route ready"],
+                ["Leads", "0", "waiting for first text"],
+                ["Magnet", "0", "no discovery yet"],
+                ["Worker", "0", "no paired token"]
               ].map(([label, value, detail]) => (
                 <div key={label} className="rounded-[6px] border border-[var(--line)] bg-black/[0.24] p-3">
                   <div className="mono text-[10px] uppercase text-[var(--muted)]">{label}</div>
@@ -33,7 +32,7 @@ export function LandingScene() {
                 <span className="mono text-teal-200">0 records</span>
               </div>
               <div className="grid gap-2 md:grid-cols-4">
-                {["Client", "Source", "Inbox", "Automation"].map((step) => (
+                {["Meta App", "WhatsApp Text", "Lead Record", "Worker Chat"].map((step) => (
                   <div key={step} className="h-16 rounded-[6px] border border-dashed border-[var(--line)] bg-black/20 p-3">
                     <div className="mono text-[10px] uppercase text-[var(--muted)]">{step}</div>
                     <div className="mt-2 h-1.5 rounded-full bg-white/[0.08]" />
@@ -46,12 +45,12 @@ export function LandingScene() {
           <div className="grid gap-4 md:grid-cols-2">
             <div className="panel-quiet p-4">
               <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-white">
-                <Users size={16} className="text-[var(--sky)]" />
-                Client workspaces
+                <Cable size={16} className="text-[var(--sky)]" />
+                Connection config
               </div>
               <div className="relative h-[190px]">
                 <div className="absolute left-[50%] top-[46%] flex h-20 w-20 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-teal-300/30 bg-teal-300/10 text-center text-[10px] text-teal-100 shadow-lg">
-                  add clients
+                  webhook
                 </div>
                 <div className="absolute left-[30%] top-[46%] h-px w-[44%] rotate-12 bg-teal-300/50" />
                 <div className="absolute left-[26%] top-[46%] h-px w-[42%] -rotate-12 bg-amber-300/45" />
@@ -62,17 +61,22 @@ export function LandingScene() {
             <div className="panel-quiet p-4">
               <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-white">
                 <Bot size={16} className="text-[var(--teal)]" />
-                AI qualification flow
+                Worker handoff
               </div>
               <div className="space-y-3">
-                {metaQualificationWorkflowNodes.slice(0, 4).map((node, index) => (
-                  <div key={node.id} className="flex items-center gap-3">
+                {[
+                  ["Listen", 100],
+                  ["Record lead", 100],
+                  ["Pair worker", 64],
+                  ["Report status", 28]
+                ].map(([label, value], index) => (
+                  <div key={label} className="flex items-center gap-3">
                     <div className="flex h-8 w-8 items-center justify-center rounded-[6px] border border-teal-300/25 bg-teal-300/10 text-xs text-teal-100">
                       {index + 1}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm text-white">{node.label}</div>
-                      <ProgressBar value={index < 2 ? 100 : index === 2 ? 72 : 34} tone={index === 2 ? "amber" : "teal"} />
+                      <div className="truncate text-sm text-white">{label}</div>
+                      <ProgressBar value={Number(value)} tone={index === 2 ? "amber" : "teal"} />
                     </div>
                   </div>
                 ))}
@@ -109,14 +113,14 @@ export function LandingScene() {
 
           <div className="panel-quiet p-4">
             <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-white">
-              <Camera size={16} className="text-[var(--rose)]" />
+              <Cable size={16} className="text-[var(--rose)]" />
               Source queue
             </div>
             <div className="space-y-2">
               {[
-                { icon: Magnet, label: "Lead Magnet", detail: "connect approved prospect sources" },
-                { icon: Camera, label: "Meta Lead Ads", detail: "connect webhook" },
-                { icon: MessageCircle, label: "WhatsApp", detail: "connect inbox" }
+                { icon: MessageCircle, label: "WhatsApp webhook", detail: "receive incoming ad messages" },
+                { icon: Magnet, label: "Lead Magnet", detail: "research public prospects" },
+                { icon: Download, label: "Extension", detail: "install private browser worker" }
               ].map((source) => {
                 const Icon = source.icon;
                 return (
@@ -136,21 +140,21 @@ export function LandingScene() {
             <div className="grid grid-cols-3 gap-3 text-center">
               <div>
                 <MessageCircle className="mx-auto text-[var(--teal)]" size={18} />
-                <div className="mono mt-2 text-[10px] uppercase text-[var(--muted)]">WhatsApp</div>
+                <div className="mono mt-2 text-[10px] uppercase text-[var(--muted)]">Leads</div>
               </div>
               <div>
                 <Activity className="mx-auto text-[var(--rose)]" size={18} />
-                <div className="mono mt-2 text-[10px] uppercase text-[var(--muted)]">Audit</div>
+                <div className="mono mt-2 text-[10px] uppercase text-[var(--muted)]">Config</div>
               </div>
               <div>
-                <GitBranch className="mx-auto text-[var(--violet)]" size={18} />
-                <div className="mono mt-2 text-[10px] uppercase text-[var(--muted)]">Flows</div>
+                <Phone className="mx-auto text-[var(--violet)]" size={18} />
+                <div className="mono mt-2 text-[10px] uppercase text-[var(--muted)]">Worker</div>
               </div>
             </div>
           </div>
 
           <a
-            href="/app"
+            href="/login?next=/app/leads"
             className="flex items-center justify-between rounded-[8px] border border-teal-300/30 bg-teal-300/[0.12] px-4 py-3 text-sm font-semibold text-teal-100 hover:bg-teal-300/[0.18]"
           >
             Open workspace

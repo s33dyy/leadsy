@@ -6,19 +6,16 @@ import { redirectToRequestHost } from "@/lib/request-url";
 
 export const runtime = "nodejs";
 
-function safeNext(next: string | undefined, fallback: string, role: string) {
+function safeNext(next: string | undefined, fallback: string) {
   if (!next || !next.startsWith("/") || next.startsWith("//")) {
     return fallback;
   }
-  if (role === "client") {
-    return next.startsWith("/client") ? next : "/client/onboarding";
-  }
-  return next.startsWith("/client") ? "/app" : next;
+  return next.startsWith("/client") ? fallback : next;
 }
 
 export async function POST(request: NextRequest) {
   if (!(await hasOwnerUser())) {
-    return redirectToRequestHost(request, "/setup");
+    return redirectToRequestHost(request, "/login?error=signup_required");
   }
 
   const formData = await request.formData();
@@ -38,7 +35,7 @@ export async function POST(request: NextRequest) {
 
   const sessionUser = toSessionUser(user);
   const authSession = await createSignedSession(user);
-  const response = redirectToRequestHost(request, safeNext(next, redirectForSession(sessionUser), user.role));
+  const response = redirectToRequestHost(request, safeNext(next, redirectForSession(sessionUser)));
   setSessionCookie(response, authSession.cookieValue, authSession.expiresAt);
 
   audit({

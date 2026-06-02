@@ -1,38 +1,38 @@
 import Link from "next/link";
-import { ArrowRight, Bot, Building2, DatabaseZap, GitBranch, LockKeyhole, MessageCircle, Sparkles } from "lucide-react";
+import { ArrowRight, Bot, Cable, Download, Magnet, MessageCircle, ShieldCheck, Sparkles } from "lucide-react";
 import { LandingScene } from "@/components/landing-scene";
 import { Badge, GhostLink, PrimaryLink } from "@/components/ui";
 
 const modules = [
   {
-    icon: DatabaseZap,
-    title: "Meta lead ingestion",
-    detail: "Instagram and Facebook lead webhooks with campaign attribution, dedupe, and instant qualification."
-  },
-  {
     icon: MessageCircle,
-    title: "WhatsApp conversion",
-    detail: "AI-assisted replies, multilingual qualification, smart follow-ups, bookings, and escalation."
+    title: "WhatsApp ad leads",
+    detail: "Receive official WhatsApp Business webhook messages after a person texts from a click-to-WhatsApp ad."
   },
   {
-    icon: GitBranch,
-    title: "Automation builder",
-    detail: "Triggers, branching logic, AI actions, CRM writes, routing and messaging nodes."
+    icon: Cable,
+    title: "Connection config",
+    detail: "Keep WhatsApp lead routing and worker pairing in one clean setup page."
   },
   {
-    icon: Building2,
-    title: "Agency clients",
-    detail: "Multi-client isolation, campaign analytics, white-label reporting, and client-ready summaries."
+    icon: Magnet,
+    title: "Lead magnet",
+    detail: "Find public prospects, build evidence-backed dossiers, and draft outreach without sending automatically."
   },
   {
     icon: Bot,
-    title: "Revenue copilot",
-    detail: "Account summaries, forecasts, workflow generation, CRM answers, smart filters."
+    title: "Browser worker",
+    detail: "Pair the private extension, queue tasks, and let the worker report browser conversations back to Leadsy."
   },
   {
-    icon: LockKeyhole,
-    title: "Enterprise core",
-    detail: "Multitenancy, RBAC, audit logs, rate limits, event bus, workers and observability."
+    icon: Download,
+    title: "Private extension",
+    detail: "Give users a direct download page with manual Chrome install steps outside the Chrome Web Store."
+  },
+  {
+    icon: ShieldCheck,
+    title: "Consent-first identity",
+    detail: "No hidden clicker data. Leadsy records the phone number only when the person actually sends a message."
   }
 ];
 
@@ -48,14 +48,14 @@ export default function Home() {
           <span className="font-semibold">Leadsy</span>
         </Link>
         <nav className="hidden items-center gap-2 md:flex">
-          <a href="/login?next=/app" className="rounded-[6px] px-3 py-2 text-sm text-[var(--muted-2)] hover:text-white">
+          <a href="/login?next=/app/leads" className="rounded-[6px] px-3 py-2 text-sm text-[var(--muted-2)] hover:text-white">
             Workspace
           </a>
-          <a href="/onboarding" className="rounded-[6px] px-3 py-2 text-sm text-[var(--muted-2)] hover:text-white">
-            Onboarding
+          <a href="/extension" className="rounded-[6px] px-3 py-2 text-sm text-[var(--muted-2)] hover:text-white">
+            Extension
           </a>
-          <a href="/login?next=/app/workflows" className="rounded-[6px] px-3 py-2 text-sm text-[var(--muted-2)] hover:text-white">
-            Workflows
+          <a href="/login?next=/app/connect" className="rounded-[6px] px-3 py-2 text-sm text-[var(--muted-2)] hover:text-white">
+            Connect
           </a>
         </nav>
       </header>
@@ -67,14 +67,14 @@ export default function Home() {
             Leadsy Lead OS
           </h1>
           <p className="mt-6 text-lg leading-8 text-[var(--muted-2)]">
-            Convert expensive Meta leads into qualified WhatsApp conversations, appointments, and client-ready reports with an AI sales coordinator that never misses follow-up.
+            Capture the WhatsApp messages that actually arrive from Meta ads, pair a browser worker for the live chat, and keep lead discovery in one clean operator workspace.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <PrimaryLink href="/login?next=/app">
-              Enter command center
+            <PrimaryLink href="/login?next=/app/leads">
+              Open leads
               <ArrowRight className="ml-2" size={16} />
             </PrimaryLink>
-            <GhostLink href="/onboarding">Configure workspace</GhostLink>
+            <GhostLink href="/extension">Download extension</GhostLink>
           </div>
           <div className="mt-8 grid grid-cols-3 gap-3">
             {[

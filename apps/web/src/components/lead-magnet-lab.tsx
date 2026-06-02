@@ -2021,7 +2021,7 @@ export function LeadMagnetLab({ initialWorkspace, initialError = "", initialNoti
               <Badge tone="neutral">open only if needed</Badge>
             </div>
             <p className="mt-2 text-xs leading-5 text-[var(--muted-2)]">
-              The owner summary above is the main answer. Open this for the OSINT receipt, tool log, and agent activity.
+              The workspace summary above is the main answer. Open this for the OSINT receipt, tool log, and agent activity.
             </p>
           </summary>
           <div className="mt-4 grid gap-4">

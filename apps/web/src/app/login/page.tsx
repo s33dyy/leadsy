@@ -2,7 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { LockKeyhole, Sparkles } from "lucide-react";
 import { getCurrentSession, redirectForSession } from "@/lib/auth";
-import { hasOwnerUser } from "@/lib/auth-store";
 import { LoginForm } from "@/components/login-form";
 import { Badge, Panel, SectionTitle } from "@/components/ui";
 
@@ -10,7 +9,11 @@ export const dynamic = "force-dynamic";
 
 const loginErrors: Record<string, string> = {
   invalid_credentials: "Wrong phone/email or password.",
-  rate_limited: "Too many login attempts. Please wait a few minutes and try again."
+  rate_limited: "Too many login attempts. Please wait a few minutes and try again.",
+  signup_required: "Use Google to create your Leadsy account first.",
+  google_unconfigured: "Google signup is not connected yet. Please contact Leadsy support.",
+  google_state: "Google signup expired. Please try again.",
+  google_failed: "Google signup could not be completed."
 };
 
 export default async function LoginPage({
@@ -19,11 +22,7 @@ export default async function LoginPage({
   searchParams: Promise<{ next?: string; error?: string }>;
 }) {
   const { next, error } = await searchParams;
-  const [ownerExists, session] = await Promise.all([hasOwnerUser(), getCurrentSession()]);
-
-  if (!ownerExists) {
-    redirect("/setup");
-  }
+  const session = await getCurrentSession();
 
   if (session) {
     redirect(redirectForSession(session));
@@ -49,10 +48,10 @@ export default async function LoginPage({
               <LockKeyhole size={20} />
             </div>
             <div className="mt-5">
-              <SectionTitle eyebrow="Login" title="Enter your Leadsy workspace" />
+              <SectionTitle eyebrow="Login + signup" title="Enter your Leadsy workspace" />
             </div>
             <p className="mt-4 text-sm leading-7 text-[var(--muted-2)]">
-              Agency owners land in the command center. Client users land in their own client workspace.
+              Create your Leadsy account with Google, or sign in with an existing workspace password.
             </p>
           </Panel>
 

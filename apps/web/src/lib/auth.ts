@@ -116,22 +116,22 @@ export async function destroySessionFromRequest(request: NextRequest) {
 }
 
 export function redirectForSession(session: SessionUser) {
-  return session.role === "client" ? "/client/onboarding" : "/app";
+  return session.role === "client" ? "/app/leads" : "/app/leads";
 }
 
 export async function requireAgencySession() {
   const ownerExists = await hasOwnerUser();
   if (!ownerExists) {
-    redirect("/setup");
+    redirect("/login?next=/app/leads");
   }
 
   const session = await getCurrentSession();
   if (!session) {
-    redirect("/login?next=/app");
+    redirect("/login?next=/app/leads");
   }
 
   if (session.role === "client") {
-    redirect("/client/onboarding");
+    redirect("/app/leads");
   }
 
   return session;
@@ -140,16 +140,16 @@ export async function requireAgencySession() {
 export async function requireClientSession() {
   const ownerExists = await hasOwnerUser();
   if (!ownerExists) {
-    redirect("/setup");
+    redirect("/login?next=/app/leads");
   }
 
   const session = await getCurrentSession();
   if (!session) {
-    redirect("/login?next=/client/onboarding");
+    redirect("/login?next=/app/leads");
   }
 
   if (session.role !== "client" || !session.clientId) {
-    redirect("/app");
+    redirect("/app/leads");
   }
 
   return session;

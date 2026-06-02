@@ -183,6 +183,62 @@ export async function createOwnerUser(input: { name: string; emailOrPhone: strin
   return { ok: true as const, user };
 }
 
+export async function findOrCreateGoogleOwnerUser(input: { name?: string; email: string }) {
+  const state = await readAuthState();
+  const normalizedLogin = normalizeLogin(input.email);
+  const existing = state.users.find((user) => user.normalizedLogin === normalizedLogin);
+  if (existing) {
+    return { ok: true as const, user: existing };
+  }
+
+  if (state.users.some((user) => user.role === "owner")) {
+    return { ok: false as const, reason: "owner_exists" as const };
+  }
+
+  const displayName = input.name?.trim() || input.email.split("@")[0] || "Leadsy Owner";
+  const user: AuthUser = {
+    id: `usr_${crypto.randomUUID().slice(0, 12)}`,
+    tenantId,
+    name: displayName,
+    emailOrPhone: input.email.trim(),
+    normalizedLogin,
+    passwordHash: await hashPassword(randomBytes(32).toString("base64url")),
+    role: "owner",
+    createdAt: new Date().toISOString()
+  };
+
+  await writeAuthState({ ...state, users: [...state.users, user] });
+  return { ok: true as const, user };
+}
+
+function googleWorkspaceTenantId(email: string) {
+  return `tenant_${createHash("sha256").update(normalizeLogin(email)).digest("hex").slice(0, 12)}`;
+}
+
+export async function findOrCreateGoogleWorkspaceUser(input: { name?: string; email: string }) {
+  const state = await readAuthState();
+  const normalizedLogin = normalizeLogin(input.email);
+  const existing = state.users.find((user) => user.normalizedLogin === normalizedLogin);
+  if (existing) {
+    return { ok: true as const, user: existing };
+  }
+
+  const displayName = input.name?.trim() || input.email.split("@")[0] || "Leadsy user";
+  const user: AuthUser = {
+    id: `usr_${crypto.randomUUID().slice(0, 12)}`,
+    tenantId: googleWorkspaceTenantId(input.email),
+    name: displayName,
+    emailOrPhone: input.email.trim(),
+    normalizedLogin,
+    passwordHash: await hashPassword(randomBytes(32).toString("base64url")),
+    role: "owner",
+    createdAt: new Date().toISOString()
+  };
+
+  await writeAuthState({ ...state, users: [...state.users, user] });
+  return { ok: true as const, user };
+}
+
 export async function createClientUser(input: {
   clientId: string;
   name: string;
