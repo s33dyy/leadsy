@@ -4,6 +4,7 @@ import { OpenRouterClient } from "../core/openrouter";
 import { defaultAssistantSettings, getOpenRouterApiKey } from "../core/settings";
 import type { AssistantSettings, ChatMessage, ConversationLog, DomSnapshot, KnowledgeContext } from "../core/types";
 import type { ExtensionTask, ExtensionTaskEventType } from "../core/tasks";
+import { getOrCreateTaskTab } from "./task-tabs";
 
 type RuntimeMessage =
   | { type: "leadsy:openSidePanel" }
@@ -189,7 +190,7 @@ async function openTask(taskId: string) {
     throw new Error("Task is missing a target chat/profile.");
   }
   await chrome.storage.local.set({ [activeTaskKey]: task });
-  const tab = await chrome.tabs.create({ url: task.targetUrl });
+  const tab = await getOrCreateTaskTab(task);
   if (tab.id) {
     await chrome.storage.local.set({ [activeTaskTabKey]: tab.id });
     nudgeTaskPreparationWhenTabLoads(tab.id);

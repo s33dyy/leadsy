@@ -27,9 +27,9 @@ async function bootWorker() {
   chip.mount(document.documentElement);
   chrome.runtime.onMessage.addListener((message: { type?: string; task?: ExtensionTask }, _sender, sendResponse) => {
     if (message.type === "leadsy:prepareActiveTask") {
-      void prepareActiveTask(controller)
+      void executeActiveTask(controller)
         .then(() => sendResponse({ ok: true }))
-        .catch((error) => sendResponse({ ok: false, error: error instanceof Error ? error.message : "Could not prepare active task." }));
+        .catch((error) => sendResponse({ ok: false, error: error instanceof Error ? error.message : "Could not execute active task." }));
       return true;
     }
     if (message.type !== "leadsy:sendPreparedTask") return false;
@@ -41,18 +41,18 @@ async function bootWorker() {
 
   const activeTask = await runtimeClient.getActiveTask().catch(() => undefined);
   if (activeTask && taskCanBePrepared(activeTask.status)) {
-    await prepareActiveTask(controller, activeTask);
+    await executeActiveTask(controller, activeTask);
   } else {
     await controller.arm();
   }
 }
 
-async function prepareActiveTask(controller: ChatAutomationController, activeTask?: ExtensionTask) {
+async function executeActiveTask(controller: ChatAutomationController, activeTask?: ExtensionTask) {
   const task = activeTask || (await runtimeClient.getActiveTask().catch(() => undefined));
   if (!task || !taskCanBePrepared(task.status)) return;
 
   try {
-    const result = await controller.prepareTaskForApproval(task);
+    const result = await controller.executeTask(task);
     if (result.status === "blocked") {
       await runtimeClient.logTaskEvent({
         taskId: task.id,
@@ -68,10 +68,17 @@ async function prepareActiveTask(controller: ChatAutomationController, activeTas
       });
       return;
     }
-    await runtimeClient.prepareTask({
+    await runtimeClient.completeTask({
       taskId: task.id,
-      draftMessage: result.draftMessage
+      status: "sent",
+      resultSummary: "Worker sent the task draft.",
+      outboundMessage: {
+        externalId: result.externalId,
+        body: task.draftMessage,
+        sentAt: result.sentAt
+      }
     });
+    void controller.arm().catch(() => undefined);
   } catch (error) {
     await runtimeClient
       .completeTask({

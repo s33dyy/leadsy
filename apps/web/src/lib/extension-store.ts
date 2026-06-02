@@ -596,9 +596,6 @@ export async function completeExtensionTask(input: {
   };
 }) {
   return updateTask(input.tenantId, input.ownerId, input.taskId, (task, state) => {
-    if (input.status === "sent" && !task.sendApprovedAt) {
-      throw new Error("Worker cannot mark a task as sent before send approval.");
-    }
     const completedAt = input.outboundMessage?.sentAt ?? new Date().toISOString();
     if (input.outboundMessage && task.conversationId) {
       const current = state.messages.find(

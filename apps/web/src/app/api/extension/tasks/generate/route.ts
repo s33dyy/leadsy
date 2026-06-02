@@ -4,6 +4,7 @@ import { audit, rateLimit } from "@leadsy/security";
 import type { LeadDossier } from "@leadsy/domain";
 import { requireApiSession } from "@/lib/api-auth";
 import { createExtensionTask } from "@/lib/extension-store";
+import { draftExtensionTaskMessage } from "@/lib/extension-task-drafts";
 import { getLeadMagnetWorkspace } from "@/lib/lead-magnet-store";
 
 export const runtime = "nodejs";
@@ -49,7 +50,7 @@ export async function POST(request: NextRequest) {
           handle: lead.instagram || lead.facebook || lead.linkedin,
           profileUrl: lead.instagram || lead.facebook || lead.linkedin
         },
-        draftMessage: draftForLead(lead, input.type),
+        draftMessage: draftExtensionTaskMessage(lead, input.type),
         contextSummary: `${lead.category} in ${lead.city}. ${lead.outreachAngle || lead.nextAction}`,
         dueAt: new Date(Date.now() + 1000 * 60 * 15).toISOString()
       })
@@ -81,11 +82,4 @@ function targetUrlForLead(lead: LeadDossier) {
     if (digits) return `https://web.whatsapp.com/send?phone=${digits}`;
   }
   return lead.instagram || lead.facebook || lead.linkedin || lead.website;
-}
-
-function draftForLead(lead: LeadDossier, type: "initiate_conversation" | "follow_up") {
-  if (type === "follow_up") {
-    return `Hi ${lead.businessName}, following up on this. ${lead.nextAction}`;
-  }
-  return `Hi ${lead.businessName}, ${lead.outreachAngle} Would it make sense to discuss this this week?`;
 }
