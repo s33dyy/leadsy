@@ -74,6 +74,8 @@ async function main() {
   for (const route of ["/app/analytics", "/app/capture", "/app/clients", "/app/crm", "/app/inbox", "/app/meta", "/app/workflows"]) {
     assert(!appShell.includes(route), `app nav should not include ${route}`);
   }
+  assert(appShell.includes("Meta WhatsApp connection"), "workspace header should frame connection as Meta onboarding");
+  assert(!appShell.includes("WhatsApp leads · browser worker"), "workspace header should not merge Meta connection with worker ops");
   assert(!appShell.includes("CopilotDock"), "copilot dock should not be part of the clean user-facing shell");
 
   const loginForm = await readFile(join(root, "apps/web/src/components/login-form.tsx"), "utf8");
@@ -97,7 +99,12 @@ async function main() {
   }
 
   const connectPage = await readFile(join(root, "apps/web/src/app/app/connect/page.tsx"), "utf8");
-  assert(connectPage.includes("/api/meta/whatsapp/webhook"), "connection config should show the WhatsApp webhook callback");
+  assert(connectPage.includes("Connect Meta / WhatsApp"), "connection config should lead with customer Meta onboarding");
+  assert(connectPage.includes("Advanced developer details"), "connection config should demote webhook details to an advanced section");
+  assert(connectPage.includes("/api/meta/whatsapp/webhook"), "connection config may expose the WhatsApp webhook callback only as advanced details");
+  assert(!connectPage.includes("Connect WhatsApp leads and the browser worker"), "connection config should not present worker setup as the main Meta connection flow");
+  assert(!connectPage.includes("Meta callback"), "connection config should not lead with raw Meta callback setup");
+  assert(!connectPage.includes("embedded signup URL"), "connection config should not expose Meta setup jargon in the customer workspace");
   for (const adminCopy of ["META_WHATSAPP_WEBHOOK_VERIFY_TOKEN", "META_APP_SECRET", "App secret", "EnvBadge", "missing"]) {
     assert(!connectPage.includes(adminCopy), `connection config should not expose admin ops copy: ${adminCopy}`);
   }
