@@ -82,7 +82,7 @@ export function ExtensionTaskBoard({
   }
 
   return (
-    <div className="grid gap-4">
+    <div className="grid min-w-0 gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-2">
           {counts.map((column) => (
@@ -101,35 +101,43 @@ export function ExtensionTaskBoard({
         </button>
       </div>
 
-      <div className="grid gap-3 xl:grid-cols-4">
+      <div className="grid min-w-0 items-start gap-3 lg:grid-cols-2 2xl:grid-cols-5">
         {columns.map((column) => {
           const columnTasks = tasks.filter((task) => (column.statuses as readonly string[]).includes(task.status));
           return (
-            <section key={column.key} className="rounded-[8px] border border-[var(--line)] bg-black/20 p-3">
+            <section
+              key={column.key}
+              data-task-column={column.key}
+              className="min-w-0 overflow-hidden rounded-[8px] border border-[var(--line)] bg-black/20 p-3"
+            >
               <div className="mb-3 flex items-center justify-between gap-3">
-                <div className="text-sm font-semibold text-white">{column.title}</div>
-                <span className="mono text-xs text-[var(--muted)]">{columnTasks.length}</span>
+                <div className="min-w-0 truncate text-sm font-semibold text-white">{column.title}</div>
+                <span className="mono shrink-0 text-xs text-[var(--muted)]">{columnTasks.length}</span>
               </div>
               {columnTasks.length ? (
                 <div className="grid gap-3">
                   {columnTasks.map((task) => (
-                    <article key={task.id} className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="truncate text-sm font-semibold text-white">{contactLabel(task)}</div>
+                    <article
+                      key={task.id}
+                      data-task-card={task.id}
+                      className="min-w-0 overflow-hidden rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-3"
+                    >
+                      <div className="flex min-w-0 items-start justify-between gap-3">
+                        <div className="min-w-0 break-words text-sm font-semibold leading-5 text-white">{contactLabel(task)}</div>
                         <Badge tone={task.status === "blocked" || task.status === "failed" ? "amber" : "teal"}>{task.priority}</Badge>
                       </div>
-                      <div className="mono mt-2 text-[10px] uppercase text-[var(--muted)]">
+                      <div className="mono mt-2 truncate text-[10px] uppercase text-[var(--muted)]">
                         {task.type.replace(/_/g, " ")} · {task.platform.replace(/-/g, " ")}
                       </div>
-                      <p className="mt-3 text-xs leading-5 text-[var(--muted-2)]">{task.contextSummary}</p>
-                      <p className="mt-3 rounded-[6px] bg-black/20 p-2 text-xs leading-5 text-white">{task.draftMessage}</p>
-                      {task.resultSummary ? <p className="mt-2 text-xs leading-5 text-[var(--muted)]">{task.resultSummary}</p> : null}
+                      <p className="mt-3 line-clamp-3 break-words text-xs leading-5 text-[var(--muted-2)]">{task.contextSummary}</p>
+                      <p className="mt-3 line-clamp-4 break-words rounded-[6px] bg-black/20 p-2 text-xs leading-5 text-white">{task.draftMessage}</p>
+                      {task.resultSummary ? <p className="mt-2 line-clamp-2 break-words text-xs leading-5 text-[var(--muted)]">{task.resultSummary}</p> : null}
                       <TaskMeta task={task} />
                     </article>
                   ))}
                 </div>
               ) : (
-                <EmptyState icon={emptyIcon(column.key)} title="Nothing here" detail="Tasks move here as the worker prepares, waits for send approval, sends, or blocks." />
+                <CompactEmptyState icon={emptyIcon(column.key)} title="Nothing here" detail="Worker updates will move tasks into this lane." />
               )}
             </section>
           );
@@ -142,16 +150,16 @@ export function ExtensionTaskBoard({
           <span className="mono text-xs text-[var(--muted)]">{initialEvents.length}</span>
         </div>
         {initialEvents.length ? (
-          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid min-w-0 gap-2 md:grid-cols-2 xl:grid-cols-3">
             {initialEvents.slice(0, 9).map((event) => (
-              <div key={event.id} className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-3">
-                <div className="flex items-center justify-between gap-2">
+              <div key={event.id} className="min-w-0 rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-3">
+                <div className="flex min-w-0 items-center justify-between gap-2">
                   <Badge tone={event.type.includes("blocked") || event.type.includes("failed") ? "amber" : "teal"}>
                     {event.type.replace(/_/g, " ")}
                   </Badge>
-                  <span className="mono text-[10px] text-[var(--muted)]">{new Date(event.occurredAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</span>
+                  <span className="mono shrink-0 text-[10px] text-[var(--muted)]">{new Date(event.occurredAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</span>
                 </div>
-                <p className="mt-2 text-xs leading-5 text-[var(--muted-2)]">{event.summary}</p>
+                <p className="mt-2 break-words text-xs leading-5 text-[var(--muted-2)]">{event.summary}</p>
                 {event.reason ? <p className="mono mt-2 text-[10px] uppercase text-amber-100">{event.reason.replace(/_/g, " ")}</p> : null}
               </div>
             ))}
@@ -159,6 +167,28 @@ export function ExtensionTaskBoard({
         ) : (
           <EmptyState icon={ActivityIcon} title="No worker events yet" detail="Prepared drafts, sends, blocked targets, and monitoring signals will appear here." />
         )}
+      </div>
+    </div>
+  );
+}
+
+function CompactEmptyState({
+  icon: Icon,
+  title,
+  detail
+}: {
+  icon: typeof Play;
+  title: string;
+  detail: string;
+}) {
+  return (
+    <div className="flex min-w-0 items-start gap-3 rounded-[8px] border border-dashed border-[var(--line)] bg-black/20 p-3">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[7px] border border-teal-300/20 bg-teal-300/10 text-teal-100">
+        <Icon size={17} />
+      </div>
+      <div className="min-w-0">
+        <div className="text-sm font-semibold text-white">{title}</div>
+        <p className="mt-1 break-words text-xs leading-5 text-[var(--muted-2)]">{detail}</p>
       </div>
     </div>
   );
