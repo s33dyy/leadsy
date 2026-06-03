@@ -152,7 +152,8 @@ describe("LeadsyWorkerClient", () => {
       messages
     });
 
-    const request = fetchFn.mock.calls[0]?.[1];
+    const calls = fetchFn.mock.calls as unknown as Array<[string, RequestInit]>;
+    const request = calls[0]?.[1];
     const body = JSON.parse(String(request?.body));
     expect(body.messages).toHaveLength(75);
     expect(body.messages[0].externalId).toBe("message:1");
