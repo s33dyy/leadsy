@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { AlertTriangle, CheckCircle2, Clock3, Loader2, Send, Workflow } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock3, Loader2, Pencil, Send, Trash2, Workflow } from "lucide-react";
 import { Badge, EmptyState } from "./ui";
 
 type SelectedLeadTask = {
@@ -14,6 +14,7 @@ type SelectedLeadTask = {
     | "awaiting_send_approval"
     | "sent"
     | "monitoring"
+    | "postponed"
     | "blocked"
     | "failed"
     | "cancelled"
@@ -26,6 +27,7 @@ type SelectedLeadTask = {
   contextSummary: string;
   resultSummary?: string;
   blockedReason?: string;
+  postponedUntil?: string;
   updatedAt: string;
   dueAt?: string;
 };
@@ -63,6 +65,35 @@ export function SelectedLeadTasks({
     setLoading("");
     if (!response.ok) return;
     setTasks((current) => current.map((candidate) => (candidate.id === task.id ? (payload as SelectedLeadTask) : candidate)));
+    router.refresh();
+  }
+
+  async function editTask(task: SelectedLeadTask, formData: FormData) {
+    setLoading(`edit:${task.id}`);
+    const response = await fetch(`/api/extension/tasks/${encodeURIComponent(task.id)}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        draftMessage: String(formData.get("draftMessage") ?? ""),
+        contextSummary: String(formData.get("contextSummary") ?? ""),
+        priority: formData.get("priority")
+      })
+    });
+    const payload = await response.json();
+    setLoading("");
+    if (!response.ok) return;
+    setTasks((current) => current.map((candidate) => (candidate.id === task.id ? (payload as SelectedLeadTask) : candidate)));
+    router.refresh();
+  }
+
+  async function deleteTask(task: SelectedLeadTask) {
+    setLoading(`delete:${task.id}`);
+    const response = await fetch(`/api/extension/tasks/${encodeURIComponent(task.id)}`, {
+      method: "DELETE"
+    });
+    setLoading("");
+    if (!response.ok) return;
+    setTasks((current) => current.filter((candidate) => candidate.id !== task.id));
     router.refresh();
   }
 
@@ -111,6 +142,37 @@ export function SelectedLeadTasks({
                 </button>
               </div>
             ) : null}
+            <details className="mt-3 rounded-[6px] border border-[var(--line)] bg-white/[0.03] p-3">
+              <summary className="cursor-pointer text-xs font-medium text-white">Edit task</summary>
+              <form
+                className="mt-3 grid gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  editTask(task, new FormData(event.currentTarget));
+                }}
+              >
+                <select name="priority" defaultValue={task.priority} className="h-9 rounded-[6px] border border-[var(--line)] bg-black/30 px-2 text-xs text-white">
+                  <option value="low">Low</option>
+                  <option value="normal">Normal</option>
+                  <option value="high">High</option>
+                  <option value="urgent">Urgent</option>
+                </select>
+                <textarea name="contextSummary" defaultValue={task.contextSummary} rows={2} className="rounded-[6px] border border-[var(--line)] bg-black/30 px-2 py-2 text-xs text-white" />
+                <textarea name="draftMessage" defaultValue={task.draftMessage} rows={3} className="rounded-[6px] border border-[var(--line)] bg-black/30 px-2 py-2 text-xs text-white" />
+                <button type="submit" className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-teal-300/25 bg-teal-300/10 px-3 text-xs font-medium text-teal-100 hover:bg-teal-300/[0.16]">
+                  {loading === `edit:${task.id}` ? <Loader2 size={14} className="animate-spin" /> : <Pencil size={14} />}
+                  Save task
+                </button>
+              </form>
+            </details>
+            <button
+              type="button"
+              onClick={() => deleteTask(task)}
+              className="mt-3 inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-amber-300/25 bg-amber-300/10 px-3 text-xs font-medium text-amber-100 hover:bg-amber-300/[0.16]"
+            >
+              {loading === `delete:${task.id}` ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+              Delete task
+            </button>
           </article>
         ))}
       </div>
@@ -157,6 +219,14 @@ function TaskState({ task }: { task: SelectedLeadTask }) {
       <div className="mt-3 flex items-center gap-2 text-xs text-amber-100">
         <AlertTriangle size={13} />
         {task.blockedReason ? task.blockedReason.replace(/_/g, " ") : "Worker needs attention"}
+      </div>
+    );
+  }
+  if (task.status === "postponed") {
+    return (
+      <div className="mt-3 flex items-center gap-2 text-xs text-amber-100">
+        <Clock3 size={13} />
+        Postponed{task.postponedUntil ? ` until ${new Date(task.postponedUntil).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}` : ""}.
       </div>
     );
   }

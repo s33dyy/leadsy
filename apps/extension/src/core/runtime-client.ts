@@ -86,9 +86,10 @@ export class RuntimeWorkerClient implements WorkerModelClient {
 
   async completeTask(input: {
     taskId: string;
-    status: "sent" | "monitoring" | "blocked" | "failed";
+    status: "sent" | "monitoring" | "postponed" | "blocked" | "failed";
     resultSummary: string;
     reason?: string;
+    postponedUntil?: string;
     outboundMessage?: {
       externalId: string;
       body: string;

@@ -26,6 +26,9 @@ type MetaOAuthConnectionRecord = {
   businessId?: string;
   whatsappBusinessAccountId?: string;
   phoneNumberId?: string;
+  facebookPageId?: string;
+  instagramBusinessAccountId?: string;
+  channels: MetaOAuthChannelReadiness;
   rawQuery: Record<string, string>;
   connectedAt: string;
   updatedAt: string;
@@ -33,6 +36,12 @@ type MetaOAuthConnectionRecord = {
 
 export type MetaOAuthConnectionSummary = Omit<MetaOAuthConnectionRecord, "accessToken"> & {
   accessToken?: never;
+};
+
+export type MetaOAuthChannelReadiness = {
+  whatsapp: { status: "connected" | "needs_asset"; assetId?: string; phoneNumberId?: string };
+  instagram: { status: "connected" | "needs_asset"; assetId?: string };
+  facebook: { status: "connected" | "needs_asset"; assetId?: string };
 };
 
 type MetaOAuthState = {
@@ -89,6 +98,29 @@ function summary(record: MetaOAuthConnectionRecord): MetaOAuthConnectionSummary 
   return safe as MetaOAuthConnectionSummary;
 }
 
+function channelReadiness(input: {
+  whatsappBusinessAccountId?: string;
+  phoneNumberId?: string;
+  facebookPageId?: string;
+  instagramBusinessAccountId?: string;
+}): MetaOAuthChannelReadiness {
+  return {
+    whatsapp: {
+      status: input.whatsappBusinessAccountId || input.phoneNumberId ? "connected" : "needs_asset",
+      assetId: input.whatsappBusinessAccountId,
+      phoneNumberId: input.phoneNumberId
+    },
+    instagram: {
+      status: input.instagramBusinessAccountId ? "connected" : "needs_asset",
+      assetId: input.instagramBusinessAccountId
+    },
+    facebook: {
+      status: input.facebookPageId ? "connected" : "needs_asset",
+      assetId: input.facebookPageId
+    }
+  };
+}
+
 export async function exchangeMetaOAuthCode(input: {
   code: string;
   redirectUri: string;
@@ -138,6 +170,10 @@ export async function saveMetaOAuthConnection(input: {
     record.tenantId === input.tenantId && record.ownerId === input.ownerId;
   const existing = state.connections.find(scoped);
   const rawQuery = cleanQuery(input.query ?? {});
+  const whatsappBusinessAccountId = rawQuery.waba_id ?? rawQuery.whatsapp_business_account_id;
+  const phoneNumberId = rawQuery.phone_number_id;
+  const facebookPageId = rawQuery.page_id ?? rawQuery.facebook_page_id;
+  const instagramBusinessAccountId = rawQuery.instagram_business_account_id ?? rawQuery.ig_business_account_id;
   const record: MetaOAuthConnectionRecord = {
     id: existing?.id ?? `metaoauth_${crypto.randomUUID()}`,
     tenantId: input.tenantId,
@@ -147,8 +183,11 @@ export async function saveMetaOAuthConnection(input: {
     tokenType: input.token.token_type,
     expiresAt: input.token.expires_in ? new Date(now.getTime() + input.token.expires_in * 1000).toISOString() : undefined,
     businessId: rawQuery.business_id,
-    whatsappBusinessAccountId: rawQuery.waba_id ?? rawQuery.whatsapp_business_account_id,
-    phoneNumberId: rawQuery.phone_number_id,
+    whatsappBusinessAccountId,
+    phoneNumberId,
+    facebookPageId,
+    instagramBusinessAccountId,
+    channels: channelReadiness({ whatsappBusinessAccountId, phoneNumberId, facebookPageId, instagramBusinessAccountId }),
     rawQuery,
     connectedAt: existing?.connectedAt ?? now.toISOString(),
     updatedAt: now.toISOString()

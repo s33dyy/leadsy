@@ -6,9 +6,16 @@ export async function getOrCreateTaskTab(task: ExtensionTask) {
     throw new Error("Task is missing a target chat/profile.");
   }
 
-  if (task.platform === "whatsapp-web" || isWhatsAppUrl(targetUrl)) {
-    const existing = await chrome.tabs.query({ url: "https://web.whatsapp.com/*" });
-    const sameTarget = existing.find((tab) => tab.id && tab.url && sameWhatsAppTarget(tab.url, targetUrl));
+  const active = await chrome.tabs.query({ active: true, currentWindow: true });
+  const activeReusable = active.find((tab) => tab.id && tab.url && samePlatformTarget(tab.url, task));
+  if (activeReusable?.id) {
+    return focusTab(activeReusable.id, targetUrl);
+  }
+
+  const urls = platformQueryUrls(task, targetUrl);
+  for (const queryUrl of urls) {
+    const existing = await chrome.tabs.query({ url: queryUrl });
+    const sameTarget = existing.find((tab) => tab.id && tab.url && sameExactTarget(tab.url, targetUrl, task));
     if (sameTarget?.id) {
       return focusTab(sameTarget.id);
     }
@@ -24,6 +31,27 @@ export async function getOrCreateTaskTab(task: ExtensionTask) {
     throw new Error("Could not open task tab.");
   }
   return created;
+}
+
+function platformQueryUrls(task: ExtensionTask, targetUrl: string) {
+  if (task.platform === "whatsapp-web" || isWhatsAppUrl(targetUrl)) return ["https://web.whatsapp.com/*"];
+  if (task.platform === "instagram-web" || hostIncludes(targetUrl, "instagram.com")) return ["https://www.instagram.com/*"];
+  if (task.platform === "facebook-web" || hostIncludes(targetUrl, "facebook.com") || hostIncludes(targetUrl, "messenger.com")) {
+    return ["https://www.facebook.com/*", "https://www.messenger.com/*"];
+  }
+  return [];
+}
+
+function samePlatformTarget(tabUrl: string, task: ExtensionTask) {
+  if (task.platform === "whatsapp-web") return isWhatsAppUrl(tabUrl);
+  if (task.platform === "instagram-web") return hostIncludes(tabUrl, "instagram.com");
+  if (task.platform === "facebook-web") return hostIncludes(tabUrl, "facebook.com") || hostIncludes(tabUrl, "messenger.com");
+  return false;
+}
+
+function sameExactTarget(left: string, right: string, task: ExtensionTask) {
+  if (task.platform === "whatsapp-web" || isWhatsAppUrl(left) || isWhatsAppUrl(right)) return sameWhatsAppTarget(left, right);
+  return normalizeUrl(left) === normalizeUrl(right);
 }
 
 async function focusTab(tabId: number, url?: string) {
@@ -65,6 +93,14 @@ function normalizeUrl(value: string) {
 function isWhatsAppUrl(value: string) {
   try {
     return new URL(value).hostname === "web.whatsapp.com";
+  } catch {
+    return false;
+  }
+}
+
+function hostIncludes(value: string, host: string) {
+  try {
+    return new URL(value).hostname.toLowerCase().includes(host);
   } catch {
     return false;
   }
