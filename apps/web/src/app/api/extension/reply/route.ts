@@ -3,7 +3,7 @@ import { z } from "zod";
 import { decideExtensionReply } from "@leadsy/ai";
 import { audit, rateLimit } from "@leadsy/security";
 import { requireExtensionToken } from "@/lib/extension-auth";
-import { getLeadMagnetWorkspace } from "@/lib/lead-magnet-store";
+import { buildLeadKnowledgeContext, syncLeadsyExtensionConversation } from "@/lib/lead-knowledge-store";
 import { syncExtensionConversation } from "@/lib/extension-store";
 
 const platformSchema = z.enum(["whatsapp-web", "instagram-web", "facebook-web", "generic-web-chat"]);
@@ -57,7 +57,13 @@ export async function POST(request: NextRequest) {
   }
 
   const input = schema.parse(await request.json());
-  const workspace = await getLeadMagnetWorkspace(auth.tenantId, auth.ownerId);
+  const knowledge = await buildLeadKnowledgeContext({
+    tenantId: auth.tenantId,
+    ownerId: auth.ownerId,
+    platform: input.platform,
+    chatFingerprint: input.chatFingerprint,
+    contact: input.contact
+  });
   const decision = await decideExtensionReply({
     tenantId: auth.tenantId,
     ownerId: auth.ownerId,
@@ -66,12 +72,33 @@ export async function POST(request: NextRequest) {
     chatFingerprint: input.chatFingerprint,
     contact: input.contact,
     messages: input.messages,
-    brief: workspace.brief,
-    leads: workspace.leads,
+    knowledge,
     existingSummary: input.existingSummary
   });
 
   const now = new Date().toISOString();
+  await syncLeadsyExtensionConversation({
+    tenantId: auth.tenantId,
+    ownerId: auth.ownerId,
+    platform: input.platform,
+    sourceUrl: input.sourceUrl,
+    chatFingerprint: input.chatFingerprint,
+    contact: input.contact,
+    messages: input.messages
+      .map((message, index) => ({
+        externalId: message.externalId || message.id || `msg_${message.timestamp ?? index}`,
+        direction: asSyncDirection(message.direction),
+        body: messageBody(message),
+        sentAt: message.sentAt || (message.timestamp ? new Date(message.timestamp).toISOString() : now)
+      }))
+      .filter((message) => message.body),
+    insight: {
+      summary: decision.reason,
+      qualification: decision.tags.join(", "),
+      nextAction: decision.leadFields?.nextAction,
+      sentiment: decision.action === "send" ? "positive" : "hesitant"
+    }
+  });
   const synced = await syncExtensionConversation({
     tenantId: auth.tenantId,
     ownerId: auth.ownerId,

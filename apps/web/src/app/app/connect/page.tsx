@@ -40,7 +40,7 @@ async function appOrigin() {
 
 function metaStatusCopy(status?: string | string[]) {
   const value = Array.isArray(status) ? status[0] : status;
-  if (value === "connected") return "Meta authorization completed. Leadsy can now receive WhatsApp webhook messages after the Meta subscription is active.";
+  if (value === "connected") return "Meta authorization completed. Leadsy can now receive message webhooks after the Meta subscription is active.";
   if (value === "cancelled") return "Meta authorization was cancelled before access was granted.";
   if (value === "unconfigured") return "Meta authorization needs app credentials before it can finish.";
   if (value === "error") return "Meta authorization could not finish. Try connecting again.";
@@ -54,7 +54,8 @@ export default async function ConnectPage({ searchParams }: ConnectPageProps) {
   const latestMetaConnection = metaConnections[0];
   const hasMetaConnection = Boolean(latestMetaConnection);
   const origin = await appOrigin();
-  const webhookUrl = `${origin}/api/meta/whatsapp/webhook`;
+  const webhookUrl = `${origin}/api/meta/webhook`;
+  const whatsappWebhookUrl = `${origin}/api/meta/whatsapp/webhook`;
   const metaConnectUrl = process.env.META_EMBEDDED_SIGNUP_URL?.trim();
   const metaStatus = metaStatusCopy((await searchParams)?.meta);
 
@@ -77,8 +78,8 @@ export default async function ConnectPage({ searchParams }: ConnectPageProps) {
                   Customer authorization
                 </div>
                 <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--muted-2)]">
-                  Business owners connect their own Meta Business and WhatsApp number here. Leadsy then listens for new
-                  inbound WhatsApp messages from that authorized account.
+                  Business owners connect their own Meta Business assets here. Leadsy then listens for inbound WhatsApp,
+                  Instagram, and Facebook messages from authorized accounts.
                 </p>
               </div>
             </div>
@@ -86,8 +87,8 @@ export default async function ConnectPage({ searchParams }: ConnectPageProps) {
             <div className="mt-5 grid gap-3 md:grid-cols-3">
               {[
                 { icon: BadgeCheck, title: "Meta login", detail: "Owner grants Leadsy access." },
-                { icon: Phone, title: "WhatsApp number", detail: "Owner selects the business number." },
-                { icon: MessageCircle, title: "Incoming leads", detail: "Texts create lead records." }
+                { icon: Phone, title: "Meta channels", detail: "Owner selects messaging assets." },
+                { icon: MessageCircle, title: "Incoming leads", detail: "Messages create lead records." }
               ].map((item) => {
                 const Icon = item.icon;
                 return (
@@ -142,9 +143,9 @@ export default async function ConnectPage({ searchParams }: ConnectPageProps) {
             </div>
             <div className="mt-4 grid gap-3">
               {[
-                { icon: Phone, title: "Sender number", detail: "Available after the person sends a WhatsApp message." },
-                { icon: MessageCircle, title: "First message", detail: "Text, timestamp, and profile name are captured." },
-                { icon: CheckCircle2, title: "Ad referral", detail: "Meta referral fields are kept when present." }
+                { icon: Phone, title: "Sender identity", detail: "Phone, handle, or profile ID when Meta provides it." },
+                { icon: MessageCircle, title: "Message body", detail: "Text, timestamp, and profile name are captured." },
+                { icon: CheckCircle2, title: "Referral context", detail: "Meta referral fields are kept when present." }
               ].map((item) => {
                 const Icon = item.icon;
                 return (
@@ -169,7 +170,7 @@ export default async function ConnectPage({ searchParams }: ConnectPageProps) {
         </div>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--muted-2)]">
           The extension handles the later browser conversation work. The official Meta connection above is still the source
-          of incoming WhatsApp lead identity.
+          of webhook identity.
         </p>
         <div className="mt-6">
           <ExtensionPairing initialTokens={tokens} />
@@ -189,6 +190,7 @@ export default async function ConnectPage({ searchParams }: ConnectPageProps) {
             <div className="rounded-[8px] border border-teal-300/25 bg-teal-300/[0.08] p-3">
               <div className="mono text-[10px] uppercase text-[var(--muted)]">Webhook endpoint</div>
               <div className="mono mt-2 break-all text-sm leading-6 text-teal-50">{webhookUrl}</div>
+              <div className="mono mt-2 break-all text-xs leading-5 text-teal-100/80">WhatsApp compatibility: {whatsappWebhookUrl}</div>
             </div>
             <div className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-3 text-sm leading-6 text-[var(--muted-2)]">
               Meta webhook subscriptions use this endpoint after the customer account is authorized. Most users never need

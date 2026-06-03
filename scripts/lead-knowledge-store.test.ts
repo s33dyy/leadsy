@@ -1,0 +1,230 @@
+import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+
+async function main() {
+  const tempDir = await mkdtemp(join(tmpdir(), "leadsy-knowledge-"));
+  process.env.LEADSY_DATA_DIR = tempDir;
+
+  try {
+    const {
+      appendManualLeadMessage,
+      buildLeadKnowledgeContext,
+      listLeadKnowledgeRecords,
+      saveUnifiedMetaWebhookMessages,
+      setLeadConversationKnowledgeStatus,
+      setLeadKnowledgeStatus,
+      syncLeadsyExtensionConversation
+    } = await import("../apps/web/src/lib/lead-knowledge-store");
+
+    const whatsappPayload = {
+      object: "whatsapp_business_account",
+      entry: [
+        {
+          id: "waba_123",
+          changes: [
+            {
+              field: "messages",
+              value: {
+                messaging_product: "whatsapp",
+                metadata: {
+                  display_phone_number: "15551234567",
+                  phone_number_id: "phone_123"
+                },
+                contacts: [
+                  {
+                    profile: { name: "Asha Buyer" },
+                    wa_id: "919830000000"
+                  }
+                ],
+                messages: [
+                  {
+                    from: "919830000000",
+                    id: "wamid.1",
+                    timestamp: "1780391200",
+                    type: "text",
+                    text: { body: "Interested in MCA admission" },
+                    referral: {
+                      source_type: "ad",
+                      source_id: "ad_123",
+                      source_url: "https://fb.me/leadsy-ad",
+                      headline: "MCA admissions open",
+                      body: "Tap to connect on WhatsApp",
+                      ctwa_clid: "clid_123"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    };
+
+    const instagramPayload = {
+      object: "instagram",
+      entry: [
+        {
+          id: "ig_business_123",
+          messaging: [
+            {
+              sender: { id: "ig_user_1" },
+              recipient: { id: "ig_business_123" },
+              timestamp: 1780391260000,
+              message: {
+                mid: "igmid.1",
+                text: "Can you DM the course fees?"
+              }
+            }
+          ]
+        }
+      ]
+    };
+
+    const facebookPayload = {
+      object: "page",
+      entry: [
+        {
+          id: "fb_page_123",
+          messaging: [
+            {
+              sender: { id: "fb_user_1" },
+              recipient: { id: "fb_page_123" },
+              timestamp: 1780391320000,
+              message: {
+                mid: "fbmid.1",
+                text: "Need a callback today"
+              }
+            }
+          ]
+        }
+      ]
+    };
+
+    const scope = { tenantId: "tenant_test", ownerId: "owner_test" };
+    const savedWhatsApp = await saveUnifiedMetaWebhookMessages({ ...scope, payload: whatsappPayload, receivedAt: "2026-06-02T08:00:00.000Z" });
+    const duplicateWhatsApp = await saveUnifiedMetaWebhookMessages({ ...scope, payload: whatsappPayload, receivedAt: "2026-06-02T08:00:01.000Z" });
+    const savedInstagram = await saveUnifiedMetaWebhookMessages({ ...scope, payload: instagramPayload, receivedAt: "2026-06-02T08:01:00.000Z" });
+    const savedFacebook = await saveUnifiedMetaWebhookMessages({ ...scope, payload: facebookPayload, receivedAt: "2026-06-02T08:02:00.000Z" });
+
+    assert.equal(savedWhatsApp.saved.length, 1);
+    assert.equal(duplicateWhatsApp.saved.length, 0, "Meta message ids should be deduped");
+    assert.equal(savedInstagram.saved.length, 1);
+    assert.equal(savedFacebook.saved.length, 1);
+
+    const extensionSync = await syncLeadsyExtensionConversation({
+      ...scope,
+      platform: "whatsapp-web",
+      sourceUrl: "https://web.whatsapp.com/send?phone=919830000000",
+      chatFingerprint: "https://web.whatsapp.com/chat/919830000000",
+      contact: {
+        displayName: "Asha Buyer",
+        phone: "+91 98300 00000"
+      },
+      messages: [
+        {
+          externalId: "ext-in-1",
+          direction: "inbound",
+          body: "Following up from WhatsApp web",
+          sentAt: "2026-06-02T08:04:00.000Z"
+        }
+      ],
+      events: [
+        {
+          type: "inbound-synced",
+          summary: "Visible chat messages synced to Leadsy.",
+          occurredAt: "2026-06-02T08:04:01.000Z"
+        }
+      ],
+      insight: {
+        summary: "Asha asked for course information.",
+        nextAction: "Send course fees and ask timeline.",
+        sentiment: "positive"
+      }
+    });
+
+    assert.equal(extensionSync.lead.contact.displayName, "Asha Buyer");
+    assert.equal(extensionSync.lead.messageCount, 2, "extension WhatsApp sync should merge with the webhook lead by phone");
+
+    await appendManualLeadMessage({
+      ...scope,
+      leadId: extensionSync.lead.id,
+      direction: "outbound",
+      body: "Called and shared the MCA fee range.",
+      occurredAt: "2026-06-02T08:05:00.000Z"
+    });
+    await appendManualLeadMessage({
+      ...scope,
+      leadId: extensionSync.lead.id,
+      direction: "outbound",
+      channel: "email",
+      body: "Sent the brochure by email.",
+      occurredAt: "2026-06-02T08:06:00.000Z"
+    });
+    await appendManualLeadMessage({
+      ...scope,
+      leadId: extensionSync.lead.id,
+      direction: "note",
+      channel: "call",
+      body: "Call note: parent wants a weekend counselling slot.",
+      occurredAt: "2026-06-02T08:07:00.000Z"
+    });
+
+    const leads = await listLeadKnowledgeRecords(scope);
+    assert.equal(leads.length, 3, "WhatsApp, Instagram, and Facebook contacts should be tracked as lead records");
+    const asha = leads.find((lead) => lead.contact.displayName === "Asha Buyer");
+    assert(asha, "Asha lead should exist");
+    assert.equal(asha.messageCount, 5);
+    assert.equal(asha.channels.includes("whatsapp"), true);
+    assert.equal(asha.channels.includes("whatsapp-web"), true);
+    assert.equal(asha.channels.includes("email"), true);
+    assert.equal(asha.channels.includes("call"), true);
+
+    const ashaConversation = asha.conversations.find((conversation) => conversation.channel === "whatsapp-web");
+    assert(ashaConversation, "extension conversation should be attached to Asha");
+    await setLeadConversationKnowledgeStatus({
+      ...scope,
+      conversationId: ashaConversation.id,
+      knowledgeStatus: "excluded"
+    });
+
+    const contextAfterConversationExclusion = await buildLeadKnowledgeContext({
+      ...scope,
+      platform: "whatsapp-web",
+      chatFingerprint: "https://web.whatsapp.com/chat/919830000000",
+      contact: {
+        phone: "+91 98300 00000"
+      }
+    });
+    assert.equal(contextAfterConversationExclusion.lead?.contact.displayName, "Asha Buyer");
+    assert.equal(
+      contextAfterConversationExclusion.messages.some((message) => message.body.includes("Following up from WhatsApp web")),
+      false,
+      "excluded conversations should not feed the AI knowledge context"
+    );
+    assert.equal(
+      contextAfterConversationExclusion.messages.some((message) => message.body.includes("Interested in MCA admission")),
+      true,
+      "included webhook messages should remain in AI knowledge context"
+    );
+
+    await setLeadKnowledgeStatus({ ...scope, leadId: asha.id, leadStatus: "excluded" });
+    const contextAfterLeadExclusion = await buildLeadKnowledgeContext({
+      ...scope,
+      platform: "whatsapp-web",
+      contact: {
+        phone: "+91 98300 00000"
+      }
+    });
+    assert.equal(contextAfterLeadExclusion.lead?.leadStatus, "excluded");
+    assert.equal(contextAfterLeadExclusion.messages.length, 0, "excluded leads should not feed AI message context");
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

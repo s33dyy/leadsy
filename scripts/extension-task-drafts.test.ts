@@ -3,13 +3,13 @@ import assert from "node:assert/strict";
 import { draftExtensionTaskMessage } from "../apps/web/src/lib/extension-task-drafts";
 
 const schoolLead = {
-  businessName: "School for Skills: Allied Health Sciences (SFS Academies) - West Bengal Academy",
-  city: "Siliguri",
-  category: "Paramedical / Allied Health Sciences Training Institute",
-  outreachAngle:
-    "Offer a West Bengal-focused student-lead campaign segmented by course (EMT/MLT/Dialysis/OT) with call-driven and form-driven leads, plus basic lead qualification and follow-up automation to reduce drop-offs.",
-  nextAction:
-    "Run program-specific lead funnels (B.Ed/D.El.Ed/Nursing) targeting North Bengal/Siliguri and wider West Bengal, with qualification questions (eligibility, budget, preferred district) to deliver high-intent prospects."
+  contact: {
+    displayName: "School for Skills: Allied Health Sciences (SFS Academies) - West Bengal Academy"
+  },
+  summary:
+    "Paramedical / Allied Health Sciences Training Institute asked about admissions.",
+  nextAction: "Follow up on student enquiry quality.",
+  channels: ["whatsapp"]
 };
 
 const opener = draftExtensionTaskMessage(schoolLead as never, "initiate_conversation");
@@ -33,11 +33,12 @@ for (const forbidden of [
 }
 
 const realEstateLead = {
-  businessName: "Radhika Realty",
-  city: "Mumbai",
-  category: "Real Estate Agency",
-  outreachAngle: "Offer to optimize Mumbai event funnel: landing page CRO and targeted campaigns.",
-  nextAction: "Find owner and pitch WhatsApp lead automation."
+  contact: {
+    displayName: "Radhika Realty"
+  },
+  summary: "Real Estate Agency asked about WhatsApp lead automation.",
+  nextAction: "Follow up on property enquiry quality.",
+  channels: ["whatsapp"]
 };
 
 assert.equal(

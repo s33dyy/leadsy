@@ -6,19 +6,26 @@ import {
   Filter,
   Inbox,
   ListChecks,
+  Mail,
   MessageCircle,
-  Phone,
+  NotebookPen,
+  PhoneCall,
   RadioTower,
   Search,
-  UserRound
+  UserRound,
+  Workflow
 } from "lucide-react";
 import { Badge, EmptyState, Panel, PrimaryLink, SectionTitle } from "@/components/ui";
+import { SelectedLeadTasks } from "@/components/selected-lead-tasks";
 import { getCurrentSession } from "@/lib/auth";
+import { listExtensionTaskEvents, listExtensionTasks, type ExtensionTask, type ExtensionTaskEvent } from "@/lib/extension-store";
 import {
-  listMetaWhatsAppConversations,
-  type MetaWhatsAppConversation,
-  type MetaWhatsAppInboundMessage
-} from "@/lib/meta-whatsapp-webhook-store";
+  listLeadKnowledgeRecords,
+  type LeadKnowledgeChannel,
+  type LeadKnowledgeConversation,
+  type LeadKnowledgeMessage,
+  type LeadKnowledgeRecord
+} from "@/lib/lead-knowledge-store";
 
 export const dynamic = "force-dynamic";
 
@@ -26,15 +33,34 @@ type LeadsPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
-type ViewFilter = "all" | "needs-reply" | "active" | "ads" | "excluded";
+type ViewFilter = "all" | "needs-reply" | "active" | "meta" | "extension" | "excluded";
+type LeadWorkspaceTab = "details" | "comms" | "tasks";
+type CommChannelFilter = "all" | "whatsapp" | "instagram" | "facebook" | "email" | "call" | "browser" | "manual";
 
-const whatsappWebBase = "https://web.whatsapp.com/send";
 const viewFilters: Array<{ id: ViewFilter; label: string }> = [
   { id: "all", label: "All" },
   { id: "needs-reply", label: "Needs reply" },
   { id: "active", label: "Active leads" },
-  { id: "ads", label: "Ad leads" },
+  { id: "meta", label: "Meta" },
+  { id: "extension", label: "Extension" },
   { id: "excluded", label: "Excluded" }
+];
+
+const workspaceTabs: Array<{ id: LeadWorkspaceTab; label: string }> = [
+  { id: "details", label: "Details" },
+  { id: "comms", label: "Comms" },
+  { id: "tasks", label: "Tasks" }
+];
+
+const commFilters: Array<{ id: CommChannelFilter; label: string; channels?: LeadKnowledgeChannel[] }> = [
+  { id: "all", label: "All" },
+  { id: "whatsapp", label: "WhatsApp", channels: ["whatsapp", "whatsapp-web"] },
+  { id: "instagram", label: "Instagram", channels: ["instagram", "instagram-web"] },
+  { id: "facebook", label: "Facebook", channels: ["facebook", "facebook-web"] },
+  { id: "email", label: "Email", channels: ["email"] },
+  { id: "call", label: "Call Notes", channels: ["call"] },
+  { id: "browser", label: "Browser Chat", channels: ["generic-web-chat"] },
+  { id: "manual", label: "Manual", channels: ["manual"] }
 ];
 
 function paramValue(params: Record<string, string | string[] | undefined>, key: string) {
@@ -42,14 +68,16 @@ function paramValue(params: Record<string, string | string[] | undefined>, key: 
   return Array.isArray(value) ? value[0] ?? "" : value ?? "";
 }
 
-function formatDate(value: string) {
+function formatDate(value?: string) {
+  if (!value) return "No activity";
   return new Date(value).toLocaleString("en-IN", {
     dateStyle: "medium",
     timeStyle: "short"
   });
 }
 
-function shortDate(value: string) {
+function shortDate(value?: string) {
+  if (!value) return "No touch";
   return new Date(value).toLocaleString("en-IN", {
     day: "2-digit",
     month: "short",
@@ -58,104 +86,165 @@ function shortDate(value: string) {
   });
 }
 
-function latestMessage(conversation: MetaWhatsAppConversation) {
-  return conversation.lastMessageText || `Received ${conversation.lastMessageType} message`;
+function contactLabel(lead: LeadKnowledgeRecord) {
+  return lead.contact.displayName || lead.contact.handle || lead.contact.phone || lead.contact.email || lead.contact.waId || "Unknown lead";
 }
 
-function latestDirection(conversation: MetaWhatsAppConversation) {
-  return conversation.messages.at(-1)?.direction ?? "inbound";
+function latestMessage(lead: LeadKnowledgeRecord) {
+  return lead.lastMessagePreview || lead.summary || "No communication logged yet";
 }
 
-function needsReply(conversation: MetaWhatsAppConversation) {
-  return conversation.leadStatus === "lead" && latestDirection(conversation) === "inbound";
+function latestDirection(lead: LeadKnowledgeRecord) {
+  return lead.messages.at(-1)?.direction ?? "note";
 }
 
-function crmStage(conversation: MetaWhatsAppConversation) {
-  if (conversation.leadStatus === "excluded") return "Not a lead";
-  if (needsReply(conversation)) return "Needs reply";
-  if (conversation.outboundCount > 0) return "Working";
-  if (conversation.adOriginated) return "New ad lead";
+function needsReply(lead: LeadKnowledgeRecord) {
+  return lead.leadStatus === "lead" && latestDirection(lead) === "inbound";
+}
+
+function crmStage(lead: LeadKnowledgeRecord) {
+  if (lead.leadStatus === "excluded") return "Not a lead";
+  if (needsReply(lead)) return "Needs reply";
+  if (lead.outboundCount > 0) return "Working";
+  if (lead.channels.some((channel) => channel === "whatsapp" || channel === "instagram" || channel === "facebook")) return "New Meta lead";
   return "New lead";
 }
 
 function stageTone(stage: string): "teal" | "amber" | "lime" | "sky" | "neutral" {
   if (stage === "Needs reply") return "amber";
   if (stage === "Working") return "sky";
-  if (stage === "New ad lead") return "lime";
+  if (stage === "New Meta lead") return "lime";
   if (stage === "Not a lead") return "neutral";
   return "teal";
 }
 
-function nextAction(conversation: MetaWhatsAppConversation) {
-  if (conversation.leadStatus === "excluded") return "Track only. No sales follow-up.";
-  if (needsReply(conversation)) return "Reply in WhatsApp and qualify intent.";
-  if (!conversation.outboundCount) return "Open WhatsApp and start qualification.";
+function nextAction(lead: LeadKnowledgeRecord) {
+  if (lead.leadStatus === "excluded") return "Track only. No sales follow-up.";
+  if (lead.nextAction) return lead.nextAction;
+  if (needsReply(lead)) return "Reply in the right Meta channel and qualify intent.";
+  if (!lead.outboundCount) return "Open conversation and start qualification.";
   return "Wait for reply or log the next outcome.";
 }
 
 function noticeCopy(params: Record<string, string | string[] | undefined>) {
   const notice = paramValue(params, "notice");
-  if (notice === "contact-excluded") return "Contact excluded from leads. The conversation is still tracked.";
-  if (notice === "contact-restored") return "Contact restored as a lead.";
+  if (notice === "lead-excluded") return "Lead excluded. Conversation history stays recorded.";
+  if (notice === "lead-restored") return "Lead restored.";
+  if (notice === "conversation-excluded") return "Conversation excluded from AI knowledge.";
+  if (notice === "conversation-restored") return "Conversation restored to AI knowledge.";
+  if (notice === "manual-message-added") return "Manual communication logged.";
+  if (notice === "lead-magnet-archived") return "Lead Magnet is archived. Leads is the active workspace.";
   return "";
-}
-
-function contactLabel(conversation: MetaWhatsAppConversation) {
-  return conversation.profileName || conversation.waId || conversation.contactId;
-}
-
-function whatsappHref(conversation: MetaWhatsAppConversation) {
-  return conversation.whatsappUrl || `${whatsappWebBase}?phone=${encodeURIComponent(conversation.contactId)}`;
 }
 
 function crmHref(input: {
   view?: ViewFilter;
   q?: string;
   contact?: string;
+  tab?: LeadWorkspaceTab;
+  commChannel?: CommChannelFilter;
 }) {
   const params = new URLSearchParams();
   if (input.view && input.view !== "all") params.set("view", input.view);
   if (input.q?.trim()) params.set("q", input.q.trim());
   if (input.contact) params.set("contact", input.contact);
+  if (input.tab && input.tab !== "details") params.set("tab", input.tab);
+  if (input.commChannel && input.commChannel !== "all") params.set("commChannel", input.commChannel);
   const query = params.toString();
   return query ? `/app/leads?${query}` : "/app/leads";
 }
 
-function matchesQuery(conversation: MetaWhatsAppConversation, query: string) {
+function matchesQuery(lead: LeadKnowledgeRecord, query: string) {
   const needle = query.trim().toLowerCase();
   if (!needle) return true;
   return [
-    contactLabel(conversation),
-    conversation.contactId,
-    conversation.waId,
-    conversation.displayPhoneNumber,
-    latestMessage(conversation),
-    crmStage(conversation),
-    nextAction(conversation)
+    contactLabel(lead),
+    lead.contact.phone,
+    lead.contact.email,
+    lead.contact.handle,
+    lead.contact.profileUrl,
+    latestMessage(lead),
+    crmStage(lead),
+    nextAction(lead),
+    ...lead.channels
   ]
     .filter(Boolean)
     .some((value) => String(value).toLowerCase().includes(needle));
 }
 
-function matchesView(conversation: MetaWhatsAppConversation, view: ViewFilter) {
-  if (view === "needs-reply") return needsReply(conversation);
-  if (view === "active") return conversation.leadStatus === "lead";
-  if (view === "ads") return conversation.adOriginated;
-  if (view === "excluded") return conversation.leadStatus === "excluded";
+function matchesView(lead: LeadKnowledgeRecord, view: ViewFilter) {
+  if (view === "needs-reply") return needsReply(lead);
+  if (view === "active") return lead.leadStatus === "lead";
+  if (view === "meta") return lead.channels.some((channel) => channel === "whatsapp" || channel === "instagram" || channel === "facebook");
+  if (view === "extension") return lead.channels.some((channel) => channel.endsWith("-web") || channel === "generic-web-chat");
+  if (view === "excluded") return lead.leadStatus === "excluded";
   return true;
 }
 
-function filterConversations(conversations: MetaWhatsAppConversation[], view: ViewFilter, query: string) {
-  return conversations.filter((conversation) => matchesView(conversation, view) && matchesQuery(conversation, query));
+function filterLeads(leads: LeadKnowledgeRecord[], view: ViewFilter, query: string) {
+  return leads.filter((lead) => matchesView(lead, view) && matchesQuery(lead, query));
 }
 
-function activityTitle(message: MetaWhatsAppInboundMessage) {
-  if (message.direction === "outbound") return "Outbound WhatsApp";
-  return "Inbound WhatsApp";
+function activityTitle(message: LeadKnowledgeMessage) {
+  if (message.direction === "outbound") return "Outbound";
+  if (message.direction === "note") return "Manual note";
+  if (message.direction === "system") return "Worker event";
+  return "Inbound";
 }
 
-function activityText(message: MetaWhatsAppInboundMessage) {
-  return message.messageText || `${message.messageType} message`;
+function channelLabel(channel: LeadKnowledgeChannel) {
+  if (channel === "email") return "Email";
+  if (channel === "call") return "Call Notes";
+  if (channel === "generic-web-chat") return "Browser Chat";
+  return channel.replace(/-/g, " ");
+}
+
+function openHref(lead: LeadKnowledgeRecord) {
+  const conversationUrl = lead.conversations.find((conversation) => conversation.sourceUrl)?.sourceUrl;
+  if (conversationUrl) return conversationUrl;
+  const phone = (lead.contact.phone || lead.contact.waId || "").replace(/\D/g, "");
+  if (phone) return `https://web.whatsapp.com/send?phone=${phone}`;
+  if (lead.contact.profileUrl) return lead.contact.profileUrl;
+  return "";
+}
+
+function activeTabFromValue(value: string): LeadWorkspaceTab {
+  return workspaceTabs.some((tab) => tab.id === value) ? (value as LeadWorkspaceTab) : "details";
+}
+
+function commChannelFromValue(value: string): CommChannelFilter {
+  return commFilters.some((filter) => filter.id === value) ? (value as CommChannelFilter) : "all";
+}
+
+function messagesForCommChannel(lead: LeadKnowledgeRecord, commChannel: CommChannelFilter) {
+  const filter = commFilters.find((candidate) => candidate.id === commChannel);
+  if (!filter?.channels) return lead.messages;
+  const allowed = new Set(filter.channels);
+  return lead.messages.filter((message) => allowed.has(message.channel));
+}
+
+function conversationsForCommChannel(lead: LeadKnowledgeRecord, commChannel: CommChannelFilter) {
+  const filter = commFilters.find((candidate) => candidate.id === commChannel);
+  if (!filter?.channels) return lead.conversations;
+  const allowed = new Set(filter.channels);
+  return lead.conversations.filter((conversation) => allowed.has(conversation.channel));
+}
+
+function tasksForLead(tasks: ExtensionTask[], lead: LeadKnowledgeRecord) {
+  const conversationIds = new Set(lead.conversations.map((conversation) => conversation.id));
+  return tasks.filter((task) => task.leadId === lead.id || (task.conversationId ? conversationIds.has(task.conversationId) : false));
+}
+
+function eventsForTasks(events: ExtensionTaskEvent[], tasks: ExtensionTask[]) {
+  const taskIds = new Set(tasks.map((task) => task.id));
+  return events.filter((event) => taskIds.has(event.taskId));
+}
+
+function toneForChannel(channel: LeadKnowledgeChannel): "teal" | "amber" | "lime" | "sky" | "neutral" {
+  if (channel === "whatsapp" || channel === "instagram" || channel === "facebook") return "lime";
+  if (channel === "email" || channel === "call" || channel === "manual") return "amber";
+  if (channel.endsWith("-web") || channel === "generic-web-chat") return "sky";
+  return "teal";
 }
 
 function Metric({
@@ -170,10 +259,8 @@ function Metric({
   return (
     <div className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-3">
       <div className="mono text-[10px] uppercase text-[var(--muted)]">{label}</div>
-      <div className="mt-2 flex items-center justify-between gap-2">
-        <div className="text-2xl font-semibold text-white">{value}</div>
-        <Badge tone={tone}>ops</Badge>
-      </div>
+      <div className="mt-2 text-2xl font-semibold text-white">{value}</div>
+      <Badge tone={tone}>ops</Badge>
     </div>
   );
 }
@@ -181,23 +268,26 @@ function Metric({
 export default async function LeadsPage({ searchParams }: LeadsPageProps) {
   const params = searchParams ? await searchParams : {};
   const session = await getCurrentSession();
-  const conversations = session
-    ? await listMetaWhatsAppConversations({ tenantId: session.tenantId, ownerId: session.id })
-    : [];
+  const leads = session ? await listLeadKnowledgeRecords({ tenantId: session.tenantId, ownerId: session.id }) : [];
+  const tasks = session ? await listExtensionTasks(session.tenantId, session.id) : [];
+  const taskEvents = session ? await listExtensionTaskEvents(session.tenantId, session.id) : [];
   const requestedView = paramValue(params, "view") as ViewFilter;
   const activeView = viewFilters.some((filter) => filter.id === requestedView) ? requestedView : "all";
+  const activeTab = activeTabFromValue(paramValue(params, "tab"));
+  const activeCommChannel = commChannelFromValue(paramValue(params, "commChannel"));
   const query = paramValue(params, "q");
-  const filteredConversations = filterConversations(conversations, activeView, query);
-  const selectedContact = paramValue(params, "contact");
-  const selectedConversation =
-    filteredConversations.find((conversation) => conversation.contactId === selectedContact) ??
-    conversations.find((conversation) => conversation.contactId === selectedContact) ??
-    filteredConversations[0] ??
-    conversations[0] ??
+  const filteredLeads = filterLeads(leads, activeView, query);
+  const selectedLeadId = paramValue(params, "contact");
+  const selectedLead =
+    filteredLeads.find((lead) => lead.id === selectedLeadId) ??
+    leads.find((lead) => lead.id === selectedLeadId) ??
+    filteredLeads[0] ??
+    leads[0] ??
     null;
-  const activeLeads = conversations.filter((conversation) => conversation.leadStatus === "lead");
-  const replyQueue = conversations.filter(needsReply);
-  const excludedContacts = conversations.filter((conversation) => conversation.leadStatus === "excluded");
+  const activeLeads = leads.filter((lead) => lead.leadStatus === "lead");
+  const replyQueue = leads.filter(needsReply);
+  const excludedLeads = leads.filter((lead) => lead.leadStatus === "excluded");
+  const metaLeads = leads.filter((lead) => matchesView(lead, "meta"));
   const notice = noticeCopy(params);
 
   return (
@@ -206,17 +296,17 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <SectionTitle eyebrow="Lead Operations" title="CRM pipeline" />
           <div className="flex flex-wrap gap-2">
-            <Badge tone="teal">All WhatsApp conversations</Badge>
+            <Badge tone="teal">All Meta and browser conversations</Badge>
             <Badge tone="amber">{replyQueue.length} Needs reply</Badge>
           </div>
         </div>
 
         <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          <Metric label="Total records" value={conversations.length} />
+          <Metric label="Total records" value={leads.length} />
           <Metric label="Active leads" value={activeLeads.length} tone="lime" />
           <Metric label="Needs reply" value={replyQueue.length} tone="amber" />
-          <Metric label="Ad-sourced" value={conversations.filter((conversation) => conversation.adOriginated).length} tone="sky" />
-          <Metric label="Excluded" value={excludedContacts.length} tone="amber" />
+          <Metric label="Meta-sourced" value={metaLeads.length} tone="sky" />
+          <Metric label="Excluded" value={excludedLeads.length} tone="amber" />
         </div>
 
         {notice ? (
@@ -226,259 +316,519 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
         ) : null}
       </Panel>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.34fr)_minmax(360px,0.66fr)]">
-        <Panel className="min-w-0 p-4 md:p-5" data-testid="lead-crm-table">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-sm font-semibold text-white">
-              <ListChecks size={17} className="text-[var(--teal)]" />
-              Pipeline records
-            </div>
-            <Badge tone="neutral">{filteredConversations.length} shown</Badge>
-          </div>
-
-          <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_auto]">
-            <form method="get" action="/app/leads" className="flex min-w-0 items-center gap-2 rounded-[8px] border border-[var(--line)] bg-black/20 px-3">
-              {activeView !== "all" ? <input type="hidden" name="view" value={activeView} /> : null}
-              <Search size={15} className="shrink-0 text-[var(--muted)]" />
-              <input
-                name="q"
-                defaultValue={query}
-                placeholder="Search name, phone, status, message"
-                className="h-10 min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-[var(--muted)]"
-              />
-            </form>
-            <div className="flex max-w-full items-center gap-2 overflow-x-auto pb-1">
-              <Filter size={15} className="shrink-0 text-[var(--muted)]" />
-              {viewFilters.map((filter) => (
-                <a
-                  key={filter.id}
-                  href={crmHref({ view: filter.id, q: query })}
-                  className={`inline-flex h-9 shrink-0 items-center rounded-[6px] border px-3 text-xs font-medium ${
-                    activeView === filter.id
-                      ? "border-teal-300/40 bg-teal-300/[0.12] text-teal-100"
-                      : "border-[var(--line)] bg-white/[0.03] text-[var(--muted-2)] hover:text-white"
-                  }`}
-                >
-                  {filter.label}
-                </a>
-              ))}
-            </div>
-          </div>
-
-          {filteredConversations.length ? (
-            <div className="mt-4 overflow-x-auto rounded-[8px] border border-[var(--line)] bg-black/20">
-              <table className="min-w-[1040px] w-full border-collapse text-left">
-                <thead className="border-b border-[var(--line)] bg-white/[0.03]">
-                  <tr className="mono text-[10px] uppercase text-[var(--muted)]">
-                    <th className="px-4 py-3 font-medium">Contact</th>
-                    <th className="px-4 py-3 font-medium">Stage</th>
-                    <th className="px-4 py-3 font-medium">Last touch</th>
-                    <th className="px-4 py-3 font-medium">Logged comms</th>
-                    <th className="px-4 py-3 font-medium">Next action</th>
-                    <th className="px-4 py-3 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredConversations.map((conversation) => {
-                    const stage = crmStage(conversation);
-                    const selected = selectedConversation?.contactId === conversation.contactId;
-                    return (
-                      <tr
-                        key={conversation.contactId}
-                        className={`border-b border-[var(--line)] last:border-b-0 ${
-                          selected ? "bg-teal-300/[0.07]" : "hover:bg-white/[0.025]"
-                        }`}
-                      >
-                        <td className="px-4 py-4 align-top">
-                          <a
-                            href={crmHref({ view: activeView, q: query, contact: conversation.contactId })}
-                            className="inline-flex max-w-[230px] items-center gap-2 text-sm font-semibold text-white hover:text-teal-100"
-                          >
-                            <UserRound size={15} className="shrink-0 text-[var(--teal)]" />
-                            <span className="truncate">{contactLabel(conversation)}</span>
-                          </a>
-                          <div className="mono mt-2 break-all text-xs text-[var(--muted)]">{conversation.contactId}</div>
-                        </td>
-                        <td className="px-4 py-4 align-top">
-                          <div className="flex flex-wrap gap-2">
-                            <Badge tone={stageTone(stage)}>{stage}</Badge>
-                            {conversation.adOriginated ? (
-                              <Badge tone="lime">
-                                <RadioTower size={12} />
-                                ad
-                              </Badge>
-                            ) : null}
-                          </div>
-                        </td>
-                        <td className="max-w-[260px] px-4 py-4 align-top">
-                          <p className="line-clamp-2 text-sm leading-6 text-[var(--muted-2)]">{latestMessage(conversation)}</p>
-                          <div className="mt-2 inline-flex items-center gap-2 text-xs text-[var(--muted)]">
-                            <Clock size={13} />
-                            {shortDate(conversation.lastMessageAt)}
-                          </div>
-                        </td>
-                        <td className="px-4 py-4 align-top">
-                          <div className="flex flex-wrap gap-2">
-                            <Badge tone="teal">{conversation.inboundCount} in</Badge>
-                            <Badge tone="sky">{conversation.outboundCount} out</Badge>
-                          </div>
-                        </td>
-                        <td className="max-w-[260px] px-4 py-4 align-top text-sm leading-6 text-[var(--muted-2)]">
-                          {nextAction(conversation)}
-                        </td>
-                        <td className="px-4 py-4 align-top">
-                          <div className="flex min-w-[240px] flex-wrap gap-2">
-                            <a
-                              href={whatsappHref(conversation)}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-teal-300/30 bg-teal-300/[0.12] px-3 text-xs font-medium text-teal-100 hover:bg-teal-300/[0.18]"
-                            >
-                              <MessageCircle size={14} />
-                              WhatsApp
-                              <ExternalLink size={13} />
-                            </a>
-                            <form action="/api/meta/whatsapp/conversations/lead-status" method="post">
-                              <input type="hidden" name="contactId" value={conversation.contactId} />
-                              <input
-                                type="hidden"
-                                name="leadStatus"
-                                value={conversation.leadStatus === "excluded" ? "lead" : "excluded"}
-                              />
-                              <button
-                                type="submit"
-                                className={`inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border px-3 text-xs font-medium ${
-                                  conversation.leadStatus === "excluded"
-                                    ? "border-lime-300/25 bg-lime-300/10 text-lime-100 hover:bg-lime-300/[0.16]"
-                                    : "border-amber-300/25 bg-amber-300/10 text-amber-100 hover:bg-amber-300/[0.16]"
-                                }`}
-                              >
-                                {conversation.leadStatus === "excluded" ? <CheckCircle2 size={14} /> : <Ban size={14} />}
-                                {conversation.leadStatus === "excluded" ? "Restore" : "Exclude contact"}
-                              </button>
-                            </form>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="mt-4">
-              <EmptyState
-                icon={Inbox}
-                title="No records in this view"
-                detail="Change the filter or wait for new WhatsApp messages. Every inbound or echo event will be logged here."
-              />
-            </div>
-          )}
+      <div className="grid min-h-[760px] gap-5 xl:grid-cols-[minmax(340px,0.42fr)_minmax(0,1fr)]">
+        <Panel className="min-w-0 p-4 md:p-5" data-testid="lead-list-pane">
+          <LeadListPane
+            leads={filteredLeads}
+            selectedLead={selectedLead}
+            activeView={activeView}
+            query={query}
+            activeTab={activeTab}
+            commChannel={activeCommChannel}
+          />
         </Panel>
 
-        <Panel className="min-w-0 p-4 md:p-5" data-testid="lead-record-panel">
-          {selectedConversation ? (
-            <div className="space-y-5">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="mono text-[11px] uppercase text-[var(--teal)]">Selected record</div>
-                  <h3 className="mt-1 truncate text-2xl font-semibold text-white">{contactLabel(selectedConversation)}</h3>
-                  <div className="mono mt-2 break-all text-xs text-[var(--muted)]">{selectedConversation.contactId}</div>
-                </div>
-                <Badge tone={stageTone(crmStage(selectedConversation))}>{crmStage(selectedConversation)}</Badge>
-              </div>
-
-              <div className="grid gap-2 sm:grid-cols-2">
-                <a
-                  href={whatsappHref(selectedConversation)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-[6px] border border-teal-300/30 bg-teal-300/[0.12] px-3 text-sm font-medium text-teal-100 hover:bg-teal-300/[0.18]"
-                >
-                  <Phone size={15} />
-                  Open WhatsApp
-                  <ExternalLink size={13} />
-                </a>
-                <form action="/api/meta/whatsapp/conversations/lead-status" method="post">
-                  <input type="hidden" name="contactId" value={selectedConversation.contactId} />
-                  <input
-                    type="hidden"
-                    name="leadStatus"
-                    value={selectedConversation.leadStatus === "excluded" ? "lead" : "excluded"}
-                  />
-                  <button
-                    type="submit"
-                    className={`inline-flex h-10 w-full items-center justify-center gap-2 rounded-[6px] border px-3 text-sm font-medium ${
-                      selectedConversation.leadStatus === "excluded"
-                        ? "border-lime-300/25 bg-lime-300/10 text-lime-100 hover:bg-lime-300/[0.16]"
-                        : "border-amber-300/25 bg-amber-300/10 text-amber-100 hover:bg-amber-300/[0.16]"
-                    }`}
-                  >
-                    {selectedConversation.leadStatus === "excluded" ? <CheckCircle2 size={15} /> : <Ban size={15} />}
-                    {selectedConversation.leadStatus === "excluded" ? "Restore as lead" : "Exclude contact"}
-                  </button>
-                </form>
-              </div>
-
-              <div className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-4">
-                <div className="flex items-center gap-2 text-sm font-semibold text-white">
-                  <ListChecks size={16} className="text-[var(--teal)]" />
-                  Next action
-                </div>
-                <p className="mt-2 text-sm leading-6 text-[var(--muted-2)]">{nextAction(selectedConversation)}</p>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-3">
-                {[
-                  ["Inbound", selectedConversation.inboundCount],
-                  ["Outbound", selectedConversation.outboundCount],
-                  ["Last touch", shortDate(selectedConversation.lastMessageAt)]
-                ].map(([label, value]) => (
-                  <div key={label} className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-3">
-                    <div className="mono text-[10px] uppercase text-[var(--muted)]">{label}</div>
-                    <div className="mt-2 break-words text-sm font-semibold text-white">{value}</div>
-                  </div>
-                ))}
-              </div>
-
-              <div>
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-white">
-                    <MessageCircle size={16} className="text-[var(--teal)]" />
-                    Activity timeline
-                  </div>
-                  <Badge tone="neutral">{selectedConversation.messageCount} logged comms</Badge>
-                </div>
-                <div className="mt-3 grid max-h-[520px] gap-2 overflow-y-auto overflow-x-hidden pr-1">
-                  {[...selectedConversation.messages].reverse().map((message) => (
-                    <div key={message.id} className="rounded-[8px] border border-[var(--line)] bg-black/20 p-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 text-sm font-semibold text-white">
-                          <MessageCircle size={14} className={message.direction === "outbound" ? "text-sky-200" : "text-[var(--teal)]"} />
-                          {activityTitle(message)}
-                        </div>
-                        <Badge tone={message.direction === "outbound" ? "sky" : "teal"}>{message.direction}</Badge>
-                      </div>
-                      <p className="mt-2 break-words text-sm leading-6 text-[var(--muted-2)]">{activityText(message)}</p>
-                      <div className="mt-2 flex flex-wrap gap-2 text-xs text-[var(--muted)]">
-                        <span>{formatDate(message.sentAt)}</span>
-                        {message.referral ? <Badge tone="lime">Meta ad referral</Badge> : null}
-                        <span className="mono break-all">{message.messageId}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+        <Panel className="min-w-0 p-4 md:p-5" data-testid="lead-workspace-pane">
+          {selectedLead ? (
+            <LeadRecordWorkspace
+              lead={selectedLead}
+              activeView={activeView}
+              query={query}
+              activeTab={activeTab}
+              commChannel={activeCommChannel}
+              tasks={tasksForLead(tasks, selectedLead)}
+              taskEvents={taskEvents}
+            />
           ) : (
             <EmptyState
               icon={Inbox}
               title="No lead selected"
-              detail="When WhatsApp conversations arrive, select one from the CRM pipeline to see the communication log and next action."
+              detail="When conversations arrive, select one from the lead list to inspect details, comms, tasks, and AI knowledge."
               action={<PrimaryLink href="/app/connect">Open connection config</PrimaryLink>}
             />
           )}
         </Panel>
+      </div>
+    </div>
+  );
+}
+
+function LeadListPane({
+  leads,
+  selectedLead,
+  activeView,
+  query,
+  activeTab,
+  commChannel
+}: {
+  leads: LeadKnowledgeRecord[];
+  selectedLead: LeadKnowledgeRecord | null;
+  activeView: ViewFilter;
+  query: string;
+  activeTab: LeadWorkspaceTab;
+  commChannel: CommChannelFilter;
+}) {
+  return (
+    <div className="flex h-full min-w-0 flex-col">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-sm font-semibold text-white">
+          <ListChecks size={17} className="text-[var(--teal)]" />
+          Leads list, filters
+        </div>
+        <Badge tone="neutral">{leads.length} shown</Badge>
+      </div>
+
+      <form method="get" action="/app/leads" className="mt-4 flex min-w-0 items-center gap-2 rounded-[8px] border border-[var(--line)] bg-black/20 px-3">
+        {activeView !== "all" ? <input type="hidden" name="view" value={activeView} /> : null}
+        {selectedLead ? <input type="hidden" name="contact" value={selectedLead.id} /> : null}
+        {activeTab !== "details" ? <input type="hidden" name="tab" value={activeTab} /> : null}
+        {commChannel !== "all" ? <input type="hidden" name="commChannel" value={commChannel} /> : null}
+        <Search size={15} className="shrink-0 text-[var(--muted)]" />
+        <input
+          name="q"
+          defaultValue={query}
+          placeholder="Search name, handle, phone, status, message"
+          className="h-10 min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-[var(--muted)]"
+        />
+      </form>
+
+      <div className="mt-3 flex max-w-full items-center gap-2 overflow-x-auto pb-1">
+        <Filter size={15} className="shrink-0 text-[var(--muted)]" />
+        {viewFilters.map((filter) => (
+          <a
+            key={filter.id}
+            href={crmHref({ view: filter.id, q: query, contact: selectedLead?.id, tab: activeTab, commChannel })}
+            className={`inline-flex h-9 shrink-0 items-center rounded-[6px] border px-3 text-xs font-medium ${
+              activeView === filter.id
+                ? "border-teal-300/40 bg-teal-300/[0.12] text-teal-100"
+                : "border-[var(--line)] bg-white/[0.03] text-[var(--muted-2)] hover:text-white"
+            }`}
+          >
+            {filter.label}
+          </a>
+        ))}
+      </div>
+
+      {leads.length ? (
+        <div className="mt-4 grid flex-1 auto-rows-min gap-2 overflow-y-auto pr-1">
+          {leads.map((lead) => {
+            const selected = selectedLead?.id === lead.id;
+            const stage = crmStage(lead);
+            return (
+              <a
+                key={lead.id}
+                href={crmHref({ view: activeView, q: query, contact: lead.id, tab: activeTab, commChannel })}
+                className={`block rounded-[8px] border p-3 ${
+                  selected
+                    ? "border-teal-300/35 bg-teal-300/[0.1]"
+                    : "border-[var(--line)] bg-black/20 hover:border-[var(--line-strong)] hover:bg-white/[0.03]"
+                }`}
+              >
+                <div className="flex min-w-0 items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex min-w-0 items-center gap-2 text-sm font-semibold text-white">
+                      <UserRound size={15} className="shrink-0 text-[var(--teal)]" />
+                      <span className="truncate">{contactLabel(lead)}</span>
+                    </div>
+                    <p className="mt-2 line-clamp-2 text-xs leading-5 text-[var(--muted-2)]">{latestMessage(lead)}</p>
+                  </div>
+                  <Badge tone={stageTone(stage)}>{stage}</Badge>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {lead.channels.slice(0, 4).map((channel) => (
+                    <Badge key={channel} tone={toneForChannel(channel)}>
+                      {channelLabel(channel)}
+                    </Badge>
+                  ))}
+                  {lead.channels.length > 4 ? <Badge tone="neutral">+{lead.channels.length - 4}</Badge> : null}
+                </div>
+                <div className="mt-3 flex items-center gap-2 text-xs text-[var(--muted)]">
+                  <Clock size={13} />
+                  {shortDate(lead.lastMessageAt)}
+                </div>
+              </a>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="mt-4">
+          <EmptyState icon={Inbox} title="No records in this view" detail="Change the filter or wait for Meta webhooks, extension sync, or manual communication logs." />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LeadRecordWorkspace({
+  lead,
+  activeView,
+  query,
+  activeTab,
+  commChannel,
+  tasks,
+  taskEvents
+}: {
+  lead: LeadKnowledgeRecord;
+  activeView: ViewFilter;
+  query: string;
+  activeTab: LeadWorkspaceTab;
+  commChannel: CommChannelFilter;
+  tasks: ExtensionTask[];
+  taskEvents: ExtensionTaskEvent[];
+}) {
+  const href = openHref(lead);
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="mono text-[11px] uppercase text-[var(--teal)]">Selected lead</div>
+          <h3 className="mt-1 truncate text-2xl font-semibold text-white md:text-3xl">{contactLabel(lead)}</h3>
+          <div className="mono mt-2 break-all text-xs text-[var(--muted)]">{lead.id}</div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Badge tone={stageTone(crmStage(lead))}>{crmStage(lead)}</Badge>
+          <Badge tone="neutral">{lead.messageCount} comms</Badge>
+        </div>
+      </div>
+
+      <div className="flex max-w-full gap-2 overflow-x-auto border-b border-[var(--line)] pb-3">
+        {workspaceTabs.map((tab) => (
+          <a
+            key={tab.id}
+            href={crmHref({ view: activeView, q: query, contact: lead.id, tab: tab.id, commChannel })}
+            className={`inline-flex h-10 min-w-[118px] shrink-0 items-center justify-center rounded-[6px] border px-3 text-sm font-medium ${
+              activeTab === tab.id
+                ? "border-teal-300/40 bg-teal-300/[0.12] text-teal-100"
+                : "border-[var(--line)] bg-white/[0.03] text-[var(--muted-2)] hover:text-white"
+            }`}
+          >
+            {tab.label}
+          </a>
+        ))}
+      </div>
+
+      {activeTab === "details" ? <LeadDetailsTab lead={lead} href={href} /> : null}
+      {activeTab === "comms" ? (
+        <LeadCommsTab lead={lead} activeView={activeView} query={query} commChannel={commChannel} />
+      ) : null}
+      {activeTab === "tasks" ? <LeadTasksTab tasks={tasks} taskEvents={eventsForTasks(taskEvents, tasks)} /> : null}
+    </div>
+  );
+}
+
+function LeadDetailsTab({ lead, href }: { lead: LeadKnowledgeRecord; href: string }) {
+  const included = lead.conversations.filter((conversation) => conversation.knowledgeStatus === "included");
+  const excluded = lead.conversations.filter((conversation) => conversation.knowledgeStatus === "excluded");
+  return (
+    <div className="grid gap-4 xl:grid-cols-[0.64fr_0.36fr]">
+      <div className="space-y-4">
+        <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
+          <div className="flex items-center gap-2 text-sm font-semibold text-white">
+            <ListChecks size={16} className="text-[var(--teal)]" />
+            All Details + knowledge base
+          </div>
+          <p className="mt-3 text-sm leading-6 text-[var(--muted-2)]">{lead.summary || "No summary has been generated yet."}</p>
+          <div className="mt-4 grid gap-2 md:grid-cols-2">
+            <DetailLine label="Phone" value={lead.contact.phone || lead.contact.waId} />
+            <DetailLine label="Email" value={lead.contact.email} />
+            <DetailLine label="Handle" value={lead.contact.handle} />
+            <DetailLine label="Profile" value={lead.contact.profileUrl} />
+          </div>
+        </div>
+
+        <div className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-4">
+          <div className="flex items-center gap-2 text-sm font-semibold text-white">
+            <Workflow size={16} className="text-[var(--teal)]" />
+            Next action
+          </div>
+          <p className="mt-2 text-sm leading-6 text-[var(--muted-2)]">{nextAction(lead)}</p>
+        </div>
+
+        <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm font-semibold text-white">Knowledge facts</div>
+            <Badge tone="neutral">{lead.facts.length}</Badge>
+          </div>
+          {lead.facts.length ? (
+            <div className="mt-3 grid gap-2">
+              {lead.facts.slice(0, 8).map((fact) => (
+                <div key={fact} className="rounded-[6px] border border-[var(--line)] bg-white/[0.03] px-3 py-2 text-sm leading-6 text-[var(--muted-2)]">
+                  {fact}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-3 text-sm leading-6 text-[var(--muted-2)]">No knowledge facts yet.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <div className="grid gap-2">
+          {href ? (
+            <a
+              href={href}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-[6px] border border-teal-300/30 bg-teal-300/[0.12] px-3 text-sm font-medium text-teal-100 hover:bg-teal-300/[0.18]"
+            >
+              <MessageCircle size={15} />
+              Open conversation
+              <ExternalLink size={13} />
+            </a>
+          ) : (
+            <span className="inline-flex h-10 items-center justify-center gap-2 rounded-[6px] border border-[var(--line)] bg-white/[0.03] px-3 text-sm text-[var(--muted-2)]">
+              No conversation URL
+            </span>
+          )}
+          <LeadStatusForm lead={lead} />
+        </div>
+
+        <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
+          <div className="text-sm font-semibold text-white">Knowledge sources</div>
+          <div className="mt-3 grid gap-2">
+            <Badge tone="teal">{included.length} included in AI</Badge>
+            <Badge tone="amber">{excluded.length} excluded from AI</Badge>
+            <Badge tone="neutral">{lead.channels.length} channels</Badge>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetailLine({ label, value }: { label: string; value?: string }) {
+  return (
+    <div className="rounded-[6px] border border-[var(--line)] bg-white/[0.03] p-3">
+      <div className="mono text-[10px] uppercase text-[var(--muted)]">{label}</div>
+      <div className="mt-2 break-words text-sm text-white">{value || "Not recorded"}</div>
+    </div>
+  );
+}
+
+function LeadCommsTab({
+  lead,
+  activeView,
+  query,
+  commChannel
+}: {
+  lead: LeadKnowledgeRecord;
+  activeView: ViewFilter;
+  query: string;
+  commChannel: CommChannelFilter;
+}) {
+  const messages = messagesForCommChannel(lead, commChannel);
+  const conversations = conversationsForCommChannel(lead, commChannel);
+  return (
+    <div className="space-y-4">
+      <div className="flex max-w-full gap-2 overflow-x-auto pb-1">
+        {commFilters.map((filter) => (
+          <a
+            key={filter.id}
+            href={crmHref({ view: activeView, q: query, contact: lead.id, tab: "comms", commChannel: filter.id })}
+            className={`inline-flex h-9 shrink-0 items-center rounded-[6px] border px-3 text-xs font-medium ${
+              commChannel === filter.id
+                ? "border-teal-300/40 bg-teal-300/[0.12] text-teal-100"
+                : "border-[var(--line)] bg-white/[0.03] text-[var(--muted-2)] hover:text-white"
+            }`}
+          >
+            {filter.label}
+          </a>
+        ))}
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[0.38fr_0.62fr]">
+        <div className="space-y-4">
+          <ManualMessageForm lead={lead} commChannel={commChannel} />
+          <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                <RadioTower size={16} className="text-[var(--teal)]" />
+                Conversations
+              </div>
+              <Badge tone="neutral">{conversations.length}</Badge>
+            </div>
+            <div className="mt-3 grid gap-2">
+              {conversations.length ? (
+                conversations.map((conversation) => <ConversationCard key={conversation.id} lead={lead} conversation={conversation} />)
+              ) : (
+                <p className="text-sm leading-6 text-[var(--muted-2)]">No conversations in this channel yet.</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-white">
+              <MessageCircle size={16} className="text-[var(--teal)]" />
+              Activity timeline
+            </div>
+            <Badge tone="neutral">{messages.length} logged comms</Badge>
+          </div>
+          <div className="mt-3 grid max-h-[620px] gap-2 overflow-y-auto overflow-x-hidden pr-1">
+            {messages.length ? (
+              [...messages].reverse().map((message) => <MessageEvent key={message.id} message={message} />)
+            ) : (
+              <EmptyState icon={Inbox} title="No comms in this channel" detail="Choose another channel or log a manual communication." />
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LeadTasksTab({ tasks, taskEvents }: { tasks: ExtensionTask[]; taskEvents: ExtensionTaskEvent[] }) {
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-sm font-semibold text-white">
+          <Workflow size={16} className="text-[var(--teal)]" />
+          Selected lead tasks
+        </div>
+        <Badge tone="neutral">{tasks.length} tasks</Badge>
+      </div>
+      <SelectedLeadTasks initialTasks={tasks} initialEvents={taskEvents} />
+    </div>
+  );
+}
+
+function LeadStatusForm({ lead, compact = false }: { lead: LeadKnowledgeRecord; compact?: boolean }) {
+  return (
+    <form action="/api/leads/status" method="post">
+      <input type="hidden" name="leadId" value={lead.id} />
+      <input type="hidden" name="leadStatus" value={lead.leadStatus === "excluded" ? "lead" : "excluded"} />
+      <button
+        type="submit"
+        className={`inline-flex ${compact ? "h-9 text-xs" : "h-10 w-full text-sm"} items-center justify-center gap-2 rounded-[6px] border px-3 font-medium ${
+          lead.leadStatus === "excluded"
+            ? "border-lime-300/25 bg-lime-300/10 text-lime-100 hover:bg-lime-300/[0.16]"
+            : "border-amber-300/25 bg-amber-300/10 text-amber-100 hover:bg-amber-300/[0.16]"
+        }`}
+      >
+        {lead.leadStatus === "excluded" ? <CheckCircle2 size={15} /> : <Ban size={15} />}
+        {lead.leadStatus === "excluded" ? "Restore as lead" : "Exclude lead"}
+      </button>
+    </form>
+  );
+}
+
+function defaultManualChannel(commChannel: CommChannelFilter): LeadKnowledgeChannel {
+  if (commChannel === "email") return "email";
+  if (commChannel === "call") return "call";
+  if (commChannel === "whatsapp") return "whatsapp";
+  if (commChannel === "instagram") return "instagram";
+  if (commChannel === "facebook") return "facebook";
+  if (commChannel === "browser") return "generic-web-chat";
+  return "manual";
+}
+
+function ManualMessageForm({ lead, commChannel }: { lead: LeadKnowledgeRecord; commChannel: CommChannelFilter }) {
+  return (
+    <form action="/api/leads/manual-message" method="post" className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-4">
+      <input type="hidden" name="leadId" value={lead.id} />
+      <div className="flex items-center gap-2 text-sm font-semibold text-white">
+        <NotebookPen size={16} className="text-[var(--teal)]" />
+        Log manual comms
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        <select
+          name="direction"
+          defaultValue="note"
+          className="h-10 rounded-[6px] border border-[var(--line)] bg-black/30 px-3 text-sm text-white outline-none"
+        >
+          <option value="note">Note</option>
+          <option value="inbound">Inbound</option>
+          <option value="outbound">Outbound</option>
+        </select>
+        <select
+          name="channel"
+          defaultValue={defaultManualChannel(commChannel)}
+          className="h-10 rounded-[6px] border border-[var(--line)] bg-black/30 px-3 text-sm text-white outline-none"
+        >
+          <option value="manual">Manual</option>
+          <option value="whatsapp">WhatsApp</option>
+          <option value="instagram">Instagram</option>
+          <option value="facebook">Facebook</option>
+          <option value="email">Email</option>
+          <option value="call">Call Notes</option>
+          <option value="generic-web-chat">Browser chat</option>
+        </select>
+      </div>
+      <textarea
+        name="body"
+        required
+        rows={4}
+        placeholder="Add call notes, offline updates, email summaries, or manually recorded messages"
+        className="mt-2 w-full resize-y rounded-[6px] border border-[var(--line)] bg-black/30 px-3 py-2 text-sm leading-6 text-white outline-none placeholder:text-[var(--muted)]"
+      />
+      <button
+        type="submit"
+        className="mt-3 inline-flex h-10 items-center justify-center rounded-[6px] border border-teal-300/30 bg-teal-300/[0.12] px-3 text-sm font-medium text-teal-100 hover:bg-teal-300/[0.18]"
+      >
+        Save manual comm
+      </button>
+    </form>
+  );
+}
+
+function ConversationCard({ lead, conversation }: { lead: LeadKnowledgeRecord; conversation: LeadKnowledgeConversation }) {
+  return (
+    <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div className="flex items-center gap-2 text-sm font-semibold text-white">
+            {conversation.channel === "email" ? <Mail size={14} className="text-[var(--teal)]" /> : null}
+            {conversation.channel === "call" ? <PhoneCall size={14} className="text-[var(--teal)]" /> : null}
+            {channelLabel(conversation.channel)}
+          </div>
+          <div className="mono mt-1 break-all text-[10px] uppercase text-[var(--muted)]">{conversation.source}</div>
+        </div>
+        <Badge tone={conversation.knowledgeStatus === "excluded" ? "amber" : "teal"}>
+          {conversation.knowledgeStatus === "excluded" ? "Excluded from AI" : "In AI knowledge"}
+        </Badge>
+      </div>
+      <p className="mt-2 text-sm leading-6 text-[var(--muted-2)]">{conversation.lastMessagePreview || conversation.summary || "No messages yet"}</p>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Badge tone="neutral">{conversation.messageCount} comms</Badge>
+        <span className="text-xs text-[var(--muted)]">{shortDate(conversation.lastMessageAt)}</span>
+        <form action="/api/leads/conversation-status" method="post">
+          <input type="hidden" name="leadId" value={lead.id} />
+          <input type="hidden" name="conversationId" value={conversation.id} />
+          <input
+            type="hidden"
+            name="knowledgeStatus"
+            value={conversation.knowledgeStatus === "excluded" ? "included" : "excluded"}
+          />
+          <button
+            type="submit"
+            className="inline-flex h-8 items-center justify-center rounded-[6px] border border-[var(--line)] bg-white/[0.03] px-2 text-xs font-medium text-[var(--muted-2)] hover:text-white"
+          >
+            {conversation.knowledgeStatus === "excluded" ? "Restore to AI" : "Exclude from AI"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function MessageEvent({ message }: { message: LeadKnowledgeMessage }) {
+  return (
+    <div className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm font-semibold text-white">
+          <MessageCircle size={14} className={message.direction === "outbound" ? "text-sky-200" : "text-[var(--teal)]"} />
+          {activityTitle(message)}
+        </div>
+        <Badge tone={message.direction === "outbound" ? "sky" : message.direction === "note" ? "neutral" : "teal"}>
+          {message.direction}
+        </Badge>
+      </div>
+      <p className="mt-2 break-words text-sm leading-6 text-[var(--muted-2)]">{message.body}</p>
+      <div className="mt-2 flex flex-wrap gap-2 text-xs text-[var(--muted)]">
+        <span>{formatDate(message.sentAt)}</span>
+        <Badge tone={toneForChannel(message.channel)}>{channelLabel(message.channel)}</Badge>
       </div>
     </div>
   );

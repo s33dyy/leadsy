@@ -15,7 +15,6 @@ type RuntimeMessage =
   | { type: "leadsy:openTask"; taskId: string }
   | { type: "leadsy:getActiveTask" }
   | { type: "leadsy:prepareTask"; taskId: string; draftMessage: string }
-  | { type: "leadsy:approveTaskSend"; taskId: string }
   | {
       type: "leadsy:logTaskEvent";
       taskId: string;
@@ -59,6 +58,8 @@ chrome.runtime.onInstalled.addListener(() => {
   void chrome.sidePanel?.setPanelBehavior?.({ openPanelOnActionClick: true });
 });
 
+void startTaskRunner();
+
 chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendResponse) => {
   void handleMessage(message, sender)
     .then((value) => sendResponse({ ok: true, value }))
@@ -90,8 +91,6 @@ async function handleMessage(message: RuntimeMessage, sender: chrome.runtime.Mes
       return getActiveTask();
     case "leadsy:prepareTask":
       return prepareTask(message.taskId, message.draftMessage);
-    case "leadsy:approveTaskSend":
-      return approveTaskSend(message.taskId);
     case "leadsy:logTaskEvent":
       return logTaskEvent(message);
     case "leadsy:completeTask":
@@ -118,6 +117,35 @@ async function handleMessage(message: RuntimeMessage, sender: chrome.runtime.Mes
 
 const activeTaskKey = "leadsyActiveTask";
 const activeTaskTabKey = "leadsyActiveTaskTabId";
+let taskRunnerBusy = false;
+
+async function startTaskRunner() {
+  await runTaskQueueOnce().catch(() => undefined);
+  globalThis.setInterval(() => {
+    void runTaskQueueOnce().catch(() => undefined);
+  }, 15_000);
+}
+
+async function runTaskQueueOnce() {
+  if (taskRunnerBusy) return;
+  taskRunnerBusy = true;
+  try {
+    const tasks = await fetchLeadsyJson<{ tasks: ExtensionTask[] }>("/api/extension/tasks").then((payload) => payload.tasks);
+    const task = nextRunnableTask(tasks);
+    if (task) {
+      await openTask(task.id);
+    }
+  } finally {
+    taskRunnerBusy = false;
+  }
+}
+
+function nextRunnableTask(tasks: ExtensionTask[]) {
+  return (
+    tasks.find((task) => Boolean(task.sendApprovedAt) && task.status !== "sent" && task.status !== "blocked" && task.status !== "failed") ||
+    tasks.find((task) => task.status === "queued" || task.status === "approved")
+  );
+}
 
 async function workerClient(): Promise<WorkerModelClient & { syncConversation?: LeadsyWorkerClient["syncConversation"] }> {
   const settings = await loadConnectionSettings();
@@ -234,19 +262,6 @@ async function prepareTask(taskId: string, draftMessage: string) {
     body: JSON.stringify({ draftMessage })
   });
   await chrome.storage.local.set({ [activeTaskKey]: task });
-  return task;
-}
-
-async function approveTaskSend(taskId: string) {
-  const task = await fetchLeadsyJson<ExtensionTask>(`/api/extension/tasks/${encodeURIComponent(taskId)}/approve-send`, {
-    method: "POST",
-    body: JSON.stringify({ action: "approve" })
-  });
-  await chrome.storage.local.set({ [activeTaskKey]: task });
-  const tabId = await getActiveTaskTabId();
-  if (tabId) {
-    await chrome.tabs.sendMessage(tabId, { type: "leadsy:sendPreparedTask", task }).catch(() => undefined);
-  }
   return task;
 }
 

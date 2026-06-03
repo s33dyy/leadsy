@@ -40,7 +40,7 @@ async function bootWorker() {
   });
 
   const activeTask = await runtimeClient.getActiveTask().catch(() => undefined);
-  if (activeTask && taskCanBePrepared(activeTask.status)) {
+  if (activeTask && taskCanBeHandled(activeTask)) {
     await executeActiveTask(controller, activeTask);
   } else {
     await controller.arm();
@@ -49,10 +49,26 @@ async function bootWorker() {
 
 async function executeActiveTask(controller: ChatAutomationController, activeTask?: ExtensionTask) {
   const task = activeTask || (await runtimeClient.getActiveTask().catch(() => undefined));
-  if (!task || !taskCanBePrepared(task.status)) return;
+  if (!task || !taskCanBeHandled(task)) return;
 
   try {
-    const result = await controller.executeTask(task);
+    if (task.sendApprovedAt) {
+      const result = await controller.sendPreparedTask(task);
+      await runtimeClient.completeTask({
+        taskId: task.id,
+        status: "sent",
+        resultSummary: "Worker sent the Leadsy-approved task draft.",
+        outboundMessage: {
+          externalId: result.externalId,
+          body: task.draftMessage,
+          sentAt: result.sentAt
+        }
+      });
+      void controller.arm().catch(() => undefined);
+      return;
+    }
+
+    const result = await controller.prepareTaskForApproval(task);
     if (result.status === "blocked") {
       await runtimeClient.logTaskEvent({
         taskId: task.id,
@@ -68,17 +84,12 @@ async function executeActiveTask(controller: ChatAutomationController, activeTas
       });
       return;
     }
-    await runtimeClient.completeTask({
+    await runtimeClient.prepareTask(task.id, result.draftMessage);
+    await runtimeClient.logTaskEvent({
       taskId: task.id,
-      status: "sent",
-      resultSummary: "Worker sent the task draft.",
-      outboundMessage: {
-        externalId: result.externalId,
-        body: task.draftMessage,
-        sentAt: result.sentAt
-      }
-    });
-    void controller.arm().catch(() => undefined);
+      eventType: "worker_prepared",
+      summary: "Worker prepared the draft and is waiting for Leadsy app approval."
+    }).catch(() => undefined);
   } catch (error) {
     await runtimeClient
       .completeTask({
@@ -93,11 +104,12 @@ async function executeActiveTask(controller: ChatAutomationController, activeTas
 
 async function sendPreparedTask(controller: ChatAutomationController, task?: ExtensionTask) {
   if (!task) throw new Error("No prepared task was provided.");
+  if (!task.sendApprovedAt) throw new Error("Leadsy app approval is required before the worker sends this task.");
   const result = await controller.sendPreparedTask(task);
   await runtimeClient.completeTask({
     taskId: task.id,
     status: "sent",
-    resultSummary: "Worker sent the owner-approved task draft.",
+    resultSummary: "Worker sent the Leadsy-approved task draft.",
     outboundMessage: {
       externalId: result.externalId,
       body: task.draftMessage,
@@ -105,6 +117,10 @@ async function sendPreparedTask(controller: ChatAutomationController, task?: Ext
     }
   });
   void controller.arm().catch(() => undefined);
+}
+
+function taskCanBeHandled(task: ExtensionTask) {
+  return taskCanBePrepared(task.status) || Boolean(task.sendApprovedAt);
 }
 
 function taskCanBePrepared(status: ExtensionTask["status"]) {

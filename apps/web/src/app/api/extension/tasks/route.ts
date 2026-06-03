@@ -5,7 +5,7 @@ import { listExtensionTasks } from "@/lib/extension-store";
 
 export const runtime = "nodejs";
 
-const activeWorkerStatuses = ["queued", "in_progress", "awaiting_send_approval", "monitoring", "blocked", "failed"] as const;
+const activeWorkerStatuses = ["queued", "approved", "in_progress", "awaiting_send_approval", "monitoring", "blocked", "failed"] as const;
 
 export async function GET(request: NextRequest) {
   const auth = await requireExtensionToken(request);

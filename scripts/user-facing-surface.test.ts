@@ -22,7 +22,6 @@ async function main() {
     "apps/web/src/app/extension/page.tsx",
     "apps/web/src/app/app/connect/page.tsx",
     "apps/web/src/app/app/leads/page.tsx",
-    "apps/web/src/app/app/magnet/page.tsx",
     "apps/web/src/app/app/worker/page.tsx"
   ];
   const removedPages = [
@@ -68,13 +67,13 @@ async function main() {
   }
 
   const appShell = await readFile(join(root, "apps/web/src/components/app-shell.tsx"), "utf8");
-  for (const route of ["/app/connect", "/app/leads", "/app/magnet", "/app/worker"]) {
+  for (const route of ["/app/connect", "/app/leads", "/app/worker"]) {
     assert(appShell.includes(route), `app nav should include ${route}`);
   }
-  for (const route of ["/app/analytics", "/app/capture", "/app/clients", "/app/crm", "/app/inbox", "/app/meta", "/app/workflows"]) {
+  for (const route of ["/app/analytics", "/app/capture", "/app/clients", "/app/crm", "/app/inbox", "/app/magnet", "/app/meta", "/app/workflows"]) {
     assert(!appShell.includes(route), `app nav should not include ${route}`);
   }
-  assert(appShell.includes("Meta WhatsApp connection"), "workspace header should frame connection as Meta onboarding");
+  assert(appShell.includes("Meta messaging connection"), "workspace header should frame connection as Meta messaging onboarding");
   assert(appShell.includes("hasMetaConnection"), "workspace header should receive the saved Meta connection state");
   assert(appShell.includes("Connected"), "workspace header should show connected Meta state after OAuth");
   assert(!appShell.includes("WhatsApp leads · browser worker"), "workspace header should not merge Meta connection with worker ops");
@@ -94,6 +93,8 @@ async function main() {
   const landingPage = await readFile(join(root, "apps/web/src/app/page.tsx"), "utf8");
   assert(landingPage.includes("/login?next=/app/leads"), "landing page should enter the leads page");
   assert(landingPage.includes("/extension"), "landing page should link to the extension download page");
+  assert(!landingPage.includes("/app/magnet"), "landing page should not link to archived Magnet");
+  assert(!landingPage.includes("Lead Magnet"), "landing page should not market archived Lead Magnet");
   assert(!landingPage.includes("/onboarding"), "landing page should not link to old onboarding");
   assert(!landingPage.includes("/app/workflows"), "landing page should not link to old workflows");
   for (const adminCopy of ["app secret", "verify tokens", "Railway", "GOOGLE_CLIENT", "META_APP_SECRET"]) {
@@ -115,17 +116,29 @@ async function main() {
   }
 
   const leadsPage = await readFile(join(root, "apps/web/src/app/app/leads/page.tsx"), "utf8");
-  assert(leadsPage.includes("listMetaWhatsAppConversations"), "leads page should read aggregated WhatsApp conversations");
+  assert(leadsPage.includes("listLeadKnowledgeRecords"), "leads page should read unified lead knowledge records");
+  assert(leadsPage.includes("/api/leads/manual-message"), "leads page should allow manual communication logging");
+  assert(leadsPage.includes("/api/leads/status"), "leads page should allow lead-level exclude and restore");
+  assert(leadsPage.includes("/api/leads/conversation-status"), "leads page should allow conversation-level knowledge exclusion");
   assert(leadsPage.includes("Lead Operations"), "leads page should be positioned as the main CRM ops surface");
   assert(leadsPage.includes("CRM pipeline"), "leads page should show a CRM-style pipeline table");
   assert(leadsPage.includes("Activity timeline"), "leads page should expose logged communication activity");
   assert(leadsPage.includes("Next action"), "leads page should make next operational action visible");
   assert(leadsPage.includes("Needs reply"), "leads page should separate conversations that need a response");
-  assert(leadsPage.includes("data-testid=\"lead-crm-table\""), "leads page should expose a stable CRM table section");
-  assert(leadsPage.includes("data-testid=\"lead-record-panel\""), "leads page should expose a stable selected-record panel");
-  assert(leadsPage.includes("All WhatsApp conversations"), "leads page should track all conversations, not only ad leads");
-  assert(leadsPage.includes("web.whatsapp.com/send"), "lead rows should open the WhatsApp Web conversation");
-  assert(leadsPage.includes("Exclude contact"), "leads page should let non-lead contacts be excluded");
+  assert(leadsPage.includes("data-testid=\"lead-list-pane\""), "leads page should expose a stable lead list pane");
+  assert(leadsPage.includes("data-testid=\"lead-workspace-pane\""), "leads page should expose a stable selected-record workspace");
+  assert(leadsPage.includes("Details"), "selected lead workspace should expose a Details tab");
+  assert(leadsPage.includes("Comms"), "selected lead workspace should expose a Comms tab");
+  assert(leadsPage.includes("Tasks"), "selected lead workspace should expose a Tasks tab");
+  assert(leadsPage.includes("commChannel"), "selected lead comms tab should be controlled by channel params");
+  for (const label of ["WhatsApp", "Instagram", "Facebook", "Email", "Call Notes", "Browser Chat", "Manual"]) {
+    assert(leadsPage.includes(label), `comms tab should expose ${label}`);
+  }
+  assert(leadsPage.includes("Selected lead tasks"), "tasks tab should focus on selected lead tasks");
+  assert(leadsPage.includes("tasksForLead"), "leads page should filter task records by selected lead");
+  assert(leadsPage.includes("All Meta and browser conversations"), "leads page should track all Meta and extension conversations");
+  assert(leadsPage.includes("Open conversation"), "lead rows should open channel-specific conversations when possible");
+  assert(leadsPage.includes("Exclude lead"), "leads page should let non-lead contacts be excluded");
   assert(leadsPage.includes("Restore as lead"), "excluded contacts should be restorable without deleting the conversation");
   assert(!leadsPage.includes("Incoming WhatsApp leads from Meta ads"), "leads page should not imply only Meta ad leads are tracked");
   for (const adminCopy of ["Raw webhook message", "rawPreview", "message.raw"]) {
@@ -133,16 +146,8 @@ async function main() {
   }
 
   const magnetPage = await readFile(join(root, "apps/web/src/app/app/magnet/page.tsx"), "utf8");
-  const leadMagnetLab = await readFile(join(root, "apps/web/src/components/lead-magnet-lab.tsx"), "utf8");
-  const leadsTableIndex = leadMagnetLab.indexOf('data-testid="lead-magnet-leads-table"');
-  const briefFormIndex = leadMagnetLab.indexOf('data-testid="lead-brief-form"');
-  assert(leadsTableIndex >= 0, "Lead Magnet should expose a stable leads-table section");
-  assert(briefFormIndex >= 0, "Lead Magnet should keep the search form");
-  assert(leadsTableIndex < briefFormIndex, "Lead Magnet leads table should appear before the search form");
-  for (const adminCopy of ["agency owner workflow", "owner summary"]) {
-    assert(!magnetPage.includes(adminCopy), `magnet page should not expose admin copy: ${adminCopy}`);
-    assert(!leadMagnetLab.includes(adminCopy), `magnet component should not expose admin copy: ${adminCopy}`);
-  }
+  assert(magnetPage.includes("redirect(\"/app/leads"), "archived Magnet page should redirect to Leads");
+  assert(!magnetPage.includes("LeadMagnetLab"), "archived Magnet page should not render the old lab");
 
   const workerPage = await readFile(join(root, "apps/web/src/app/app/worker/page.tsx"), "utf8");
   assert(workerPage.includes("ExtensionTaskBoard"), "worker page should keep the extension task board");

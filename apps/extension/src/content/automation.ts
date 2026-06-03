@@ -262,12 +262,12 @@ export class ChatAutomationController {
       return result;
     }
 
-    this.setState({
-      mode: "needs_approval",
-      statusText: "Draft prepared. Approve send in the worker panel.",
-      pendingReply: task.draftMessage,
-      lastReason: `Task ${task.id} is ready to send.`
-    });
+	    this.setState({
+	      mode: "needs_approval",
+	      statusText: "Draft prepared. Waiting for Leadsy app approval.",
+	      pendingReply: task.draftMessage,
+	      lastReason: `Task ${task.id} is ready to send.`
+	    });
     return { status: "prepared", draftMessage: task.draftMessage };
   }
 

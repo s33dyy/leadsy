@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { audit, rateLimit } from "@leadsy/security";
+import { requireApiSession } from "@/lib/api-auth";
 import { requireExtensionToken } from "@/lib/extension-auth";
 import { approveExtensionTaskSend, rejectExtensionTaskSend } from "@/lib/extension-store";
 
@@ -12,10 +13,17 @@ const schema = z.object({
 });
 
 export async function POST(request: NextRequest, context: { params: Promise<{ taskId: string }> }) {
-  const auth = await requireExtensionToken(request);
-  if (!auth.ok) return auth.response;
+  const extensionAuth = await requireExtensionToken(request);
+  let scope: { tenantId: string; ownerId: string; actorId: string };
+  if (extensionAuth.ok) {
+    scope = { tenantId: extensionAuth.tenantId, ownerId: extensionAuth.ownerId, actorId: extensionAuth.ownerId };
+  } else {
+    const apiAuth = await requireApiSession(request, "crm:write");
+    if (!apiAuth.ok) return apiAuth.response;
+    scope = { tenantId: apiAuth.session.tenantId, ownerId: apiAuth.session.id, actorId: apiAuth.session.id };
+  }
 
-  const limiter = rateLimit(`${auth.tenantId}:${auth.ownerId}:extension-task-approve-send`, 180);
+  const limiter = rateLimit(`${scope.tenantId}:${scope.ownerId}:extension-task-approve-send`, 180);
   if (!limiter.ok) {
     return NextResponse.json({ error: "rate_limited", resetAt: limiter.resetAt }, { status: 429 });
   }
@@ -25,20 +33,20 @@ export async function POST(request: NextRequest, context: { params: Promise<{ ta
   const task =
     input.action === "reject"
       ? await rejectExtensionTaskSend({
-          tenantId: auth.tenantId,
-          ownerId: auth.ownerId,
+          tenantId: scope.tenantId,
+          ownerId: scope.ownerId,
           taskId,
           resultSummary: input.resultSummary
         })
       : await approveExtensionTaskSend({
-          tenantId: auth.tenantId,
-          ownerId: auth.ownerId,
+          tenantId: scope.tenantId,
+          ownerId: scope.ownerId,
           taskId
         });
 
   audit({
-    tenantId: auth.tenantId,
-    actorId: auth.ownerId,
+    tenantId: scope.tenantId,
+    actorId: scope.actorId,
     action: input.action === "reject" ? "extension.task.reject_send" : "extension.task.approve_send",
     resource: task.id,
     metadata: { status: task.status }

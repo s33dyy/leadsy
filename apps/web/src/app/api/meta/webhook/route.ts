@@ -1,10 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { rateLimit } from "@leadsy/security";
 import { defaultWebhookScope, saveUnifiedMetaWebhookMessages } from "@/lib/lead-knowledge-store";
-import {
-  verifyMetaWebhookChallenge,
-  verifyMetaWebhookSignature
-} from "@/lib/meta-whatsapp-webhook-store";
+import { verifyMetaWebhookChallenge, verifyMetaWebhookSignature } from "@/lib/meta-whatsapp-webhook-store";
 
 export const runtime = "nodejs";
 
@@ -27,7 +24,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const limiter = rateLimit("meta:whatsapp:webhook", 600);
+  const limiter = rateLimit("meta:unified:webhook", 600);
   if (!limiter.ok) {
     return NextResponse.json({ error: "rate_limited", resetAt: limiter.resetAt }, { status: 429 });
   }

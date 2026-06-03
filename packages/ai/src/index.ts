@@ -154,6 +154,29 @@ export type ExtensionReplyDecision = {
   supportMetadata?: Record<string, string>;
 };
 
+export type ExtensionLeadKnowledgeContext = {
+  lead?: {
+    id: string;
+    leadStatus: "lead" | "excluded";
+    contact: {
+      displayName?: string;
+      phone?: string;
+      email?: string;
+      handle?: string;
+      profileUrl?: string;
+      waId?: string;
+    };
+    summary?: string;
+    nextAction?: string;
+  };
+  messages: Array<{
+    direction: string;
+    body: string;
+    sentAt: string;
+  }>;
+  facts: string[];
+};
+
 export type ExtensionReplyInput = {
   tenantId: string;
   ownerId: string;
@@ -168,8 +191,7 @@ export type ExtensionReplyInput = {
     profileUrl?: string;
   };
   messages: ExtensionReplyMessage[];
-  brief?: LeadBrief | null;
-  leads?: LeadDossier[];
+  knowledge?: ExtensionLeadKnowledgeContext;
   existingSummary?: string;
 };
 
@@ -6079,8 +6101,9 @@ function normalizeContact(value?: string) {
   return value?.toLowerCase().replace(/[^a-z0-9]+/g, "") ?? "";
 }
 
-function findExtensionLeadMatch(input: ExtensionReplyInput) {
-  const candidates = input.leads ?? [];
+function extensionKnowledgeLead(input: ExtensionReplyInput) {
+  const lead = input.knowledge?.lead;
+  if (!lead || lead.leadStatus === "excluded") return undefined;
   const contactNeedles = [
     normalizeContact(input.contact?.phone),
     normalizeContact(input.contact?.email),
@@ -6088,6 +6111,34 @@ function findExtensionLeadMatch(input: ExtensionReplyInput) {
     normalizeContact(input.contact?.displayName)
   ].filter(Boolean);
 
+  if (!contactNeedles.length) return lead;
+  const haystack = [
+    lead.contact.phone,
+    lead.contact.waId,
+    lead.contact.email,
+    lead.contact.handle,
+    lead.contact.displayName,
+    lead.contact.profileUrl
+  ]
+    .map(normalizeContact)
+    .filter(Boolean);
+  return contactNeedles.some((needle) => haystack.some((value) => value.includes(needle) || needle.includes(value))) ? lead : undefined;
+}
+
+function latestKnowledgeFact(input: ExtensionReplyInput) {
+  return input.knowledge?.facts?.find((fact) => fact.trim()) || input.knowledge?.messages?.at(-1)?.body;
+}
+
+function legacyFindExtensionLeadMatch(input: ExtensionReplyInput & { leads?: LeadDossier[] }) {
+  const candidates = input.leads ?? [];
+  const contactNeedles = [
+    normalizeContact(input.contact?.phone),
+    normalizeContact(input.contact?.email),
+    normalizeContact(input.contact?.profileUrl),
+    normalizeContact(input.contact?.handle),
+    normalizeContact(input.contact?.displayName)
+  ].filter(Boolean);
+  if (!contactNeedles.length) return candidates.find((lead) => lead.qualityDecision?.status === "good") ?? candidates[0];
   return candidates.find((lead) => {
     const haystack = [
       lead.phone,
@@ -6134,14 +6185,14 @@ export async function decideExtensionReply(input: ExtensionReplyInput): Promise<
     };
   }
 
-  const lead = findExtensionLeadMatch(input);
-  const brief = input.brief;
-  const displayName = input.contact?.displayName?.split(/\s+/)[0] || lead?.businessName || "there";
-  const service = brief?.service || "lead generation and follow-up";
+  const lead = extensionKnowledgeLead(input);
+  const legacyLead = lead ? undefined : legacyFindExtensionLeadMatch(input as ExtensionReplyInput & { leads?: LeadDossier[] });
+  const displayName = input.contact?.displayName?.split(/\s+/)[0] || lead?.contact.displayName || legacyLead?.businessName || "there";
+  const service = "lead generation and follow-up";
   const contactContext = lead
-    ? `${lead.businessName}${lead.city ? ` in ${lead.city}` : ""}`
-    : input.contact?.displayName || input.platform.replace(/-/g, " ");
-  const leadAngle = lead?.outreachAngle || brief?.idealCustomers || "your current requirement";
+    ? lead.contact.displayName || lead.contact.handle || lead.contact.phone || lead.contact.email || "known Leadsy lead"
+    : legacyLead?.businessName || input.contact?.displayName || input.platform.replace(/-/g, " ");
+  const leadAngle = lead?.nextAction || latestKnowledgeFact(input) || legacyLead?.outreachAngle || "your current requirement";
   const lower = latestText.toLowerCase();
 
   let replyText = `Hi ${displayName}, yes, I can help. To guide you properly, what result are you trying to improve first?`;
@@ -6169,9 +6220,9 @@ export async function decideExtensionReply(input: ExtensionReplyInput): Promise<
   return {
     action: "send",
     replyText,
-    confidence: lead || brief ? 0.86 : 0.68,
+    confidence: lead || input.knowledge?.messages?.length ? 0.86 : 0.68,
     reason,
-    tags: ["leadsy-backend", brief ? "brief-context" : "generic-context", lead ? "lead-context" : "no-lead-match"],
+    tags: ["leadsy-backend", input.knowledge ? "knowledge-context" : "generic-context", lead ? "lead-context" : "no-lead-match"],
     leadFields: {
       contact: contactContext,
       service,
