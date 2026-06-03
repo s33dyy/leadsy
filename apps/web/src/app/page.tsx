@@ -1,23 +1,18 @@
 import Link from "next/link";
-import { ArrowRight, Bot, Cable, Download, Magnet, MessageCircle, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowRight, Bot, Cable, Download, MessageCircle, ShieldCheck, Sparkles } from "lucide-react";
 import { LandingScene } from "@/components/landing-scene";
 import { Badge, GhostLink, PrimaryLink } from "@/components/ui";
 
 const modules = [
   {
     icon: MessageCircle,
-    title: "WhatsApp ad leads",
-    detail: "Receive official WhatsApp Business webhook messages after a person texts from a click-to-WhatsApp ad."
+    title: "Meta message leads",
+    detail: "Record incoming WhatsApp, Instagram, and Facebook messages from official Meta webhooks."
   },
   {
     icon: Cable,
     title: "Connection config",
-    detail: "Keep WhatsApp lead routing and worker pairing in one clean setup page."
-  },
-  {
-    icon: Magnet,
-    title: "Lead magnet",
-    detail: "Find public prospects, build evidence-backed dossiers, and draft outreach without sending automatically."
+    detail: "Keep Meta authorization and worker pairing in one clean setup page."
   },
   {
     icon: Bot,
@@ -67,7 +62,7 @@ export default function Home() {
             Leadsy Lead OS
           </h1>
           <p className="mt-6 text-lg leading-8 text-[var(--muted-2)]">
-            Capture the WhatsApp messages that actually arrive from Meta ads, pair a browser worker for the live chat, and keep lead discovery in one clean operator workspace.
+            Capture the Meta messages that actually arrive, pair a browser worker for the live chat, and keep every lead conversation in one clean operator workspace.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <PrimaryLink href="/login?next=/app/leads">

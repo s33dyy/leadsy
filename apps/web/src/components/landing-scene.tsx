@@ -1,4 +1,4 @@
-import { Activity, ArrowRight, Bot, Cable, Download, Magnet, MessageCircle, Phone } from "lucide-react";
+import { Activity, ArrowRight, Bot, Cable, Download, MessageCircle, Phone } from "lucide-react";
 import { Badge, ProgressBar } from "./ui";
 
 export function LandingScene() {
@@ -16,7 +16,7 @@ export function LandingScene() {
               {[
                 ["Connect", "1", "webhook route ready"],
                 ["Leads", "0", "waiting for first text"],
-                ["Magnet", "0", "no discovery yet"],
+                ["Knowledge", "0", "messages logged"],
                 ["Worker", "0", "no paired token"]
               ].map(([label, value, detail]) => (
                 <div key={label} className="rounded-[6px] border border-[var(--line)] bg-black/[0.24] p-3">
@@ -119,7 +119,7 @@ export function LandingScene() {
             <div className="space-y-2">
               {[
                 { icon: MessageCircle, label: "WhatsApp webhook", detail: "receive incoming ad messages" },
-                { icon: Magnet, label: "Lead Magnet", detail: "research public prospects" },
+                { icon: Activity, label: "Knowledge base", detail: "sync every conversation" },
                 { icon: Download, label: "Extension", detail: "install private browser worker" }
               ].map((source) => {
                 const Icon = source.icon;

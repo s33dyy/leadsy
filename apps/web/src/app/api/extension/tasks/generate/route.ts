@@ -1,11 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { audit, rateLimit } from "@leadsy/security";
-import type { LeadDossier } from "@leadsy/domain";
 import { requireApiSession } from "@/lib/api-auth";
 import { createExtensionTask } from "@/lib/extension-store";
 import { draftExtensionTaskMessage } from "@/lib/extension-task-drafts";
-import { getLeadMagnetWorkspace } from "@/lib/lead-magnet-store";
+import { listLeadKnowledgeRecords, type LeadKnowledgeRecord } from "@/lib/lead-knowledge-store";
 
 export const runtime = "nodejs";
 
@@ -24,11 +23,12 @@ export async function POST(request: NextRequest) {
   }
 
   const input = schema.parse(await request.json().catch(() => ({})));
-  const workspace = await getLeadMagnetWorkspace(auth.session.tenantId, auth.session.id);
+  const records = await listLeadKnowledgeRecords({ tenantId: auth.session.tenantId, ownerId: auth.session.id });
   const selectedLeadIds = new Set(input.leadIds ?? []);
-  const leads = workspace.leads
+  const leads = records
     .filter((lead) => !selectedLeadIds.size || selectedLeadIds.has(lead.id))
-    .filter((lead) => lead.qualityDecision?.status !== "rejected")
+    .filter((lead) => lead.leadStatus !== "excluded")
+    .filter((lead) => lead.conversations.some((conversation) => conversation.knowledgeStatus === "included"))
     .slice(0, 25);
 
   const tasks = [];
@@ -39,19 +39,19 @@ export async function POST(request: NextRequest) {
         ownerId: auth.session.id,
         type: input.type,
         status: "queued",
-        priority: lead.score.overall >= 80 ? "high" : "normal",
+        priority: lead.inboundCount > lead.outboundCount ? "high" : "normal",
         leadId: lead.id,
         platform: platformForLead(lead),
         targetUrl: targetUrlForLead(lead),
         contact: {
-          displayName: lead.businessName,
-          phone: lead.whatsapp || lead.phone,
-          email: lead.email,
-          handle: lead.instagram || lead.facebook || lead.linkedin,
-          profileUrl: lead.instagram || lead.facebook || lead.linkedin
+          displayName: lead.contact.displayName,
+          phone: lead.contact.phone || lead.contact.waId,
+          email: lead.contact.email,
+          handle: lead.contact.handle,
+          profileUrl: lead.contact.profileUrl
         },
         draftMessage: draftExtensionTaskMessage(lead, input.type),
-        contextSummary: `${lead.category} in ${lead.city}. ${lead.outreachAngle || lead.nextAction}`,
+        contextSummary: lead.summary || lead.lastMessagePreview || "Leadsy knowledge record ready for follow-up.",
         dueAt: new Date(Date.now() + 1000 * 60 * 15).toISOString()
       })
     );
@@ -68,18 +68,18 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ tasks });
 }
 
-function platformForLead(lead: LeadDossier) {
-  if (lead.whatsapp || lead.phone) return "whatsapp-web" as const;
-  if (lead.instagram) return "instagram-web" as const;
-  if (lead.facebook) return "facebook-web" as const;
+function platformForLead(lead: LeadKnowledgeRecord) {
+  if (lead.contact.phone || lead.contact.waId || lead.channels.includes("whatsapp")) return "whatsapp-web" as const;
+  if (lead.channels.includes("instagram") || lead.contact.profileUrl?.includes("instagram.com")) return "instagram-web" as const;
+  if (lead.channels.includes("facebook") || lead.contact.profileUrl?.includes("facebook.com")) return "facebook-web" as const;
   return "generic-web-chat" as const;
 }
 
-function targetUrlForLead(lead: LeadDossier) {
-  const phone = lead.whatsapp || lead.phone;
+function targetUrlForLead(lead: LeadKnowledgeRecord) {
+  const phone = lead.contact.phone || lead.contact.waId;
   if (phone) {
     const digits = phone.replace(/[^\d]/g, "");
     if (digits) return `https://web.whatsapp.com/send?phone=${digits}`;
   }
-  return lead.instagram || lead.facebook || lead.linkedin || lead.website;
+  return lead.contact.profileUrl || lead.conversations.find((conversation) => conversation.sourceUrl)?.sourceUrl;
 }

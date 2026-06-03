@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { audit, rateLimit } from "@leadsy/security";
 import { requireExtensionToken } from "@/lib/extension-auth";
+import { syncLeadsyExtensionConversation } from "@/lib/lead-knowledge-store";
 import { syncExtensionConversation } from "@/lib/extension-store";
 
 const platformSchema = z.enum(["whatsapp-web", "instagram-web", "facebook-web", "generic-web-chat"]);
@@ -60,6 +61,11 @@ export async function POST(request: NextRequest) {
   }
 
   const input = schema.parse(await request.json());
+  await syncLeadsyExtensionConversation({
+    tenantId: auth.tenantId,
+    ownerId: auth.ownerId,
+    ...input
+  });
   const bundle = await syncExtensionConversation({
     tenantId: auth.tenantId,
     ownerId: auth.ownerId,

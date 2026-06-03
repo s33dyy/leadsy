@@ -5,7 +5,6 @@ import {
   Bot,
   Cable,
   LogOut,
-  Magnet,
   MessageCircle,
   ShieldCheck,
   Sparkles
@@ -15,7 +14,6 @@ import type { SessionUser } from "@leadsy/security";
 const navItems = [
   { href: "/app/connect", label: "Connect", icon: Cable },
   { href: "/app/leads", label: "Leads", icon: MessageCircle },
-  { href: "/app/magnet", label: "Magnet", icon: Magnet },
   { href: "/app/worker", label: "Worker", icon: Bot }
 ];
 
@@ -74,7 +72,7 @@ export function AppShell({
           <div className="flex items-center gap-2">
             <div className="hidden items-center gap-2 rounded-[8px] border border-[var(--line)] bg-white/[0.03] px-3 py-2 text-sm text-[var(--muted-2)] md:flex">
               <Activity size={16} className="text-[var(--teal)]" />
-              Meta WhatsApp connection
+              Meta messaging connection
             </div>
             <a
               href="/app/connect"

@@ -13,7 +13,7 @@ if (!app) {
 const filters: Array<{ key: FilterKey; label: string; statuses: ExtensionTask["status"][] }> = [
   { key: "ready", label: "Ready", statuses: ["queued"] },
   { key: "preparing", label: "Preparing", statuses: ["in_progress"] },
-  { key: "approval", label: "Needs send approval", statuses: ["awaiting_send_approval"] },
+  { key: "approval", label: "Waiting on Leadsy", statuses: ["awaiting_send_approval"] },
   { key: "blocked", label: "Blocked", statuses: ["blocked", "failed"] },
   { key: "done", label: "Done", statuses: ["sent", "monitoring", "cancelled"] }
 ];
@@ -334,7 +334,7 @@ function renderMetrics(tasks: ExtensionTask[]) {
   const blocked = countStatuses(tasks, ["blocked", "failed"]);
   metrics.innerHTML = `
     <div class="metric"><strong>${ready}</strong><span>Ready</span></div>
-    <div class="metric"><strong>${approval}</strong><span>Approve send</span></div>
+    <div class="metric"><strong>${approval}</strong><span>App approval</span></div>
     <div class="metric"><strong>${blocked}</strong><span>Blocked</span></div>
   `;
 }
@@ -374,9 +374,6 @@ function renderDetail(task?: ExtensionTask) {
   taskDetail.querySelector<HTMLButtonElement>("[data-task-open]")?.addEventListener("click", () => {
     void openTask(task.id);
   });
-  taskDetail.querySelector<HTMLButtonElement>("[data-task-approve-send]")?.addEventListener("click", () => {
-    void approveTaskSend(task.id);
-  });
 }
 
 function renderActions(task: ExtensionTask) {
@@ -384,7 +381,7 @@ function renderActions(task: ExtensionTask) {
     return `<button type="button" data-task-open="${escapeHtml(task.id)}">${task.status === "queued" ? "Run task" : "Reopen task"}</button>`;
   }
   if (task.status === "awaiting_send_approval") {
-    return `<button type="button" data-task-approve-send="${escapeHtml(task.id)}">Approve send</button>`;
+    return `<button class="secondary" type="button" disabled>Waiting for Leadsy app</button>`;
   }
   if (task.status === "blocked" || task.status === "failed") {
     return `<button class="secondary" type="button" disabled>${escapeHtml(task.blockedReason || task.status)}</button>`;
@@ -401,17 +398,6 @@ async function openTask(taskId: string) {
   } catch (error) {
     setStatus(error instanceof Error ? error.message : "Could not open task.", "error");
     await refreshTasks();
-  }
-}
-
-async function approveTaskSend(taskId: string) {
-  if (!taskId) return;
-  try {
-    const task = await send<ExtensionTask>({ type: "leadsy:approveTaskSend", taskId });
-    setStatus(`Send approved for ${taskContactLabel(task)}.`, "ok");
-    await refreshTasks();
-  } catch (error) {
-    setStatus(error instanceof Error ? error.message : "Could not approve send.", "error");
   }
 }
 

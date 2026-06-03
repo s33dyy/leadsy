@@ -81,6 +81,19 @@ export function ExtensionTaskBoard({
     setTasks((current) => mergeTasks(nextTasks, current));
   }
 
+  async function approvePreparedSend(task: ExtensionTask, action: "approve" | "reject") {
+    setLoading(`${action}:${task.id}`);
+    const response = await fetch(`/api/extension/tasks/${encodeURIComponent(task.id)}/approve-send`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action })
+    });
+    const payload = await response.json();
+    setLoading("");
+    if (!response.ok) return;
+    setTasks((current) => mergeTasks([payload as ExtensionTask], current));
+  }
+
   return (
     <div className="grid min-w-0 gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -130,11 +143,12 @@ export function ExtensionTaskBoard({
                         {task.type.replace(/_/g, " ")} · {task.platform.replace(/-/g, " ")}
                       </div>
                       <p className="mt-3 line-clamp-3 break-words text-xs leading-5 text-[var(--muted-2)]">{task.contextSummary}</p>
-                      <p className="mt-3 line-clamp-4 break-words rounded-[6px] bg-black/20 p-2 text-xs leading-5 text-white">{task.draftMessage}</p>
-                      {task.resultSummary ? <p className="mt-2 line-clamp-2 break-words text-xs leading-5 text-[var(--muted)]">{task.resultSummary}</p> : null}
-                      <TaskMeta task={task} />
-                    </article>
-                  ))}
+	                      <p className="mt-3 line-clamp-4 break-words rounded-[6px] bg-black/20 p-2 text-xs leading-5 text-white">{task.draftMessage}</p>
+	                      {task.resultSummary ? <p className="mt-2 line-clamp-2 break-words text-xs leading-5 text-[var(--muted)]">{task.resultSummary}</p> : null}
+	                      <TaskMeta task={task} />
+	                      <TaskActions task={task} loading={loading} onSendDecision={approvePreparedSend} />
+	                    </article>
+	                  ))}
                 </div>
               ) : (
                 <CompactEmptyState icon={emptyIcon(column.key)} title="Nothing here" detail="Worker updates will move tasks into this lane." />
@@ -223,6 +237,40 @@ function TaskMeta({ task }: { task: ExtensionTask }) {
     <div className="mt-3 flex items-center gap-2 text-xs text-teal-100">
       <Play size={13} />
       Available in the extension queue.
+    </div>
+  );
+}
+
+function TaskActions({
+  task,
+  loading,
+  onSendDecision
+}: {
+  task: ExtensionTask;
+  loading: string;
+  onSendDecision: (task: ExtensionTask, action: "approve" | "reject") => void;
+}) {
+  if (task.status !== "awaiting_send_approval") return null;
+  const approving = loading === `approve:${task.id}`;
+  const rejecting = loading === `reject:${task.id}`;
+  return (
+    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+      <button
+        type="button"
+        onClick={() => onSendDecision(task, "approve")}
+        className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-lime-300/25 bg-lime-300/10 px-3 text-xs font-medium text-lime-100 hover:bg-lime-300/[0.16]"
+      >
+        {approving ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+        Approve send
+      </button>
+      <button
+        type="button"
+        onClick={() => onSendDecision(task, "reject")}
+        className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-amber-300/25 bg-amber-300/10 px-3 text-xs font-medium text-amber-100 hover:bg-amber-300/[0.16]"
+      >
+        {rejecting ? <Loader2 size={14} className="animate-spin" /> : <AlertTriangle size={14} />}
+        Reject
+      </button>
     </div>
   );
 }

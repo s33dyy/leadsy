@@ -1,0 +1,177 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { AlertTriangle, CheckCircle2, Clock3, Loader2, Send, Workflow } from "lucide-react";
+import { Badge, EmptyState } from "./ui";
+
+type SelectedLeadTask = {
+  id: string;
+  type: "initiate_conversation" | "follow_up" | "reply_to_inbound" | "manual_review" | "report_update";
+  status:
+    | "queued"
+    | "in_progress"
+    | "awaiting_send_approval"
+    | "sent"
+    | "monitoring"
+    | "blocked"
+    | "failed"
+    | "cancelled"
+    | "draft"
+    | "awaiting_approval"
+    | "approved";
+  priority: "low" | "normal" | "high" | "urgent";
+  platform: string;
+  draftMessage: string;
+  contextSummary: string;
+  resultSummary?: string;
+  blockedReason?: string;
+  updatedAt: string;
+  dueAt?: string;
+};
+
+type SelectedLeadTaskEvent = {
+  id: string;
+  taskId: string;
+  type: string;
+  summary: string;
+  reason?: string;
+  occurredAt: string;
+};
+
+export function SelectedLeadTasks({
+  initialTasks,
+  initialEvents
+}: {
+  initialTasks: SelectedLeadTask[];
+  initialEvents: SelectedLeadTaskEvent[];
+}) {
+  const router = useRouter();
+  const [tasks, setTasks] = useState(initialTasks);
+  const [loading, setLoading] = useState("");
+  const taskIds = new Set(tasks.map((task) => task.id));
+  const events = initialEvents.filter((event) => taskIds.has(event.taskId));
+
+  async function approvePreparedSend(task: SelectedLeadTask, action: "approve" | "reject") {
+    setLoading(`${action}:${task.id}`);
+    const response = await fetch(`/api/extension/tasks/${encodeURIComponent(task.id)}/approve-send`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action })
+    });
+    const payload = await response.json();
+    setLoading("");
+    if (!response.ok) return;
+    setTasks((current) => current.map((candidate) => (candidate.id === task.id ? (payload as SelectedLeadTask) : candidate)));
+    router.refresh();
+  }
+
+  if (!tasks.length) {
+    return <EmptyState icon={Workflow} title="No tasks for this lead" detail="Queue lead tasks from the worker page or wait for prepared drafts to report back here." />;
+  }
+
+  return (
+    <div className="grid gap-4">
+      <div className="grid gap-3 lg:grid-cols-2">
+        {tasks.map((task) => (
+          <article key={task.id} className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-white">{task.type.replace(/_/g, " ")}</div>
+                <div className="mono mt-1 text-[10px] uppercase text-[var(--muted)]">{task.platform.replace(/-/g, " ")}</div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Badge tone={task.status === "blocked" || task.status === "failed" ? "amber" : task.status === "sent" ? "lime" : "teal"}>
+                  {task.status.replace(/_/g, " ")}
+                </Badge>
+                <Badge tone={task.priority === "urgent" || task.priority === "high" ? "amber" : "neutral"}>{task.priority}</Badge>
+              </div>
+            </div>
+            <p className="mt-3 text-sm leading-6 text-[var(--muted-2)]">{task.contextSummary}</p>
+            <p className="mt-3 rounded-[6px] bg-white/[0.04] p-3 text-sm leading-6 text-white">{task.draftMessage}</p>
+            {task.resultSummary ? <p className="mt-3 text-sm leading-6 text-[var(--muted)]">{task.resultSummary}</p> : null}
+            <TaskState task={task} />
+            {task.status === "awaiting_send_approval" ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => approvePreparedSend(task, "approve")}
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-lime-300/25 bg-lime-300/10 px-3 text-xs font-medium text-lime-100 hover:bg-lime-300/[0.16]"
+                >
+                  {loading === `approve:${task.id}` ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                  Approve send
+                </button>
+                <button
+                  type="button"
+                  onClick={() => approvePreparedSend(task, "reject")}
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-amber-300/25 bg-amber-300/10 px-3 text-xs font-medium text-amber-100 hover:bg-amber-300/[0.16]"
+                >
+                  {loading === `reject:${task.id}` ? <Loader2 size={14} className="animate-spin" /> : <AlertTriangle size={14} />}
+                  Reject
+                </button>
+              </div>
+            ) : null}
+          </article>
+        ))}
+      </div>
+
+      <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-sm font-semibold text-white">Worker reports for this lead</div>
+          <Badge tone="neutral">{events.length}</Badge>
+        </div>
+        {events.length ? (
+          <div className="mt-3 grid gap-2">
+            {events.slice(0, 8).map((event) => (
+              <div key={event.id} className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Badge tone={event.type.includes("blocked") || event.type.includes("failed") ? "amber" : "teal"}>{event.type.replace(/_/g, " ")}</Badge>
+                  <span className="mono text-[10px] text-[var(--muted)]">
+                    {new Date(event.occurredAt).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs leading-5 text-[var(--muted-2)]">{event.summary}</p>
+                {event.reason ? <p className="mono mt-2 text-[10px] uppercase text-amber-100">{event.reason.replace(/_/g, " ")}</p> : null}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-3 text-sm leading-6 text-[var(--muted-2)]">No worker reports have been attached to this lead yet.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TaskState({ task }: { task: SelectedLeadTask }) {
+  if (task.status === "awaiting_send_approval") {
+    return (
+      <div className="mt-3 flex items-center gap-2 text-xs text-amber-100">
+        <Clock3 size={13} />
+        Draft prepared. Waiting for Leadsy app approval.
+      </div>
+    );
+  }
+  if (task.status === "blocked" || task.status === "failed") {
+    return (
+      <div className="mt-3 flex items-center gap-2 text-xs text-amber-100">
+        <AlertTriangle size={13} />
+        {task.blockedReason ? task.blockedReason.replace(/_/g, " ") : "Worker needs attention"}
+      </div>
+    );
+  }
+  if (task.status === "sent" || task.status === "monitoring") {
+    return (
+      <div className="mt-3 flex items-center gap-2 text-xs text-lime-100">
+        <CheckCircle2 size={13} />
+        Worker reported completion back to Leadsy.
+      </div>
+    );
+  }
+  return (
+    <div className="mt-3 flex items-center gap-2 text-xs text-teal-100">
+      <Workflow size={13} />
+      Available in the selected lead worker queue.
+    </div>
+  );
+}

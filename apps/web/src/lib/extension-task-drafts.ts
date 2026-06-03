@@ -1,10 +1,11 @@
-import type { LeadDossier } from "@leadsy/domain";
 import type { ExtensionTaskType } from "./extension-store";
+import type { LeadKnowledgeRecord } from "./lead-knowledge-store";
 
 type OutreachTaskType = Extract<ExtensionTaskType, "initiate_conversation" | "follow_up">;
+type DraftableLead = Pick<LeadKnowledgeRecord, "contact" | "summary" | "nextAction" | "channels">;
 
-export function draftExtensionTaskMessage(lead: LeadDossier, type: OutreachTaskType) {
-  const name = cleanLeadName(lead.businessName);
+export function draftExtensionTaskMessage(lead: DraftableLead, type: OutreachTaskType) {
+  const name = cleanLeadName(lead.contact.displayName || lead.contact.handle || lead.contact.phone || lead.contact.email);
   const segment = leadSegment(lead);
 
   if (type === "follow_up") {
@@ -18,8 +19,8 @@ function cleanLeadName(name?: string) {
   return name?.replace(/\s+/g, " ").trim() || "there";
 }
 
-function leadSegment(lead: LeadDossier) {
-  const text = [lead.category, lead.outreachAngle, lead.nextAction].filter(Boolean).join(" ").toLowerCase();
+function leadSegment(lead: DraftableLead) {
+  const text = [lead.summary, lead.nextAction, ...lead.channels].filter(Boolean).join(" ").toLowerCase();
 
   if (/\b(school|academy|college|education|student|course|admission|training|nursing|paramedical|allied health)\b/.test(text)) {
     return {
