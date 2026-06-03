@@ -22,6 +22,7 @@
     "test:extension-store": "tsx scripts/extension-store.test.ts",
     "test:meta-oauth": "tsx scripts/meta-oauth-callback.test.ts",
     "test:meta-whatsapp": "tsx scripts/meta-whatsapp-webhook.test.ts",
+    "test:meta-routing": "tsx --tsconfig apps/web/tsconfig.json scripts/meta-webhook-routing.test.ts",
     "test:extension-download": "tsx scripts/extension-download-page.test.ts",
     "test:user-facing-surface": "tsx scripts/user-facing-surface.test.ts",
     "test:google-workspace-auth": "NODE_OPTIONS='--conditions=react-server' tsx scripts/google-workspace-auth.test.ts",

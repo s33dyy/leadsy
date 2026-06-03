@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { rateLimit } from "@leadsy/security";
-import { defaultWebhookScope, saveUnifiedMetaWebhookMessages } from "@/lib/lead-knowledge-store";
+import { saveRoutedMetaWebhookMessages } from "@/lib/meta-webhook-routing";
 import {
   verifyMetaWebhookChallenge,
   verifyMetaWebhookSignature
@@ -45,11 +45,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
 
-  const scope = defaultWebhookScope();
-  const result = await saveUnifiedMetaWebhookMessages({ ...scope, payload });
+  const result = await saveRoutedMetaWebhookMessages({ payload });
   return NextResponse.json({
     ok: true,
     saved: result.saved.length,
-    ignored: result.ignored
+    ignored: result.ignored,
+    unmatched: result.unmatched,
+    ambiguous: result.ambiguous
   });
 }
