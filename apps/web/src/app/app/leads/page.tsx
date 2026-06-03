@@ -251,7 +251,7 @@ function backfillLeadIdsForTasks(tasks: ExtensionTask[], leads: LeadKnowledgeRec
 }
 
 function taskMatchesLead(task: ExtensionTask, lead: LeadKnowledgeRecord) {
-  if (task.leadId === lead.id) return true;
+  if (task.leadId) return task.leadId === lead.id;
   const conversationIds = new Set(lead.conversations.map((conversation) => conversation.id));
   if (task.conversationId && conversationIds.has(task.conversationId)) return true;
   const leadValues = identityValuesForLead(lead);

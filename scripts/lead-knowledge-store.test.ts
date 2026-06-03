@@ -247,6 +247,55 @@ async function main() {
     assert(workerOnlyLead, "worker-only tasks should appear as CRM lead knowledge records");
     assert.equal(workerOnlyLead.channels.includes("whatsapp-web"), true);
     assert.equal(workerOnlyLead.messages.some((message) => message.body.includes("Worker task exists before any webhook")), true);
+
+    await syncLeadKnowledgeFromExtensionTasks(scope, [
+      {
+        id: "task_worker_split_a",
+        tenantId: scope.tenantId,
+        ownerId: scope.ownerId,
+        leadId: "lead_worker_split_a",
+        type: "initiate_conversation",
+        status: "queued",
+        priority: "normal",
+        platform: "whatsapp-web",
+        targetUrl: "https://web.whatsapp.com/send?phone=919810000001",
+        contact: {
+          displayName: "Worker Split A",
+          phone: "+91 98100 00001"
+        },
+        draftMessage: "Hi Worker Split A, checking if this is useful.",
+        contextSummary: "Worker task A should stay attached only to lead A.",
+        createdAt: "2026-06-02T09:10:00.000Z",
+        updatedAt: "2026-06-02T09:10:00.000Z"
+      },
+      {
+        id: "task_worker_split_b",
+        tenantId: scope.tenantId,
+        ownerId: scope.ownerId,
+        leadId: "lead_worker_split_b",
+        type: "initiate_conversation",
+        status: "queued",
+        priority: "normal",
+        platform: "whatsapp-web",
+        targetUrl: "https://web.whatsapp.com/send?phone=919810000002",
+        contact: {
+          displayName: "Worker Split B",
+          phone: "+91 98100 00002"
+        },
+        draftMessage: "Hi Worker Split B, checking if this is useful.",
+        contextSummary: "Worker task B should stay attached only to lead B.",
+        createdAt: "2026-06-02T09:11:00.000Z",
+        updatedAt: "2026-06-02T09:11:00.000Z"
+      }
+    ]);
+
+    const splitRecords = await listLeadKnowledgeRecords(scope);
+    const splitA = splitRecords.find((lead) => lead.id === "lead_worker_split_a");
+    const splitB = splitRecords.find((lead) => lead.id === "lead_worker_split_b");
+    assert(splitA, "task A should create its own CRM lead");
+    assert(splitB, "task B should create its own CRM lead");
+    assert.equal(splitA.messages.some((message) => message.body.includes("Worker task B")), false);
+    assert.equal(splitB.messages.some((message) => message.body.includes("Worker task A")), false);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

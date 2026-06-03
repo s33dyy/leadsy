@@ -301,8 +301,7 @@ function upsertLead(state: LeadKnowledgeState, scope: Scope, input: {
   const now = nowIso();
   const contact = cleanContact(input.contact);
   const identityKeys = uniqueStrings([...input.identityKeys, ...identityKeysForContact("generic", contact)]);
-  const existing =
-    (input.leadId ? findLeadById(state, scope, input.leadId) : undefined) ?? findLeadByIdentity(state, scope, identityKeys);
+  const existing = input.leadId ? findLeadById(state, scope, input.leadId) : findLeadByIdentity(state, scope, identityKeys);
 
   if (existing) {
     existing.identityKeys = uniqueStrings([...existing.identityKeys, ...identityKeys]);
@@ -667,6 +666,17 @@ function phoneFromTaskTargetUrl(value?: string) {
   }
 }
 
+function profileUrlForExtensionTask(task: ExtensionTask, targetPhone?: string) {
+  if (task.contact.profileUrl) return task.contact.profileUrl;
+  if (task.platform === "whatsapp-web" && targetPhone) return undefined;
+  return task.targetUrl;
+}
+
+function profileIdentityForExtensionTaskTarget(task: ExtensionTask, targetPhone?: string) {
+  if (task.platform === "whatsapp-web" && targetPhone) return undefined;
+  return profileKey(task.platform, task.targetUrl);
+}
+
 function nextActionForExtensionTask(task: ExtensionTask) {
   if (task.status === "sent" || task.status === "monitoring") return "Monitor for reply or log the next outcome.";
   if (task.status === "postponed") return task.postponedReason || "Task postponed. Review when it becomes due.";
@@ -694,25 +704,23 @@ function bodyForExtensionTask(task: ExtensionTask) {
 export async function syncLeadKnowledgeFromExtensionTasks(scope: Scope, tasks: ExtensionTask[]) {
   const state = await readState();
   const saved: LeadKnowledgeMessage[] = [];
+  let changed = false;
 
   for (const task of tasks) {
     if (!scopeMatches(scope, task) || task.deletedAt) continue;
 
     const externalId = `extension-task:${task.id}:knowledge`;
-    const existingMessage = state.messages.find((message) => scopeMatches(scope, message) && message.externalId === externalId);
-    if (existingMessage) continue;
-
     const targetPhone = phoneFromTaskTargetUrl(task.targetUrl);
     const contact = cleanContact({
       ...task.contact,
       phone: task.contact.phone || targetPhone,
-      profileUrl: task.contact.profileUrl || task.targetUrl
+      profileUrl: profileUrlForExtensionTask(task, targetPhone)
     });
     const channel = channelForExtensionPlatform(task.platform);
     const identityKeys = uniqueStrings([
       ...identityKeysForContact(task.platform, contact),
       phoneKey(targetPhone),
-      profileKey(task.platform, task.targetUrl)
+      profileIdentityForExtensionTaskTarget(task, targetPhone)
     ]);
     const lead = upsertLead(state, scope, {
       leadId: task.leadId,
@@ -730,43 +738,81 @@ export async function syncLeadKnowledgeFromExtensionTasks(scope: Scope, tasks: E
       contact.handle ||
       contact.profileUrl ||
       task.id;
+    const externalKey = `extension-task:${task.platform}:${conversationKey}`;
+    const previousConversation = state.conversations.find(
+      (conversation) => scopeMatches(scope, conversation) && conversation.source === "extension" && conversation.externalKey === externalKey
+    );
+    const previousConversationLeadId = previousConversation?.leadId;
     const conversation = upsertConversation(state, scope, {
       leadId: lead.id,
       channel,
       source: "extension",
-      externalKey: `extension-task:${task.platform}:${conversationKey}`,
+      externalKey,
       sourceUrl: task.targetUrl,
       contact,
       summary: task.contextSummary || task.resultSummary,
       nextAction: nextActionForExtensionTask(task)
     });
+    if (previousConversationLeadId && previousConversationLeadId !== lead.id) {
+      changed = true;
+      updateLeadFromConversation(state, previousConversationLeadId);
+    }
     const occurredAt = task.completedAt || task.updatedAt || task.createdAt || nowIso();
-    const result = addMessage(state, scope, {
-      leadId: lead.id,
-      conversationId: conversation.id,
-      source: "extension",
-      channel,
-      externalId,
-      direction: "system",
-      body: bodyForExtensionTask(task),
-      messageType: "worker-task",
-      sentAt: occurredAt,
-      receivedAt: occurredAt,
-      raw: {
-        taskId: task.id,
-        status: task.status,
-        type: task.type,
-        priority: task.priority
+    const body = bodyForExtensionTask(task);
+    const raw = {
+      taskId: task.id,
+      status: task.status,
+      type: task.type,
+      priority: task.priority
+    };
+    const existingMessage = state.messages.find((message) => scopeMatches(scope, message) && message.externalId === externalId);
+    if (existingMessage) {
+      const previousMessageLeadId = existingMessage.leadId;
+      const previousMessageConversationId = existingMessage.conversationId;
+      if (existingMessage.leadId !== lead.id) {
+        existingMessage.leadId = lead.id;
+        changed = true;
       }
-    });
-    if (result.saved) {
-      saved.push(result.message);
+      if (existingMessage.conversationId !== conversation.id) {
+        existingMessage.conversationId = conversation.id;
+        changed = true;
+      }
+      if (existingMessage.channel !== channel) {
+        existingMessage.channel = channel;
+        changed = true;
+      }
+      if (existingMessage.body !== body) {
+        existingMessage.body = body;
+        changed = true;
+      }
+      existingMessage.raw = raw;
       recalculateConversation(state, conversation.id);
       updateLeadFromConversation(state, lead.id);
+      if (previousMessageConversationId !== conversation.id) recalculateConversation(state, previousMessageConversationId);
+      if (previousMessageLeadId !== lead.id) updateLeadFromConversation(state, previousMessageLeadId);
+    } else {
+      const result = addMessage(state, scope, {
+        leadId: lead.id,
+        conversationId: conversation.id,
+        source: "extension",
+        channel,
+        externalId,
+        direction: "system",
+        body,
+        messageType: "worker-task",
+        sentAt: occurredAt,
+        receivedAt: occurredAt,
+        raw
+      });
+      if (result.saved) {
+        saved.push(result.message);
+        recalculateConversation(state, conversation.id);
+        updateLeadFromConversation(state, lead.id);
+      }
     }
   }
 
-  if (saved.length) await writeState(state);
+  if (saved.length || changed) await writeState(state);
   return { saved };
 }
 
