@@ -15,6 +15,7 @@ async function main() {
       saveUnifiedMetaWebhookMessages,
       setLeadConversationKnowledgeStatus,
       setLeadKnowledgeStatus,
+      syncLeadKnowledgeFromExtensionTasks,
       syncLeadsyExtensionConversation
     } = await import("../apps/web/src/lib/lead-knowledge-store");
 
@@ -219,6 +220,33 @@ async function main() {
     });
     assert.equal(contextAfterLeadExclusion.lead?.leadStatus, "excluded");
     assert.equal(contextAfterLeadExclusion.messages.length, 0, "excluded leads should not feed AI message context");
+
+    await syncLeadKnowledgeFromExtensionTasks(scope, [
+      {
+        id: "task_worker_only_1",
+        tenantId: scope.tenantId,
+        ownerId: scope.ownerId,
+        type: "initiate_conversation",
+        status: "queued",
+        priority: "normal",
+        platform: "whatsapp-web",
+        targetUrl: "https://web.whatsapp.com/send?phone=919810000000",
+        contact: {
+          displayName: "Worker Only Lead",
+          phone: "+91 98100 00000"
+        },
+        draftMessage: "Hi Worker Only Lead, would it make sense to discuss this week?",
+        contextSummary: "Worker task exists before any webhook or extension chat sync.",
+        createdAt: "2026-06-02T09:00:00.000Z",
+        updatedAt: "2026-06-02T09:00:00.000Z"
+      }
+    ]);
+
+    const recordsAfterTaskSync = await listLeadKnowledgeRecords(scope);
+    const workerOnlyLead = recordsAfterTaskSync.find((lead) => lead.contact.displayName === "Worker Only Lead");
+    assert(workerOnlyLead, "worker-only tasks should appear as CRM lead knowledge records");
+    assert.equal(workerOnlyLead.channels.includes("whatsapp-web"), true);
+    assert.equal(workerOnlyLead.messages.some((message) => message.body.includes("Worker task exists before any webhook")), true);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

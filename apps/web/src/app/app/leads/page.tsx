@@ -24,6 +24,7 @@ import { getCurrentSession } from "@/lib/auth";
 import { listExtensionTaskEvents, listExtensionTasks, type ExtensionTask, type ExtensionTaskEvent } from "@/lib/extension-store";
 import {
   listLeadKnowledgeRecords,
+  syncLeadKnowledgeFromExtensionTasks,
   type LeadKnowledgeChannel,
   type LeadKnowledgeConversation,
   type LeadKnowledgeMessage,
@@ -337,8 +338,11 @@ function Metric({
 export default async function LeadsPage({ searchParams }: LeadsPageProps) {
   const params = searchParams ? await searchParams : {};
   const session = await getCurrentSession();
-  const leads = session ? await listLeadKnowledgeRecords({ tenantId: session.tenantId, ownerId: session.id }) : [];
   const tasks = session ? await listExtensionTasks(session.tenantId, session.id) : [];
+  if (session) {
+    await syncLeadKnowledgeFromExtensionTasks({ tenantId: session.tenantId, ownerId: session.id }, tasks);
+  }
+  const leads = session ? await listLeadKnowledgeRecords({ tenantId: session.tenantId, ownerId: session.id }) : [];
   const leadTasks = backfillLeadIdsForTasks(tasks, leads);
   const taskEvents = session ? await listExtensionTaskEvents(session.tenantId, session.id) : [];
   const requestedView = paramValue(params, "view") as ViewFilter;

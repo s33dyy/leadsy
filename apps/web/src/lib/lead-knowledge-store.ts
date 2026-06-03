@@ -8,7 +8,8 @@ import type {
   ExtensionConversationInsight,
   ExtensionMessageDirection,
   ExtensionMessageGeneratedBy,
-  ExtensionPlatform
+  ExtensionPlatform,
+  ExtensionTask
 } from "./extension-store";
 
 const knowledgeFile = join(leadsyDataDir, "lead-knowledge.json");
@@ -654,6 +655,119 @@ function extensionDirection(direction: ExtensionMessageDirection): LeadKnowledge
   if (direction === "inbound") return "inbound";
   if (direction === "outbound") return "outbound";
   return "system";
+}
+
+function phoneFromTaskTargetUrl(value?: string) {
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    return url.searchParams.get("phone") ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function nextActionForExtensionTask(task: ExtensionTask) {
+  if (task.status === "sent" || task.status === "monitoring") return "Monitor for reply or log the next outcome.";
+  if (task.status === "postponed") return task.postponedReason || "Task postponed. Review when it becomes due.";
+  if (task.status === "blocked" || task.status === "failed") {
+    return task.blockedReason || task.resultSummary || "Review the blocked worker task.";
+  }
+  if (task.status === "cancelled") return "Task cancelled. Keep the history for context.";
+  return "Run or review the worker task from Leadsy.";
+}
+
+function bodyForExtensionTask(task: ExtensionTask) {
+  return [
+    `Worker task ${task.type.replace(/_/g, " ")} is ${task.status}.`,
+    task.contextSummary,
+    task.draftMessage ? `Draft: ${task.draftMessage}` : undefined,
+    task.resultSummary ? `Result: ${task.resultSummary}` : undefined,
+    task.blockedReason ? `Blocked: ${task.blockedReason}` : undefined,
+    task.postponedReason ? `Postponed: ${task.postponedReason}` : undefined,
+    task.targetUrl ? `Target: ${task.targetUrl}` : undefined
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+export async function syncLeadKnowledgeFromExtensionTasks(scope: Scope, tasks: ExtensionTask[]) {
+  const state = await readState();
+  const saved: LeadKnowledgeMessage[] = [];
+
+  for (const task of tasks) {
+    if (!scopeMatches(scope, task) || task.deletedAt) continue;
+
+    const externalId = `extension-task:${task.id}:knowledge`;
+    const existingMessage = state.messages.find((message) => scopeMatches(scope, message) && message.externalId === externalId);
+    if (existingMessage) continue;
+
+    const targetPhone = phoneFromTaskTargetUrl(task.targetUrl);
+    const contact = cleanContact({
+      ...task.contact,
+      phone: task.contact.phone || targetPhone,
+      profileUrl: task.contact.profileUrl || task.targetUrl
+    });
+    const channel = channelForExtensionPlatform(task.platform);
+    const identityKeys = uniqueStrings([
+      ...identityKeysForContact(task.platform, contact),
+      phoneKey(targetPhone),
+      profileKey(task.platform, task.targetUrl)
+    ]);
+    const lead = upsertLead(state, scope, {
+      leadId: task.leadId,
+      identityKeys,
+      contact,
+      summary: task.contextSummary || task.resultSummary,
+      nextAction: nextActionForExtensionTask(task),
+      facts: [task.contextSummary, task.resultSummary, task.blockedReason, task.postponedReason].filter(Boolean) as string[]
+    });
+    const conversationKey =
+      task.conversationId ||
+      task.targetUrl ||
+      contact.phone ||
+      contact.email ||
+      contact.handle ||
+      contact.profileUrl ||
+      task.id;
+    const conversation = upsertConversation(state, scope, {
+      leadId: lead.id,
+      channel,
+      source: "extension",
+      externalKey: `extension-task:${task.platform}:${conversationKey}`,
+      sourceUrl: task.targetUrl,
+      contact,
+      summary: task.contextSummary || task.resultSummary,
+      nextAction: nextActionForExtensionTask(task)
+    });
+    const occurredAt = task.completedAt || task.updatedAt || task.createdAt || nowIso();
+    const result = addMessage(state, scope, {
+      leadId: lead.id,
+      conversationId: conversation.id,
+      source: "extension",
+      channel,
+      externalId,
+      direction: "system",
+      body: bodyForExtensionTask(task),
+      messageType: "worker-task",
+      sentAt: occurredAt,
+      receivedAt: occurredAt,
+      raw: {
+        taskId: task.id,
+        status: task.status,
+        type: task.type,
+        priority: task.priority
+      }
+    });
+    if (result.saved) {
+      saved.push(result.message);
+      recalculateConversation(state, conversation.id);
+      updateLeadFromConversation(state, lead.id);
+    }
+  }
+
+  if (saved.length) await writeState(state);
+  return { saved };
 }
 
 export async function syncLeadsyExtensionConversation(input: Scope & {
