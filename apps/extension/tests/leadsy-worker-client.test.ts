@@ -120,4 +120,42 @@ describe("LeadsyWorkerClient", () => {
     expect(result).toEqual(fallbackDecision);
     expect(local.decideReply).toHaveBeenCalledTimes(1);
   });
+
+  it("syncs the full captured conversation history to Leadsy", async () => {
+    const local = {
+      detectProfile: vi.fn(),
+      decideReply: vi.fn()
+    };
+    const fetchFn = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    const client = new LeadsyWorkerClient({
+      baseUrl: "http://localhost:3000",
+      token: "tok_test",
+      fetchFn,
+      fallback: local
+    });
+    const messages = Array.from({ length: 75 }, (_, index) => ({
+      id: `message:${index + 1}`,
+      direction: index % 2 === 0 ? ("incoming" as const) : ("outgoing" as const),
+      text: `Captured message ${index + 1}`,
+      timestamp: Date.UTC(2026, 5, 3, 9, index),
+      sourceUrl: "https://web.whatsapp.com/send?phone=919830000000"
+    }));
+
+    await client.syncConversation({
+      chat: {
+        chatFingerprint: "https://web.whatsapp.com/send?phone=919830000000",
+        approvalState: "approved",
+        messages,
+        createdAt: 1,
+        updatedAt: 1
+      },
+      messages
+    });
+
+    const request = fetchFn.mock.calls[0]?.[1];
+    const body = JSON.parse(String(request?.body));
+    expect(body.messages).toHaveLength(75);
+    expect(body.messages[0].externalId).toBe("message:1");
+    expect(body.messages.at(-1).externalId).toBe("message:75");
+  });
 });

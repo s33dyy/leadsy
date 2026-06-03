@@ -84,6 +84,29 @@ describe("task tab routing", () => {
     expect(create).not.toHaveBeenCalled();
   });
 
+  it("falls back to all tabs when Chrome URL matching misses an existing platform tab", async () => {
+    const query = vi.fn(async (input: chrome.tabs.QueryInfo) => {
+      if (input.active) return [];
+      if (input.url === "https://web.whatsapp.com/*") return [];
+      return [
+        {
+          id: 44,
+          url: "https://web.whatsapp.com/"
+        }
+      ];
+    });
+    const update = vi.fn(async () => ({ id: 44 }));
+    const create = vi.fn();
+    vi.stubGlobal("chrome", { tabs: { query, update, create } });
+
+    const tab = await getOrCreateTaskTab(task);
+
+    expect(tab.id).toBe(44);
+    expect(query).toHaveBeenCalledWith({});
+    expect(update).toHaveBeenCalledWith(44, { active: true, url: task.targetUrl });
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it("reuses existing Instagram and Facebook tabs before creating a new tab", async () => {
     const query = vi.fn(async (input: chrome.tabs.QueryInfo) => {
       if (input.active) return [];

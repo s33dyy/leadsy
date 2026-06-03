@@ -107,7 +107,7 @@ export class LeadsyWorkerClient implements WorkerModelClient {
         platform: platformFromUrl(lastMessage?.sourceUrl || input.chat.chatFingerprint),
         sourceUrl: lastMessage?.sourceUrl || input.chat.chatFingerprint,
         chatFingerprint: input.chat.chatFingerprint,
-        messages: input.messages.slice(-60).map((message) => ({
+        messages: input.messages.map((message) => ({
           externalId: message.id,
           direction: message.direction === "incoming" ? "inbound" : message.direction === "outgoing" ? "outbound" : "system",
           body: message.text,

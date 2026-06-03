@@ -26,6 +26,17 @@ export async function getOrCreateTaskTab(task: ExtensionTask) {
     }
   }
 
+  const allTabs = await chrome.tabs.query({});
+  const fallbackSameTarget = allTabs.find((tab) => tab.id && tab.url && sameExactTarget(tab.url, targetUrl, task));
+  if (fallbackSameTarget?.id) {
+    return focusTab(fallbackSameTarget.id);
+  }
+
+  const fallbackReusable = allTabs.find((tab) => tab.id && tab.url && samePlatformTarget(tab.url, task));
+  if (fallbackReusable?.id) {
+    return focusTab(fallbackReusable.id, targetUrl);
+  }
+
   const created = await chrome.tabs.create({ url: targetUrl });
   if (!created) {
     throw new Error("Could not open task tab.");
