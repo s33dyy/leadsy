@@ -27,9 +27,10 @@ export type StateListener = (state: OverlayState) => void;
 
 export type TaskPreparationResult =
   | { status: "prepared"; draftMessage: string }
-  | { status: "blocked"; reason: "target_not_on_whatsapp" | "composer_missing" | "send_button_missing"; summary: string };
-type TaskBlockedResult = Extract<TaskPreparationResult, { status: "blocked" }>;
-export type TaskExecutionResult = { status: "sent"; externalId: string; sentAt: string } | TaskBlockedResult;
+  | { status: "postponed"; reason: "target_not_on_whatsapp"; summary: string }
+  | { status: "blocked"; reason: "composer_missing" | "send_button_missing"; summary: string };
+type TaskStoppedResult = Extract<TaskPreparationResult, { status: "blocked" | "postponed" }>;
+export type TaskExecutionResult = { status: "sent"; externalId: string; sentAt: string } | TaskStoppedResult;
 type TaskComposerControls = {
   composer: HTMLElement;
   sendButton: HTMLElement;
@@ -164,6 +165,10 @@ export class ChatAutomationController {
 
   async sendApprovedTask(task: ExtensionTask): Promise<{ externalId: string; sentAt: string }> {
     return this.sendPreparedTask(task);
+  }
+
+  async sendTaskWithoutApproval(task: ExtensionTask): Promise<TaskExecutionResult> {
+    return this.executeTask(task);
   }
 
   async executeTask(task: ExtensionTask): Promise<TaskExecutionResult> {
@@ -594,7 +599,7 @@ function taskCanBePrepared(status: ExtensionTask["status"]) {
   return status === "queued" || status === "in_progress" || status === "awaiting_send_approval";
 }
 
-function detectTaskBlocker(task: ExtensionTask): TaskBlockedResult | undefined {
+function detectTaskBlocker(task: ExtensionTask): TaskStoppedResult | undefined {
   if (task.platform !== "whatsapp-web") return undefined;
 
   const bodyText = (document.body?.innerText || document.body?.textContent || "").replace(/\s+/g, " ").trim();
@@ -605,7 +610,7 @@ function detectTaskBlocker(task: ExtensionTask): TaskBlockedResult | undefined {
 
   const phone = task.contact.phone ? ` ${task.contact.phone}` : "";
   return {
-    status: "blocked",
+    status: "postponed",
     reason: "target_not_on_whatsapp",
     summary: `WhatsApp reports${phone} is not on WhatsApp.`
   };

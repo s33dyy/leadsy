@@ -7,9 +7,10 @@ import { completeExtensionTask } from "@/lib/extension-store";
 export const runtime = "nodejs";
 
 const schema = z.object({
-  status: z.enum(["sent", "monitoring", "blocked", "failed"]),
+  status: z.enum(["sent", "monitoring", "postponed", "blocked", "failed"]),
   resultSummary: z.string().trim().min(1).max(1000),
   reason: z.string().trim().min(1).max(120).optional(),
+  postponedUntil: z.string().trim().min(1).max(80).optional(),
   outboundMessage: z
     .object({
       externalId: z.string().trim().min(1).max(300),

@@ -111,7 +111,7 @@ describe("ChatAutomationController", () => {
     controller.pause("test cleanup");
   });
 
-  it("blocks WhatsApp tasks when the page says the number is not on WhatsApp", async () => {
+  it("postpones WhatsApp tasks when the page says the number is not on WhatsApp", async () => {
     document.body.innerHTML = `
       <div role="dialog">
         <p>The number +91 124 425 2720 isn't on WhatsApp.</p>
@@ -137,7 +137,7 @@ describe("ChatAutomationController", () => {
     });
 
     expect(prepared).toMatchObject({
-      status: "blocked",
+      status: "postponed",
       reason: "target_not_on_whatsapp"
     });
   });

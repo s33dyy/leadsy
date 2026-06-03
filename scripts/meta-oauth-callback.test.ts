@@ -62,6 +62,8 @@ async function main() {
         business_id: "business_123",
         waba_id: "waba_123",
         phone_number_id: "phone_123",
+        page_id: "page_123",
+        instagram_business_account_id: "ig_123",
         code: "code_123"
       }
     });
@@ -69,6 +71,11 @@ async function main() {
     assert.equal(saved.businessId, "business_123");
     assert.equal(saved.whatsappBusinessAccountId, "waba_123");
     assert.equal(saved.phoneNumberId, "phone_123");
+    assert.equal(saved.facebookPageId, "page_123");
+    assert.equal(saved.instagramBusinessAccountId, "ig_123");
+    assert.equal(saved.channels.whatsapp.status, "connected");
+    assert.equal(saved.channels.facebook.status, "connected");
+    assert.equal(saved.channels.instagram.status, "connected");
     assert.equal(saved.rawQuery.code, undefined, "OAuth codes should not be persisted after exchange");
 
     const connections = await listMetaOAuthConnections("tenant_test", "owner_test");

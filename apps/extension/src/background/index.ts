@@ -13,6 +13,7 @@ type RuntimeMessage =
   | { type: "leadsy:getContext" }
   | { type: "leadsy:getTasks" }
   | { type: "leadsy:openTask"; taskId: string }
+  | { type: "leadsy:runSelectedTasks"; taskIds: string[] }
   | { type: "leadsy:getActiveTask" }
   | { type: "leadsy:prepareTask"; taskId: string; draftMessage: string }
   | {
@@ -26,9 +27,10 @@ type RuntimeMessage =
   | {
       type: "leadsy:completeTask";
       taskId: string;
-      status: "sent" | "monitoring" | "blocked" | "failed";
+      status: "sent" | "monitoring" | "postponed" | "blocked" | "failed";
       resultSummary: string;
       reason?: string;
+      postponedUntil?: string;
       outboundMessage?: {
         externalId: string;
         body: string;
@@ -58,8 +60,6 @@ chrome.runtime.onInstalled.addListener(() => {
   void chrome.sidePanel?.setPanelBehavior?.({ openPanelOnActionClick: true });
 });
 
-void startTaskRunner();
-
 chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendResponse) => {
   void handleMessage(message, sender)
     .then((value) => sendResponse({ ok: true, value }))
@@ -87,6 +87,8 @@ async function handleMessage(message: RuntimeMessage, sender: chrome.runtime.Mes
     }
     case "leadsy:openTask":
       return openTask(message.taskId);
+    case "leadsy:runSelectedTasks":
+      return runSelectedTasks(message.taskIds);
     case "leadsy:getActiveTask":
       return getActiveTask();
     case "leadsy:prepareTask":
@@ -117,35 +119,7 @@ async function handleMessage(message: RuntimeMessage, sender: chrome.runtime.Mes
 
 const activeTaskKey = "leadsyActiveTask";
 const activeTaskTabKey = "leadsyActiveTaskTabId";
-let taskRunnerBusy = false;
-
-async function startTaskRunner() {
-  await runTaskQueueOnce().catch(() => undefined);
-  globalThis.setInterval(() => {
-    void runTaskQueueOnce().catch(() => undefined);
-  }, 15_000);
-}
-
-async function runTaskQueueOnce() {
-  if (taskRunnerBusy) return;
-  taskRunnerBusy = true;
-  try {
-    const tasks = await fetchLeadsyJson<{ tasks: ExtensionTask[] }>("/api/extension/tasks").then((payload) => payload.tasks);
-    const task = nextRunnableTask(tasks);
-    if (task) {
-      await openTask(task.id);
-    }
-  } finally {
-    taskRunnerBusy = false;
-  }
-}
-
-function nextRunnableTask(tasks: ExtensionTask[]) {
-  return (
-    tasks.find((task) => Boolean(task.sendApprovedAt) && task.status !== "sent" && task.status !== "blocked" && task.status !== "failed") ||
-    tasks.find((task) => task.status === "queued" || task.status === "approved")
-  );
-}
+let selectedBatchBusy = false;
 
 async function workerClient(): Promise<WorkerModelClient & { syncConversation?: LeadsyWorkerClient["syncConversation"] }> {
   const settings = await loadConnectionSettings();
@@ -196,8 +170,51 @@ async function fetchLeadsyJson<T = unknown>(path: string, init: RequestInit = {}
 }
 
 async function openTask(taskId: string) {
+  return claimAndOpenTask(taskId, { execute: false });
+}
+
+async function runSelectedTasks(taskIds: string[]) {
+  if (selectedBatchBusy) throw new Error("A selected task batch is already running.");
+  const orderedTaskIds = [...new Set(taskIds.map((taskId) => taskId.trim()).filter(Boolean))];
+  if (!orderedTaskIds.length) throw new Error("Select at least one task to run.");
+
+  selectedBatchBusy = true;
+  const batchRunId = `batch_${Date.now()}`;
+  const result = {
+    batchRunId,
+    requested: orderedTaskIds.length,
+    sent: 0,
+    postponed: 0,
+    failed: 0
+  };
+
+  try {
+    for (const taskId of orderedTaskIds) {
+      try {
+        await claimAndOpenTask(taskId, { execute: true, batchRunId });
+        const activeTask = await getActiveTask().catch(() => undefined);
+        if (!activeTask) {
+          result.sent += 1;
+        }
+      } catch {
+        await chrome.storage.local.remove(activeTaskKey).catch(() => undefined);
+        await chrome.storage.local.remove(activeTaskTabKey).catch(() => undefined);
+        result.failed += 1;
+      }
+    }
+    return result;
+  } finally {
+    selectedBatchBusy = false;
+  }
+}
+
+async function claimAndOpenTask(taskId: string, options: { execute: boolean; batchRunId?: string }) {
   const task = await fetchLeadsyJson<ExtensionTask>(`/api/extension/tasks/${encodeURIComponent(taskId)}/claim`, {
-    method: "POST"
+    method: "POST",
+    body: JSON.stringify({
+      runBatchId: options.batchRunId,
+      runMode: options.execute ? "selected_batch" : "manual"
+    })
   });
   if (!task.targetUrl) {
     await logTaskEvent({
@@ -217,11 +234,14 @@ async function openTask(taskId: string) {
     });
     throw new Error("Task is missing a target chat/profile.");
   }
-  await chrome.storage.local.set({ [activeTaskKey]: task });
+  const activeTask = options.execute && options.batchRunId ? { ...task, runBatchId: options.batchRunId, runMode: "selected_batch" as const } : task;
+  await chrome.storage.local.set({ [activeTaskKey]: activeTask });
   const tab = await getOrCreateTaskTab(task);
   if (tab.id) {
     await chrome.storage.local.set({ [activeTaskTabKey]: tab.id });
-    nudgeTaskPreparationWhenTabLoads(tab.id);
+    if (options.execute && options.batchRunId) {
+      await executeTaskInTab(tab.id, options.batchRunId);
+    }
   }
   await logTaskEvent({
     type: "leadsy:logTaskEvent",
@@ -229,26 +249,38 @@ async function openTask(taskId: string) {
     eventType: "worker_opened",
     summary: `Worker opened ${task.targetUrl}.`
   }).catch(() => undefined);
-  return task;
+  return activeTask;
 }
 
-function nudgeTaskPreparationWhenTabLoads(tabId: number) {
-  const sendPrepareMessage = () =>
-    chrome.tabs
-      .sendMessage(tabId, { type: "leadsy:prepareActiveTask" })
+async function executeTaskInTab(tabId: number, batchRunId: string) {
+  await waitForTabComplete(tabId);
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    const response = await chrome.tabs
+      .sendMessage(tabId, { type: "leadsy:executeActiveTask", batchRunId })
       .catch(() => undefined);
+    if (response?.ok) return;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error("Could not execute the active task in the chat tab.");
+}
 
-  const listener = (updatedTabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
-    if (updatedTabId !== tabId || changeInfo.status !== "complete") return;
-    chrome.tabs.onUpdated.removeListener(listener);
-    void sendPrepareMessage();
-  };
-
-  chrome.tabs.onUpdated.addListener(listener);
-  globalThis.setTimeout(() => {
-    chrome.tabs.onUpdated.removeListener(listener);
-    void sendPrepareMessage();
-  }, 2500);
+async function waitForTabComplete(tabId: number) {
+  const tab = await chrome.tabs.get(tabId).catch(() => undefined);
+  if (tab?.status === "complete") return;
+  await new Promise<void>((resolve) => {
+    const timeout = globalThis.setTimeout(() => {
+      chrome.tabs.onUpdated.removeListener(listener);
+      resolve();
+    }, 5000);
+    const listener = (updatedTabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
+      if (updatedTabId !== tabId || changeInfo.status !== "complete") return;
+      globalThis.clearTimeout(timeout);
+      chrome.tabs.onUpdated.removeListener(listener);
+      resolve();
+    };
+    chrome.tabs.onUpdated.addListener(listener);
+  });
 }
 
 async function getActiveTask() {
@@ -292,9 +324,10 @@ async function getActiveTaskTabId() {
 
 async function completeTask(input: {
   taskId: string;
-  status: "sent" | "monitoring" | "blocked" | "failed";
+  status: "sent" | "monitoring" | "postponed" | "blocked" | "failed";
   resultSummary: string;
   reason?: string;
+  postponedUntil?: string;
   outboundMessage?: {
     externalId: string;
     body: string;
@@ -307,6 +340,7 @@ async function completeTask(input: {
       status: input.status,
       resultSummary: input.resultSummary,
       reason: input.reason,
+      postponedUntil: input.postponedUntil,
       outboundMessage: input.outboundMessage
     })
   });

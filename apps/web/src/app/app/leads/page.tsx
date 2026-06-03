@@ -2,6 +2,7 @@ import {
   Ban,
   CheckCircle2,
   Clock,
+  EyeOff,
   ExternalLink,
   Filter,
   Inbox,
@@ -12,6 +13,8 @@ import {
   PhoneCall,
   RadioTower,
   Search,
+  Archive,
+  Pencil,
   UserRound,
   Workflow
 } from "lucide-react";
@@ -133,6 +136,10 @@ function noticeCopy(params: Record<string, string | string[] | undefined>) {
   if (notice === "conversation-excluded") return "Conversation excluded from AI knowledge.";
   if (notice === "conversation-restored") return "Conversation restored to AI knowledge.";
   if (notice === "manual-message-added") return "Manual communication logged.";
+  if (notice === "lead-edited") return "Lead details updated.";
+  if (notice === "lead-archived") return "Lead archived. History is preserved.";
+  if (notice === "message-hidden") return "Communication hidden from the active timeline.";
+  if (notice === "message-restored") return "Communication restored.";
   if (notice === "lead-magnet-archived") return "Lead Magnet is archived. Leads is the active workspace.";
   return "";
 }
@@ -231,8 +238,70 @@ function conversationsForCommChannel(lead: LeadKnowledgeRecord, commChannel: Com
 }
 
 function tasksForLead(tasks: ExtensionTask[], lead: LeadKnowledgeRecord) {
+  return tasks.filter((task) => taskMatchesLead(task, lead));
+}
+
+function backfillLeadIdsForTasks(tasks: ExtensionTask[], leads: LeadKnowledgeRecord[]) {
+  return tasks.map((task) => {
+    if (task.leadId) return task;
+    const match = leads.find((lead) => taskMatchesLead(task, lead));
+    return match ? { ...task, leadId: match.id } : task;
+  });
+}
+
+function taskMatchesLead(task: ExtensionTask, lead: LeadKnowledgeRecord) {
+  if (task.leadId === lead.id) return true;
   const conversationIds = new Set(lead.conversations.map((conversation) => conversation.id));
-  return tasks.filter((task) => task.leadId === lead.id || (task.conversationId ? conversationIds.has(task.conversationId) : false));
+  if (task.conversationId && conversationIds.has(task.conversationId)) return true;
+  const leadValues = identityValuesForLead(lead);
+  return identityValuesForTask(task).some((value) => leadValues.has(value));
+}
+
+function identityValuesForLead(lead: LeadKnowledgeRecord) {
+  return new Set(
+    [
+      lead.contact.phone,
+      lead.contact.waId,
+      lead.contact.email,
+      lead.contact.handle,
+      lead.contact.profileUrl,
+      ...lead.identityKeys,
+      ...lead.conversations.flatMap((conversation) => [conversation.sourceUrl, conversation.contact.phone, conversation.contact.email, conversation.contact.handle, conversation.contact.profileUrl])
+    ]
+      .flatMap((value) => normalizeIdentityValues(value))
+      .filter(Boolean)
+  );
+}
+
+function identityValuesForTask(task: ExtensionTask) {
+  return [
+    task.targetUrl,
+    whatsappPhoneFromUrl(task.targetUrl),
+    task.contact.phone,
+    task.contact.email,
+    task.contact.handle,
+    task.contact.profileUrl
+  ]
+    .flatMap((value) => normalizeIdentityValues(value))
+    .filter(Boolean);
+}
+
+function normalizeIdentityValues(value?: string) {
+  const clean = value?.trim();
+  if (!clean) return [];
+  const lower = clean.toLowerCase();
+  const digits = clean.replace(/\D/g, "");
+  return [lower, digits.length >= 7 ? digits : undefined].filter(Boolean) as string[];
+}
+
+function whatsappPhoneFromUrl(value?: string) {
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    return url.searchParams.get("phone") ?? undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function eventsForTasks(events: ExtensionTaskEvent[], tasks: ExtensionTask[]) {
@@ -270,6 +339,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
   const session = await getCurrentSession();
   const leads = session ? await listLeadKnowledgeRecords({ tenantId: session.tenantId, ownerId: session.id }) : [];
   const tasks = session ? await listExtensionTasks(session.tenantId, session.id) : [];
+  const leadTasks = backfillLeadIdsForTasks(tasks, leads);
   const taskEvents = session ? await listExtensionTaskEvents(session.tenantId, session.id) : [];
   const requestedView = paramValue(params, "view") as ViewFilter;
   const activeView = viewFilters.some((filter) => filter.id === requestedView) ? requestedView : "all";
@@ -336,7 +406,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
               query={query}
               activeTab={activeTab}
               commChannel={activeCommChannel}
-              tasks={tasksForLead(tasks, selectedLead)}
+              tasks={tasksForLead(leadTasks, selectedLead)}
               taskEvents={taskEvents}
             />
           ) : (
@@ -536,6 +606,39 @@ function LeadDetailsTab({ lead, href }: { lead: LeadKnowledgeRecord; href: strin
           </div>
         </div>
 
+        <details className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-4">
+          <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-semibold text-white">
+            <Pencil size={16} className="text-[var(--teal)]" />
+            Edit lead
+          </summary>
+          <form action="/api/leads/edit" method="post" className="mt-4 grid gap-3">
+            <input type="hidden" name="leadId" value={lead.id} />
+            <div className="grid gap-2 md:grid-cols-2">
+              <LeadInput name="displayName" label="Name" value={lead.contact.displayName} />
+              <LeadInput name="phone" label="Phone" value={lead.contact.phone || lead.contact.waId} />
+              <LeadInput name="email" label="Email" value={lead.contact.email} />
+              <LeadInput name="handle" label="Handle" value={lead.contact.handle} />
+            </div>
+            <LeadInput name="profileUrl" label="Profile URL" value={lead.contact.profileUrl} />
+            <label className="grid gap-2 text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
+              Summary
+              <textarea name="summary" defaultValue={lead.summary || ""} rows={3} className="rounded-[6px] border border-[var(--line)] bg-black/30 px-3 py-2 text-sm normal-case leading-6 tracking-normal text-white outline-none" />
+            </label>
+            <label className="grid gap-2 text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
+              Next action
+              <textarea name="nextAction" defaultValue={lead.nextAction || ""} rows={2} className="rounded-[6px] border border-[var(--line)] bg-black/30 px-3 py-2 text-sm normal-case leading-6 tracking-normal text-white outline-none" />
+            </label>
+            <label className="grid gap-2 text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
+              Facts
+              <textarea name="facts" defaultValue={lead.facts.join("\n")} rows={5} className="rounded-[6px] border border-[var(--line)] bg-black/30 px-3 py-2 text-sm normal-case leading-6 tracking-normal text-white outline-none" />
+            </label>
+            <button type="submit" className="inline-flex h-10 items-center justify-center gap-2 rounded-[6px] border border-teal-300/30 bg-teal-300/[0.12] px-3 text-sm font-medium text-teal-100 hover:bg-teal-300/[0.18]">
+              <Pencil size={15} />
+              Save lead
+            </button>
+          </form>
+        </details>
+
         <div className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-4">
           <div className="flex items-center gap-2 text-sm font-semibold text-white">
             <Workflow size={16} className="text-[var(--teal)]" />
@@ -582,6 +685,16 @@ function LeadDetailsTab({ lead, href }: { lead: LeadKnowledgeRecord; href: strin
             </span>
           )}
           <LeadStatusForm lead={lead} />
+          <form action="/api/leads/delete" method="post">
+            <input type="hidden" name="leadId" value={lead.id} />
+            <button
+              type="submit"
+              className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-[6px] border border-amber-300/25 bg-amber-300/10 px-3 text-sm font-medium text-amber-100 hover:bg-amber-300/[0.16]"
+            >
+              <Archive size={15} />
+              Archive lead
+            </button>
+          </form>
         </div>
 
         <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
@@ -603,6 +716,19 @@ function DetailLine({ label, value }: { label: string; value?: string }) {
       <div className="mono text-[10px] uppercase text-[var(--muted)]">{label}</div>
       <div className="mt-2 break-words text-sm text-white">{value || "Not recorded"}</div>
     </div>
+  );
+}
+
+function LeadInput({ name, label, value }: { name: string; label: string; value?: string }) {
+  return (
+    <label className="grid gap-2 text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
+      {label}
+      <input
+        name={name}
+        defaultValue={value || ""}
+        className="h-10 rounded-[6px] border border-[var(--line)] bg-black/30 px-3 text-sm normal-case tracking-normal text-white outline-none"
+      />
+    </label>
   );
 }
 
@@ -668,7 +794,7 @@ function LeadCommsTab({
           </div>
           <div className="mt-3 grid max-h-[620px] gap-2 overflow-y-auto overflow-x-hidden pr-1">
             {messages.length ? (
-              [...messages].reverse().map((message) => <MessageEvent key={message.id} message={message} />)
+              [...messages].reverse().map((message) => <MessageEvent key={message.id} lead={lead} message={message} />)
             ) : (
               <EmptyState icon={Inbox} title="No comms in this channel" detail="Choose another channel or log a manual communication." />
             )}
@@ -813,7 +939,7 @@ function ConversationCard({ lead, conversation }: { lead: LeadKnowledgeRecord; c
   );
 }
 
-function MessageEvent({ message }: { message: LeadKnowledgeMessage }) {
+function MessageEvent({ lead, message }: { lead: LeadKnowledgeRecord; message: LeadKnowledgeMessage }) {
   return (
     <div className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -829,6 +955,18 @@ function MessageEvent({ message }: { message: LeadKnowledgeMessage }) {
       <div className="mt-2 flex flex-wrap gap-2 text-xs text-[var(--muted)]">
         <span>{formatDate(message.sentAt)}</span>
         <Badge tone={toneForChannel(message.channel)}>{channelLabel(message.channel)}</Badge>
+        <form action="/api/leads/message-status" method="post">
+          <input type="hidden" name="leadId" value={lead.id} />
+          <input type="hidden" name="messageId" value={message.id} />
+          <input type="hidden" name="hidden" value="true" />
+          <button
+            type="submit"
+            className="inline-flex h-7 items-center justify-center gap-1 rounded-[6px] border border-[var(--line)] bg-black/20 px-2 text-[11px] font-medium text-[var(--muted-2)] hover:text-white"
+          >
+            <EyeOff size={12} />
+            Hide from timeline
+          </button>
+        </form>
       </div>
     </div>
   );

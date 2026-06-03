@@ -103,7 +103,11 @@ async function main() {
 
   const connectPage = await readFile(join(root, "apps/web/src/app/app/connect/page.tsx"), "utf8");
   assert(connectPage.includes("listMetaOAuthConnections"), "connection page should read saved Meta OAuth connections");
-  assert(connectPage.includes("Connect Meta / WhatsApp"), "connection config should lead with customer Meta onboarding");
+  assert(connectPage.includes("Connect Meta messaging"), "connection config should lead with all-channel customer Meta onboarding");
+  for (const channel of ["WhatsApp", "Instagram", "Facebook"]) {
+    assert(connectPage.includes(channel), `connection config should show ${channel} as a first-class Meta channel`);
+  }
+  assert(connectPage.includes("channelAssetsForConnection"), "connection config should derive per-channel asset readiness from saved Meta connection records");
   assert(connectPage.includes("Connected"), "connection config should show connected state after OAuth");
   assert(connectPage.includes("Reconnect Meta account"), "connection config should allow reconnecting without pretending setup is missing");
   assert(connectPage.includes("Advanced developer details"), "connection config should demote webhook details to an advanced section");
@@ -140,6 +144,12 @@ async function main() {
   assert(leadsPage.includes("Open conversation"), "lead rows should open channel-specific conversations when possible");
   assert(leadsPage.includes("Exclude lead"), "leads page should let non-lead contacts be excluded");
   assert(leadsPage.includes("Restore as lead"), "excluded contacts should be restorable without deleting the conversation");
+  assert(leadsPage.includes("/api/leads/edit"), "leads page should let users edit lead details and knowledge fields");
+  assert(leadsPage.includes("/api/leads/delete"), "leads page should let users soft-delete/archive lead records");
+  assert(leadsPage.includes("/api/leads/message-status"), "leads page should let users hide or restore individual communication records");
+  assert(leadsPage.includes("Edit lead"), "selected lead details should expose edit controls");
+  assert(leadsPage.includes("Archive lead"), "selected lead details should expose soft-delete controls");
+  assert(leadsPage.includes("Hide from timeline"), "communication timeline should expose soft-delete controls for comm records");
   assert(!leadsPage.includes("Incoming WhatsApp leads from Meta ads"), "leads page should not imply only Meta ad leads are tracked");
   for (const adminCopy of ["Raw webhook message", "rawPreview", "message.raw"]) {
     assert(!leadsPage.includes(adminCopy), `leads page should not expose admin/raw webhook copy: ${adminCopy}`);
@@ -151,6 +161,10 @@ async function main() {
 
   const workerPage = await readFile(join(root, "apps/web/src/app/app/worker/page.tsx"), "utf8");
   assert(workerPage.includes("ExtensionTaskBoard"), "worker page should keep the extension task board");
+  const extensionTaskBoard = await readFile(join(root, "apps/web/src/components/extension-task-board.tsx"), "utf8");
+  assert(extensionTaskBoard.includes("Edit task"), "worker board should expose task edit controls");
+  assert(extensionTaskBoard.includes("Delete task"), "worker board should expose soft-delete controls");
+  assert(extensionTaskBoard.includes("postponed"), "worker board should show postponed tasks");
 }
 
 main().catch((error) => {

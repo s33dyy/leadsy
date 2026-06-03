@@ -14,7 +14,7 @@ import { ExtensionPairing } from "@/components/extension-pairing";
 import { Badge, Panel, SectionTitle } from "@/components/ui";
 import { getCurrentSession } from "@/lib/auth";
 import { listExtensionTokens } from "@/lib/extension-store";
-import { listMetaOAuthConnections } from "@/lib/meta-oauth-store";
+import { listMetaOAuthConnections, type MetaOAuthConnectionSummary } from "@/lib/meta-oauth-store";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +47,29 @@ function metaStatusCopy(status?: string | string[]) {
   return undefined;
 }
 
+function channelAssetsForConnection(connection?: MetaOAuthConnectionSummary) {
+  return [
+    {
+      label: "WhatsApp",
+      icon: Phone,
+      status: connection?.channels?.whatsapp?.status ?? "needs_asset",
+      detail: connection?.phoneNumberId || connection?.whatsappBusinessAccountId || "Needs WABA / phone asset"
+    },
+    {
+      label: "Instagram",
+      icon: MessageCircle,
+      status: connection?.channels?.instagram?.status ?? "needs_asset",
+      detail: connection?.instagramBusinessAccountId || "Needs Instagram business account"
+    },
+    {
+      label: "Facebook",
+      icon: BadgeCheck,
+      status: connection?.channels?.facebook?.status ?? "needs_asset",
+      detail: connection?.facebookPageId || "Needs Facebook Page"
+    }
+  ];
+}
+
 export default async function ConnectPage({ searchParams }: ConnectPageProps) {
   const session = await getCurrentSession();
   const tokens = session ? await listExtensionTokens(session.tenantId, session.id) : [];
@@ -63,7 +86,7 @@ export default async function ConnectPage({ searchParams }: ConnectPageProps) {
     <div className="space-y-6">
       <Panel className="p-5 md:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <SectionTitle eyebrow="Meta connection" title="Connect Meta / WhatsApp" />
+          <SectionTitle eyebrow="Meta connection" title="Connect Meta messaging" />
           <Badge tone={hasMetaConnection ? "lime" : metaConnectUrl ? "teal" : "amber"}>
             {hasMetaConnection ? "Connected" : metaConnectUrl ? "Ready to connect" : "Onboarding pending"}
           </Badge>
@@ -85,17 +108,18 @@ export default async function ConnectPage({ searchParams }: ConnectPageProps) {
             </div>
 
             <div className="mt-5 grid gap-3 md:grid-cols-3">
-              {[
-                { icon: BadgeCheck, title: "Meta login", detail: "Owner grants Leadsy access." },
-                { icon: Phone, title: "Meta channels", detail: "Owner selects messaging assets." },
-                { icon: MessageCircle, title: "Incoming leads", detail: "Messages create lead records." }
-              ].map((item) => {
+              {channelAssetsForConnection(latestMetaConnection).map((item) => {
                 const Icon = item.icon;
                 return (
-                  <div key={item.title} className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-3">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                  <div key={item.label} className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-white">
                       <Icon size={16} className="text-[var(--teal)]" />
-                      {item.title}
+                        {item.label}
+                      </div>
+                      <Badge tone={item.status === "connected" ? "lime" : "amber"}>
+                        {item.status === "connected" ? "Connected" : "Needs asset"}
+                      </Badge>
                     </div>
                     <p className="mt-2 text-sm leading-6 text-[var(--muted-2)]">{item.detail}</p>
                   </div>

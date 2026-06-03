@@ -25,9 +25,9 @@ async function bootWorker() {
   });
 
   chip.mount(document.documentElement);
-  chrome.runtime.onMessage.addListener((message: { type?: string; task?: ExtensionTask }, _sender, sendResponse) => {
-    if (message.type === "leadsy:prepareActiveTask") {
-      void executeActiveTask(controller)
+  chrome.runtime.onMessage.addListener((message: { type?: string; task?: ExtensionTask; batchRunId?: string }, _sender, sendResponse) => {
+    if (message.type === "leadsy:executeActiveTask") {
+      void executeActiveTask(controller, undefined, message.batchRunId)
         .then(() => sendResponse({ ok: true }))
         .catch((error) => sendResponse({ ok: false, error: error instanceof Error ? error.message : "Could not execute active task." }));
       return true;
@@ -39,25 +39,21 @@ async function bootWorker() {
     return true;
   });
 
-  const activeTask = await runtimeClient.getActiveTask().catch(() => undefined);
-  if (activeTask && taskCanBeHandled(activeTask)) {
-    await executeActiveTask(controller, activeTask);
-  } else {
-    await controller.arm();
-  }
+  await controller.arm();
 }
 
-async function executeActiveTask(controller: ChatAutomationController, activeTask?: ExtensionTask) {
+async function executeActiveTask(controller: ChatAutomationController, activeTask?: ExtensionTask, batchRunId?: string) {
   const task = activeTask || (await runtimeClient.getActiveTask().catch(() => undefined));
   if (!task || !taskCanBeHandled(task)) return;
+  if (task.runMode !== "selected_batch" || !task.runBatchId || task.runBatchId !== batchRunId) return;
 
   try {
-    if (task.sendApprovedAt) {
-      const result = await controller.sendPreparedTask(task);
+    const result = await controller.sendTaskWithoutApproval(task);
+    if (result.status === "sent") {
       await runtimeClient.completeTask({
         taskId: task.id,
         status: "sent",
-        resultSummary: "Worker sent the Leadsy-approved task draft.",
+        resultSummary: "Worker sent the selected task draft.",
         outboundMessage: {
           externalId: result.externalId,
           body: task.draftMessage,
@@ -68,7 +64,24 @@ async function executeActiveTask(controller: ChatAutomationController, activeTas
       return;
     }
 
-    const result = await controller.prepareTaskForApproval(task);
+    if (result.status === "postponed") {
+      const postponedUntil = new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString();
+      await runtimeClient.logTaskEvent({
+        taskId: task.id,
+        eventType: "worker_postponed",
+        reason: result.reason,
+        summary: result.summary
+      });
+      await runtimeClient.completeTask({
+        taskId: task.id,
+        status: "postponed",
+        reason: result.reason,
+        resultSummary: result.summary,
+        postponedUntil
+      });
+      return;
+    }
+
     if (result.status === "blocked") {
       await runtimeClient.logTaskEvent({
         taskId: task.id,
@@ -84,12 +97,6 @@ async function executeActiveTask(controller: ChatAutomationController, activeTas
       });
       return;
     }
-    await runtimeClient.prepareTask(task.id, result.draftMessage);
-    await runtimeClient.logTaskEvent({
-      taskId: task.id,
-      eventType: "worker_prepared",
-      summary: "Worker prepared the draft and is waiting for Leadsy app approval."
-    }).catch(() => undefined);
   } catch (error) {
     await runtimeClient
       .completeTask({
@@ -120,9 +127,9 @@ async function sendPreparedTask(controller: ChatAutomationController, task?: Ext
 }
 
 function taskCanBeHandled(task: ExtensionTask) {
-  return taskCanBePrepared(task.status) || Boolean(task.sendApprovedAt);
+  return taskCanBePrepared(task.status);
 }
 
 function taskCanBePrepared(status: ExtensionTask["status"]) {
-  return status === "queued" || status === "in_progress";
+  return status === "queued" || status === "in_progress" || status === "postponed";
 }

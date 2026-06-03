@@ -11,5 +11,10 @@ assert(source.includes("CompactEmptyState"), "Board columns should use a compact
 assert(source.includes("approvePreparedSend"), "Leadsy app task board should own prepared-send approval.");
 assert(source.includes("/api/extension/tasks/"), "Leadsy app task board should call task APIs for approvals.");
 assert(source.includes("Reject"), "Leadsy app task board should let users reject prepared sends.");
+assert(source.includes("postponed"), "Leadsy app task board should include postponed tasks.");
+assert(source.includes("editTask"), "Leadsy app task board should support editing tasks.");
+assert(source.includes("deleteTask"), "Leadsy app task board should support soft-deleting tasks.");
+assert(source.includes("Edit task"), "Leadsy app task board should expose an edit affordance.");
+assert(source.includes("Delete task"), "Leadsy app task board should expose a delete affordance.");
 
 console.log("extension task board layout regression passed");

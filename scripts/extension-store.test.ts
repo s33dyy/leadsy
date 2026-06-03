@@ -14,10 +14,12 @@ async function main() {
     completeExtensionTask,
     createExtensionTask,
     createExtensionToken,
+    editExtensionTask,
     logExtensionTaskEvent,
     listExtensionTasks,
     listExtensionConversations,
     listExtensionTaskEvents,
+    softDeleteExtensionTask,
     prepareExtensionTask,
     resolveExtensionBearerToken,
     syncExtensionConversation
@@ -222,6 +224,40 @@ async function main() {
   assert.equal(taskEvents.length, 2);
   assert.equal(taskEvents.some((event) => event.reason === "target_not_on_whatsapp"), true);
 
+  const postponed = await completeExtensionTask({
+    tenantId: "tenant_test",
+    ownerId: "usr_owner",
+    taskId: blocked.id,
+    status: "postponed",
+    resultSummary: "WhatsApp reports this number is not on WhatsApp. Retrying tomorrow.",
+    reason: "target_not_on_whatsapp",
+    postponedUntil: "2026-06-03T08:01:00.000Z"
+  });
+  assert.equal(postponed.status, "postponed");
+  assert.equal(postponed.postponedUntil, "2026-06-03T08:01:00.000Z");
+  assert.equal(postponed.postponedReason, "target_not_on_whatsapp");
+
+  const edited = await editExtensionTask({
+    tenantId: "tenant_test",
+    ownerId: "usr_owner",
+    taskId: postponed.id,
+    draftMessage: "Edited follow-up draft.",
+    priority: "urgent",
+    leadId: "lead_no_profile"
+  });
+  assert.equal(edited.draftMessage, "Edited follow-up draft.");
+  assert.equal(edited.priority, "urgent");
+  assert.equal(edited.leadId, "lead_no_profile");
+
+  const deleted = await softDeleteExtensionTask({
+    tenantId: "tenant_test",
+    ownerId: "usr_owner",
+    taskId: postponed.id,
+    resultSummary: "Task hidden from active worker queue."
+  });
+  assert.equal(deleted.status, "cancelled");
+  assert.equal(typeof deleted.deletedAt, "string");
+
   const cancelled = await cancelExtensionTask({
     tenantId: "tenant_test",
     ownerId: "usr_owner",
@@ -231,12 +267,14 @@ async function main() {
   assert.equal(cancelled.status, "cancelled");
 
   const tasks = await listExtensionTasks("tenant_test", "usr_owner");
-  assert.equal(tasks.length, 2);
+  assert.equal(tasks.length, 1, "soft-deleted tasks should be hidden from the default worker list");
   assert.deepEqual(
     tasks.map((item) => item.status).sort(),
-    ["cancelled", "sent"],
-    "task list should include completed lifecycle states"
+    ["sent"],
+    "task list should include non-deleted lifecycle states"
   );
+  const allTasks = await listExtensionTasks("tenant_test", "usr_owner", { includeDeleted: true });
+  assert.equal(allTasks.length, 2, "deleted tasks should remain recoverable when explicitly requested");
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

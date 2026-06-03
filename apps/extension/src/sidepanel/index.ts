@@ -14,13 +14,14 @@ const filters: Array<{ key: FilterKey; label: string; statuses: ExtensionTask["s
   { key: "ready", label: "Ready", statuses: ["queued"] },
   { key: "preparing", label: "Preparing", statuses: ["in_progress"] },
   { key: "approval", label: "Waiting on Leadsy", statuses: ["awaiting_send_approval"] },
-  { key: "blocked", label: "Blocked", statuses: ["blocked", "failed"] },
+  { key: "blocked", label: "Blocked", statuses: ["postponed", "blocked", "failed"] },
   { key: "done", label: "Done", statuses: ["sent", "monitoring", "cancelled"] }
 ];
 
 let currentTasks: ExtensionTask[] = [];
 let activeFilter: FilterKey = "ready";
 let selectedTaskId = "";
+const selectedTaskIds = new Set<string>();
 
 app.innerHTML = `
   <style>
@@ -67,6 +68,8 @@ app.innerHTML = `
     .metric strong { display: block; font-size: 17px; line-height: 1; }
     .metric span { color: #87939f; display: block; font-size: 10px; margin-top: 4px; }
     .tabs { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 2px; }
+    .batch-controls { align-items: center; display: flex; flex-wrap: wrap; gap: 6px; }
+    .batch-summary { color: #aab5bf; font-size: 11px; line-height: 1.4; min-height: 16px; }
     button, a.button {
       align-items: center;
       background: rgba(32,230,190,0.12);
@@ -96,7 +99,7 @@ app.innerHTML = `
       cursor: pointer;
       display: grid;
       gap: 8px;
-      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-columns: auto minmax(0, 1fr) auto;
       min-height: 54px;
       padding: 8px 9px;
       text-align: left;
@@ -105,6 +108,16 @@ app.innerHTML = `
     }
     .task-row:hover { background: rgba(255,255,255,0.055); }
     .task-row.selected { background: rgba(32,230,190,0.08); border-color: rgba(32,230,190,0.58); }
+    .task-row input[type="checkbox"] { height: 16px; min-height: 16px; padding: 0; width: 16px; }
+    .task-select-button {
+      background: transparent;
+      border: 0;
+      justify-content: flex-start;
+      min-height: 0;
+      padding: 0;
+      text-align: left;
+      white-space: normal;
+    }
     .task-main { display: grid; gap: 4px; min-width: 0; }
     .task-head { align-items: flex-start; display: flex; gap: 8px; justify-content: space-between; min-width: 0; }
     .title { color: #fff; font-size: 12.5px; font-weight: 750; line-height: 1.2; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -182,6 +195,14 @@ app.innerHTML = `
 
     <section class="metrics" id="metrics"></section>
     <div class="status" id="status"></div>
+    <section class="panel grid">
+      <div class="batch-controls">
+        <button id="run-selected" type="button">Run selected tasks</button>
+        <button class="secondary" id="select-visible" type="button">Select all visible</button>
+        <button class="secondary" id="clear-selection" type="button">Clear selection</button>
+      </div>
+      <div class="batch-summary" id="batch-summary">No tasks selected.</div>
+    </section>
 
     <section class="panel grid">
       <div class="tabs" id="filters"></div>
@@ -228,6 +249,10 @@ const taskDetail = app.querySelector<HTMLElement>("#task-detail")!;
 const refreshTasksButton = app.querySelector<HTMLButtonElement>("#refresh-tasks")!;
 const metrics = app.querySelector<HTMLElement>("#metrics")!;
 const filtersContainer = app.querySelector<HTMLElement>("#filters")!;
+const runSelectedButton = app.querySelector<HTMLButtonElement>("#run-selected")!;
+const selectVisibleButton = app.querySelector<HTMLButtonElement>("#select-visible")!;
+const clearSelectionButton = app.querySelector<HTMLButtonElement>("#clear-selection")!;
+const batchSummary = app.querySelector<HTMLElement>("#batch-summary")!;
 
 void load();
 
@@ -242,6 +267,22 @@ checkButton.addEventListener("click", () => {
 
 refreshTasksButton.addEventListener("click", () => {
   void refreshTasks();
+});
+
+runSelectedButton.addEventListener("click", () => {
+  void runSelectedTasks();
+});
+
+selectVisibleButton.addEventListener("click", () => {
+  for (const task of visibleTasksForActiveFilter()) {
+    if (taskIsRunnable(task)) selectedTaskIds.add(task.id);
+  }
+  renderTasks(currentTasks);
+});
+
+clearSelectionButton.addEventListener("click", () => {
+  selectedTaskIds.clear();
+  renderTasks(currentTasks);
 });
 
 async function load() {
@@ -307,8 +348,11 @@ function renderFilters() {
 
 function renderTasks(tasks: ExtensionTask[]) {
   renderMetrics(tasks);
-  const filter = filters.find((item) => item.key === activeFilter) || filters[0];
-  const visibleTasks = tasks.filter((task) => filter.statuses.includes(task.status));
+  const visibleTasks = visibleTasksForActiveFilter();
+  for (const taskId of [...selectedTaskIds]) {
+    if (!tasks.some((task) => task.id === taskId)) selectedTaskIds.delete(taskId);
+  }
+  renderBatchSummary();
   if (!visibleTasks.length) {
     taskList.textContent = tasks.length ? "No tasks in this lane." : "No worker tasks yet.";
     renderDetail(tasks.find((task) => task.id === selectedTaskId));
@@ -319,6 +363,15 @@ function renderTasks(tasks: ExtensionTask[]) {
     selectedTaskId = visibleTasks[0].id;
   }
   taskList.innerHTML = visibleTasks.map(renderTaskRow).join("");
+  for (const checkbox of Array.from(taskList.querySelectorAll<HTMLInputElement>("[data-task-checkbox]"))) {
+    checkbox.addEventListener("change", () => {
+      const taskId = checkbox.dataset.taskId || "";
+      if (!taskId) return;
+      if (checkbox.checked) selectedTaskIds.add(taskId);
+      else selectedTaskIds.delete(taskId);
+      renderBatchSummary();
+    });
+  }
   for (const row of Array.from(taskList.querySelectorAll<HTMLButtonElement>("[data-task-select]"))) {
     row.addEventListener("click", () => {
       selectedTaskId = row.dataset.taskSelect || selectedTaskId;
@@ -326,6 +379,22 @@ function renderTasks(tasks: ExtensionTask[]) {
     });
   }
   renderDetail(tasks.find((task) => task.id === selectedTaskId));
+}
+
+function visibleTasksForActiveFilter() {
+  const filter = filters.find((item) => item.key === activeFilter) || filters[0];
+  return currentTasks.filter((task) => filter.statuses.includes(task.status));
+}
+
+function taskIsRunnable(task: ExtensionTask) {
+  return task.status === "queued" || task.status === "approved" || task.status === "postponed";
+}
+
+function renderBatchSummary(message?: string) {
+  const selected = currentTasks.filter((task) => selectedTaskIds.has(task.id));
+  const runnable = selected.filter(taskIsRunnable);
+  runSelectedButton.disabled = !runnable.length;
+  batchSummary.textContent = message || `${selectedTaskIds.size} selected, ${runnable.length} ready to run.`;
 }
 
 function renderMetrics(tasks: ExtensionTask[]) {
@@ -341,14 +410,19 @@ function renderMetrics(tasks: ExtensionTask[]) {
 
 function renderTaskRow(task: ExtensionTask) {
   const selectedClass = task.id === selectedTaskId ? " selected" : "";
+  const checked = selectedTaskIds.has(task.id) ? "checked" : "";
+  const disabled = taskIsRunnable(task) ? "" : "disabled";
   return `
-    <button class="task-row${selectedClass}" type="button" data-task-select="${escapeHtml(task.id)}">
+    <div class="task-row${selectedClass}">
+      <input type="checkbox" data-task-checkbox data-task-id="${escapeHtml(task.id)}" ${checked} ${disabled} aria-label="Select ${escapeHtml(taskContactLabel(task))}" />
+      <button class="task-select-button" type="button" data-task-select="${escapeHtml(task.id)}">
       <span class="task-main">
         <span class="title">${escapeHtml(taskContactLabel(task))}</span>
         <span class="meta">${escapeHtml(taskActionLabel(task))} - ${escapeHtml(task.platform.replace(/-/g, " "))} - ${escapeHtml(task.priority)}</span>
       </span>
+      </button>
       <span class="pill ${escapeHtml(task.status)}">${escapeHtml(statusLabel(task.status))}</span>
-    </button>
+    </div>
   `;
 }
 
@@ -374,6 +448,30 @@ function renderDetail(task?: ExtensionTask) {
   taskDetail.querySelector<HTMLButtonElement>("[data-task-open]")?.addEventListener("click", () => {
     void openTask(task.id);
   });
+}
+
+async function runSelectedTasks() {
+  const taskIds = currentTasks.filter((task) => selectedTaskIds.has(task.id) && taskIsRunnable(task)).map((task) => task.id);
+  if (!taskIds.length) {
+    renderBatchSummary("Select at least one ready task.");
+    return;
+  }
+  runSelectedButton.disabled = true;
+  renderBatchSummary(`Running ${taskIds.length} selected tasks...`);
+  try {
+    const result = await send<{ batchRunId: string; requested: number; sent: number; postponed: number; failed: number }>({
+      type: "leadsy:runSelectedTasks",
+      taskIds
+    });
+    selectedTaskIds.clear();
+    setStatus(`Batch ${result.batchRunId} finished. ${result.requested} requested, ${result.failed} failed.`, "ok");
+    renderBatchSummary(`Finished ${result.requested} selected tasks. Failed: ${result.failed}.`);
+    await refreshTasks();
+  } catch (error) {
+    setStatus(error instanceof Error ? error.message : "Could not run selected tasks.", "error");
+    renderBatchSummary("Selected batch stopped. Check blocked tasks and retry.");
+    await refreshTasks();
+  }
 }
 
 function renderActions(task: ExtensionTask) {

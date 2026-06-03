@@ -2,6 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { leadsyDataDir } from "./data-dir";
+import { appendManualLeadMessage } from "./lead-knowledge-store";
 
 const extensionFile = join(leadsyDataDir, "extension.json");
 const tokenTtlMs = 1000 * 60 * 60 * 24 * 365;
@@ -60,13 +61,18 @@ export type ExtensionConversationEvent = {
 };
 
 export type ExtensionTaskEventType =
+  | "batch_run_started"
+  | "batch_run_finished"
   | "worker_opened"
   | "worker_prepared"
   | "send_approved"
   | "send_rejected"
   | "worker_sent"
+  | "worker_postponed"
   | "worker_blocked"
   | "worker_failed"
+  | "task_edited"
+  | "task_deleted"
   | "monitoring_event"
   | "inbound_issue";
 
@@ -95,6 +101,7 @@ export type ExtensionTaskStatus =
   | "awaiting_send_approval"
   | "sent"
   | "monitoring"
+  | "postponed"
   | "blocked"
   | "failed"
   | "cancelled"
@@ -125,6 +132,11 @@ export type ExtensionTask = {
   sendRejectedAt?: string;
   claimedAt?: string;
   completedAt?: string;
+  postponedUntil?: string;
+  postponedReason?: string;
+  runBatchId?: string;
+  runMode?: "manual" | "selected_batch";
+  deletedAt?: string;
   blockedReason?: string;
   dueAt?: string;
   createdAt: string;
@@ -286,7 +298,7 @@ function taskIsTerminal(status: ExtensionTaskStatus) {
 }
 
 function taskCanBeClaimed(status: ExtensionTaskStatus) {
-  return status === "queued" || status === "in_progress" || status === "approved";
+  return status === "queued" || status === "in_progress" || status === "approved" || status === "postponed";
 }
 
 function cleanPreview(body: string) {
@@ -385,7 +397,7 @@ export async function createExtensionTask(input: {
   const state = await readState();
   const now = new Date().toISOString();
   const identity = taskIdentity(input);
-  const existingIndex = state.tasks.findIndex((task) => taskIdentity(task) === identity && !taskIsTerminal(task.status));
+  const existingIndex = state.tasks.findIndex((task) => taskIdentity(task) === identity && !task.deletedAt && !taskIsTerminal(task.status));
   const existing = existingIndex >= 0 ? state.tasks[existingIndex] : null;
   const nextTask: ExtensionTask = {
     id: existing?.id ?? `exttask_${crypto.randomUUID()}`,
@@ -408,6 +420,11 @@ export async function createExtensionTask(input: {
     sendRejectedAt: existing?.sendRejectedAt,
     claimedAt: existing?.claimedAt,
     completedAt: existing?.completedAt,
+    postponedUntil: existing?.postponedUntil,
+    postponedReason: existing?.postponedReason,
+    runBatchId: existing?.runBatchId,
+    runMode: existing?.runMode,
+    deletedAt: existing?.deletedAt,
     blockedReason: existing?.blockedReason,
     dueAt: input.dueAt ?? existing?.dueAt,
     createdAt: existing?.createdAt ?? now,
@@ -423,12 +440,13 @@ export async function createExtensionTask(input: {
   return nextTask;
 }
 
-export async function listExtensionTasks(tenantId: string, ownerId: string, options: { statuses?: ExtensionTaskStatus[] } = {}) {
+export async function listExtensionTasks(tenantId: string, ownerId: string, options: { statuses?: ExtensionTaskStatus[]; includeDeleted?: boolean } = {}) {
   const state = await readState();
   const scoped = scopeKey(tenantId, ownerId);
   const statusSet = options.statuses ? new Set(options.statuses) : null;
   return state.tasks
     .filter((task) => scopeKey(task.tenantId, task.ownerId) === scoped)
+    .filter((task) => options.includeDeleted || !task.deletedAt)
     .filter((task) => !statusSet || statusSet.has(task.status))
     .sort((left, right) => {
       const priorityRank: Record<ExtensionTaskPriority, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
@@ -468,10 +486,53 @@ export async function approveExtensionTask(input: {
   }));
 }
 
+export async function editExtensionTask(input: {
+  tenantId: string;
+  ownerId: string;
+  taskId: string;
+  draftMessage?: string;
+  contextSummary?: string;
+  targetUrl?: string;
+  leadId?: string;
+  conversationId?: string;
+  priority?: ExtensionTaskPriority;
+  dueAt?: string;
+  contact?: ExtensionConversationContact;
+}) {
+  return updateTask(input.tenantId, input.ownerId, input.taskId, (task, state) => {
+    const now = new Date().toISOString();
+    const nextTask = {
+      ...task,
+      draftMessage: input.draftMessage?.trim() || task.draftMessage,
+      contextSummary: input.contextSummary?.trim() || task.contextSummary,
+      targetUrl: input.targetUrl?.trim() || task.targetUrl,
+      leadId: input.leadId?.trim() || task.leadId,
+      conversationId: input.conversationId?.trim() || task.conversationId,
+      priority: input.priority ?? task.priority,
+      dueAt: input.dueAt?.trim() || task.dueAt,
+      contact: { ...task.contact, ...(input.contact ?? {}) },
+      updatedAt: now
+    };
+    state.taskEvents.push({
+      id: `taskevt_${crypto.randomUUID()}`,
+      tenantId: input.tenantId,
+      ownerId: input.ownerId,
+      taskId: input.taskId,
+      type: "task_edited",
+      summary: "Task details were edited in Leadsy.",
+      occurredAt: now
+    });
+    state.taskEvents = state.taskEvents.slice(-1000);
+    return nextTask;
+  });
+}
+
 export async function claimExtensionTask(input: {
   tenantId: string;
   ownerId: string;
   taskId: string;
+  runBatchId?: string;
+  runMode?: ExtensionTask["runMode"];
 }) {
   return updateTask(input.tenantId, input.ownerId, input.taskId, (task) => {
     if (!taskCanBeClaimed(task.status)) {
@@ -482,6 +543,8 @@ export async function claimExtensionTask(input: {
       ...task,
       status: "in_progress",
       claimedAt: task.claimedAt ?? now,
+      runBatchId: input.runBatchId ?? task.runBatchId,
+      runMode: input.runMode ?? task.runMode,
       updatedAt: now
     };
   });
@@ -586,16 +649,17 @@ export async function completeExtensionTask(input: {
   tenantId: string;
   ownerId: string;
   taskId: string;
-  status: Extract<ExtensionTaskStatus, "sent" | "blocked" | "failed" | "monitoring">;
+  status: Extract<ExtensionTaskStatus, "sent" | "postponed" | "blocked" | "failed" | "monitoring">;
   resultSummary: string;
   reason?: string;
+  postponedUntil?: string;
   outboundMessage?: {
     externalId: string;
     body: string;
     sentAt: string;
   };
 }) {
-  return updateTask(input.tenantId, input.ownerId, input.taskId, (task, state) => {
+  const completedTask = await updateTask(input.tenantId, input.ownerId, input.taskId, (task, state) => {
     const completedAt = input.outboundMessage?.sentAt ?? new Date().toISOString();
     if (input.outboundMessage && task.conversationId) {
       const current = state.messages.find(
@@ -623,7 +687,14 @@ export async function completeExtensionTask(input: {
       tenantId: input.tenantId,
       ownerId: input.ownerId,
       taskId: input.taskId,
-      type: input.status === "sent" || input.status === "monitoring" ? "worker_sent" : input.status === "blocked" ? "worker_blocked" : "worker_failed",
+      type:
+        input.status === "sent" || input.status === "monitoring"
+          ? "worker_sent"
+          : input.status === "postponed"
+          ? "worker_postponed"
+          : input.status === "blocked"
+          ? "worker_blocked"
+          : "worker_failed",
       reason: input.reason,
       summary: input.resultSummary,
       occurredAt: completedAt
@@ -633,11 +704,33 @@ export async function completeExtensionTask(input: {
       ...task,
       status: input.status,
       resultSummary: input.resultSummary,
+      postponedUntil: input.status === "postponed" ? input.postponedUntil : task.postponedUntil,
+      postponedReason: input.status === "postponed" ? input.reason ?? task.postponedReason : task.postponedReason,
       blockedReason: input.status === "blocked" || input.status === "failed" ? input.reason ?? task.blockedReason : task.blockedReason,
       completedAt,
       updatedAt: completedAt
     };
   });
+  if ((input.status === "postponed" || input.status === "blocked" || input.status === "failed") && taskLeadNoteShouldBeLogged(input.reason)) {
+    if (completedTask.leadId) {
+      await appendManualLeadMessage({
+        tenantId: input.tenantId,
+        ownerId: input.ownerId,
+        leadId: completedTask.leadId,
+        direction: "note",
+        channel: "manual",
+        body: input.status === "postponed" && input.postponedUntil
+          ? `${input.resultSummary} Postponed until ${input.postponedUntil}.`
+          : input.resultSummary,
+        occurredAt: new Date().toISOString()
+      }).catch(() => undefined);
+    }
+  }
+  return completedTask;
+}
+
+function taskLeadNoteShouldBeLogged(reason?: string) {
+  return reason === "target_not_on_whatsapp" || reason === "composer_missing" || reason === "target_url_missing";
 }
 
 export async function logExtensionTaskEvent(input: {
@@ -695,6 +788,36 @@ export async function cancelExtensionTask(input: {
       completedAt: now,
       updatedAt: now
     };
+  });
+}
+
+export async function softDeleteExtensionTask(input: {
+  tenantId: string;
+  ownerId: string;
+  taskId: string;
+  resultSummary?: string;
+}) {
+  return updateTask(input.tenantId, input.ownerId, input.taskId, (task, state) => {
+    const now = new Date().toISOString();
+    const nextTask = {
+      ...task,
+      status: "cancelled" as const,
+      resultSummary: input.resultSummary ?? task.resultSummary ?? "Task deleted in Leadsy.",
+      completedAt: task.completedAt ?? now,
+      deletedAt: task.deletedAt ?? now,
+      updatedAt: now
+    };
+    state.taskEvents.push({
+      id: `taskevt_${crypto.randomUUID()}`,
+      tenantId: input.tenantId,
+      ownerId: input.ownerId,
+      taskId: input.taskId,
+      type: "task_deleted",
+      summary: nextTask.resultSummary,
+      occurredAt: now
+    });
+    state.taskEvents = state.taskEvents.slice(-1000);
+    return nextTask;
   });
 }
 

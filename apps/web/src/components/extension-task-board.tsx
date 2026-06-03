@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Activity as ActivityIcon, AlertTriangle, CheckCircle2, Clock3, Loader2, Play, RefreshCw, Send } from "lucide-react";
+import { Activity as ActivityIcon, AlertTriangle, CheckCircle2, Clock3, Loader2, Pencil, Play, RefreshCw, Send, Trash2 } from "lucide-react";
 import { Badge, EmptyState } from "./ui";
 
 type ExtensionTask = {
@@ -13,6 +13,7 @@ type ExtensionTask = {
     | "awaiting_send_approval"
     | "sent"
     | "monitoring"
+    | "postponed"
     | "blocked"
     | "failed"
     | "cancelled"
@@ -29,6 +30,7 @@ type ExtensionTask = {
   preparedAt?: string;
   sendApprovedAt?: string;
   blockedReason?: string;
+  postponedUntil?: string;
   updatedAt: string;
 };
 
@@ -45,7 +47,7 @@ const columns = [
   { key: "ready", title: "Ready queue", statuses: ["queued", "approved"] },
   { key: "preparing", title: "Preparing", statuses: ["in_progress"] },
   { key: "approval", title: "Needs send approval", statuses: ["awaiting_send_approval", "draft", "awaiting_approval"] },
-  { key: "blocked", title: "Blocked", statuses: ["blocked", "failed"] },
+  { key: "blocked", title: "Blocked / postponed", statuses: ["postponed", "blocked", "failed"] },
   { key: "completed", title: "Done", statuses: ["sent", "monitoring", "cancelled"] }
 ] as const;
 
@@ -92,6 +94,35 @@ export function ExtensionTaskBoard({
     setLoading("");
     if (!response.ok) return;
     setTasks((current) => mergeTasks([payload as ExtensionTask], current));
+  }
+
+  async function editTask(task: ExtensionTask, formData: FormData) {
+    setLoading(`edit:${task.id}`);
+    const response = await fetch(`/api/extension/tasks/${encodeURIComponent(task.id)}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        draftMessage: String(formData.get("draftMessage") ?? ""),
+        contextSummary: String(formData.get("contextSummary") ?? ""),
+        targetUrl: String(formData.get("targetUrl") ?? ""),
+        priority: formData.get("priority")
+      })
+    });
+    const payload = await response.json();
+    setLoading("");
+    if (!response.ok) return;
+    setTasks((current) => mergeTasks([payload as ExtensionTask], current));
+  }
+
+  async function deleteTask(task: ExtensionTask) {
+    setLoading(`delete:${task.id}`);
+    const response = await fetch(`/api/extension/tasks/${encodeURIComponent(task.id)}`, {
+      method: "DELETE"
+    });
+    const payload = await response.json();
+    setLoading("");
+    if (!response.ok) return;
+    setTasks((current) => current.filter((candidate) => candidate.id !== (payload as ExtensionTask).id));
   }
 
   return (
@@ -146,7 +177,7 @@ export function ExtensionTaskBoard({
 	                      <p className="mt-3 line-clamp-4 break-words rounded-[6px] bg-black/20 p-2 text-xs leading-5 text-white">{task.draftMessage}</p>
 	                      {task.resultSummary ? <p className="mt-2 line-clamp-2 break-words text-xs leading-5 text-[var(--muted)]">{task.resultSummary}</p> : null}
 	                      <TaskMeta task={task} />
-	                      <TaskActions task={task} loading={loading} onSendDecision={approvePreparedSend} />
+	                      <TaskActions task={task} loading={loading} onSendDecision={approvePreparedSend} onEditTask={editTask} onDeleteTask={deleteTask} />
 	                    </article>
 	                  ))}
                 </div>
@@ -217,6 +248,14 @@ function TaskMeta({ task }: { task: ExtensionTask }) {
       </div>
     );
   }
+  if (task.status === "postponed") {
+    return (
+      <div className="mt-3 flex items-center gap-2 text-xs text-amber-100">
+        <Clock3 size={13} />
+        Postponed{task.postponedUntil ? ` until ${new Date(task.postponedUntil).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}` : ""}.
+      </div>
+    );
+  }
   if (task.status === "blocked" || task.status === "failed") {
     return (
       <div className="mt-3 flex items-center gap-2 text-xs text-amber-100">
@@ -244,32 +283,73 @@ function TaskMeta({ task }: { task: ExtensionTask }) {
 function TaskActions({
   task,
   loading,
-  onSendDecision
+  onSendDecision,
+  onEditTask,
+  onDeleteTask
 }: {
   task: ExtensionTask;
   loading: string;
   onSendDecision: (task: ExtensionTask, action: "approve" | "reject") => void;
+  onEditTask: (task: ExtensionTask, formData: FormData) => void;
+  onDeleteTask: (task: ExtensionTask) => void;
 }) {
-  if (task.status !== "awaiting_send_approval") return null;
+  const editing = loading === `edit:${task.id}`;
+  const deleting = loading === `delete:${task.id}`;
   const approving = loading === `approve:${task.id}`;
   const rejecting = loading === `reject:${task.id}`;
   return (
-    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+    <div className="mt-3 grid gap-2">
+      {task.status === "awaiting_send_approval" ? (
+        <div className="grid gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => onSendDecision(task, "approve")}
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-lime-300/25 bg-lime-300/10 px-3 text-xs font-medium text-lime-100 hover:bg-lime-300/[0.16]"
+          >
+            {approving ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+            Approve send
+          </button>
+          <button
+            type="button"
+            onClick={() => onSendDecision(task, "reject")}
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-amber-300/25 bg-amber-300/10 px-3 text-xs font-medium text-amber-100 hover:bg-amber-300/[0.16]"
+          >
+            {rejecting ? <Loader2 size={14} className="animate-spin" /> : <AlertTriangle size={14} />}
+            Reject
+          </button>
+        </div>
+      ) : null}
+      <details className="rounded-[6px] border border-[var(--line)] bg-black/20 p-2">
+        <summary className="cursor-pointer text-xs font-medium text-white">Edit task</summary>
+        <form
+          className="mt-2 grid gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onEditTask(task, new FormData(event.currentTarget));
+          }}
+        >
+          <select name="priority" defaultValue={task.priority} className="h-9 rounded-[6px] border border-[var(--line)] bg-black/30 px-2 text-xs text-white">
+            <option value="low">Low</option>
+            <option value="normal">Normal</option>
+            <option value="high">High</option>
+            <option value="urgent">Urgent</option>
+          </select>
+          <input name="targetUrl" defaultValue={task.targetUrl || ""} className="h-9 rounded-[6px] border border-[var(--line)] bg-black/30 px-2 text-xs text-white" />
+          <textarea name="contextSummary" defaultValue={task.contextSummary} rows={2} className="rounded-[6px] border border-[var(--line)] bg-black/30 px-2 py-2 text-xs text-white" />
+          <textarea name="draftMessage" defaultValue={task.draftMessage} rows={3} className="rounded-[6px] border border-[var(--line)] bg-black/30 px-2 py-2 text-xs text-white" />
+          <button type="submit" className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-teal-300/25 bg-teal-300/10 px-3 text-xs font-medium text-teal-100 hover:bg-teal-300/[0.16]">
+            {editing ? <Loader2 size={14} className="animate-spin" /> : <Pencil size={14} />}
+            Save task
+          </button>
+        </form>
+      </details>
       <button
         type="button"
-        onClick={() => onSendDecision(task, "approve")}
-        className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-lime-300/25 bg-lime-300/10 px-3 text-xs font-medium text-lime-100 hover:bg-lime-300/[0.16]"
-      >
-        {approving ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-        Approve send
-      </button>
-      <button
-        type="button"
-        onClick={() => onSendDecision(task, "reject")}
+        onClick={() => onDeleteTask(task)}
         className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-amber-300/25 bg-amber-300/10 px-3 text-xs font-medium text-amber-100 hover:bg-amber-300/[0.16]"
       >
-        {rejecting ? <Loader2 size={14} className="animate-spin" /> : <AlertTriangle size={14} />}
-        Reject
+        {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+        Delete task
       </button>
     </div>
   );

@@ -4,6 +4,7 @@ export type ExtensionTaskStatus =
   | "awaiting_send_approval"
   | "sent"
   | "monitoring"
+  | "postponed"
   | "blocked"
   | "failed"
   | "cancelled"
@@ -33,6 +34,11 @@ export type ExtensionTask = {
   preparedAt?: string;
   sendApprovedAt?: string;
   sendRejectedAt?: string;
+  postponedUntil?: string;
+  postponedReason?: string;
+  runBatchId?: string;
+  runMode?: "manual" | "selected_batch";
+  deletedAt?: string;
   blockedReason?: string;
   createdAt: string;
   updatedAt: string;
@@ -40,13 +46,18 @@ export type ExtensionTask = {
 };
 
 export type ExtensionTaskEventType =
+  | "batch_run_started"
+  | "batch_run_finished"
   | "worker_opened"
   | "worker_prepared"
   | "send_approved"
   | "send_rejected"
   | "worker_sent"
+  | "worker_postponed"
   | "worker_blocked"
   | "worker_failed"
+  | "task_edited"
+  | "task_deleted"
   | "monitoring_event"
   | "inbound_issue";
 

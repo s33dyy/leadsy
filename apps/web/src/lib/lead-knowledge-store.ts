@@ -46,6 +46,7 @@ export type LeadKnowledgeLead = {
   contact: LeadKnowledgeContact;
   leadStatus: LeadKnowledgeStatus;
   excludedAt?: string;
+  deletedAt?: string;
   summary?: string;
   nextAction?: string;
   facts: string[];
@@ -92,6 +93,7 @@ export type LeadKnowledgeMessage = {
   sentAt: string;
   receivedAt: string;
   generatedBy?: ExtensionMessageGeneratedBy | "manual";
+  hiddenAt?: string;
   raw?: unknown;
 };
 
@@ -403,6 +405,7 @@ function recalculateConversation(state: LeadKnowledgeState, conversationId: stri
   if (!conversation) return;
   const messages = state.messages
     .filter((message) => message.conversationId === conversationId)
+    .filter((message) => !message.hiddenAt)
     .sort((left, right) => left.sentAt.localeCompare(right.sentAt));
   const lastMessage = messages.at(-1);
   conversation.messageCount = messages.length;
@@ -419,6 +422,7 @@ function updateLeadFromConversation(state: LeadKnowledgeState, leadId: string, i
   const conversations = state.conversations.filter((conversation) => conversation.leadId === leadId);
   const messages = state.messages
     .filter((message) => message.leadId === leadId)
+    .filter((message) => !message.hiddenAt)
     .sort((left, right) => left.sentAt.localeCompare(right.sentAt));
   const lastMessage = messages.at(-1);
   lead.summary = insight?.summary || lead.summary || (lastMessage ? `Latest message: ${cleanPreview(lastMessage.body)}` : undefined);
@@ -780,6 +784,7 @@ function recordForLead(state: LeadKnowledgeState, scope: Scope, leadId: string):
     .sort((left, right) => (right.lastMessageAt ?? right.updatedAt).localeCompare(left.lastMessageAt ?? left.updatedAt));
   const messages = state.messages
     .filter((message) => message.leadId === lead.id && scopeMatches(scope, message))
+    .filter((message) => !message.hiddenAt)
     .sort((left, right) => left.sentAt.localeCompare(right.sentAt));
   const lastMessage = messages.at(-1);
   return {
@@ -798,9 +803,63 @@ function recordForLead(state: LeadKnowledgeState, scope: Scope, leadId: string):
 export async function listLeadKnowledgeRecords(scope: Scope) {
   const state = await readState();
   return state.leads
-    .filter((lead) => scopeMatches(scope, lead))
+    .filter((lead) => scopeMatches(scope, lead) && !lead.deletedAt)
     .map((lead) => recordForLead(state, scope, lead.id))
     .sort((left, right) => (right.lastMessageAt ?? right.updatedAt).localeCompare(left.lastMessageAt ?? left.updatedAt));
+}
+
+export async function editLeadKnowledgeRecord(input: Scope & {
+  leadId: string;
+  contact?: LeadKnowledgeContact;
+  summary?: string;
+  nextAction?: string;
+  facts?: string[];
+}) {
+  const state = await readState();
+  const lead = findLeadById(state, input, input.leadId);
+  if (!lead) throw new Error("Lead knowledge record was not found.");
+  const contact = cleanContact(input.contact);
+  lead.contact = mergeContacts(contact, lead.contact);
+  lead.identityKeys = uniqueStrings([
+    ...lead.identityKeys,
+    ...identityKeysForContact("generic", contact),
+    ...state.conversations
+      .filter((conversation) => conversation.leadId === lead.id && scopeMatches(input, conversation))
+      .flatMap((conversation) => identityKeysForContact(conversation.channel, contact))
+  ]);
+  lead.summary = input.summary?.trim() || undefined;
+  lead.nextAction = input.nextAction?.trim() || undefined;
+  lead.facts = uniqueStrings(input.facts ?? []).slice(0, 30);
+  lead.updatedAt = nowIso();
+  await writeState(state);
+  return recordForLead(state, input, lead.id);
+}
+
+export async function archiveLeadKnowledgeRecord(input: Scope & { leadId: string }) {
+  const state = await readState();
+  const lead = findLeadById(state, input, input.leadId);
+  if (!lead) throw new Error("Lead knowledge record was not found.");
+  lead.deletedAt = nowIso();
+  lead.updatedAt = lead.deletedAt;
+  await writeState(state);
+  return { ...lead };
+}
+
+export async function setLeadMessageHiddenStatus(input: Scope & {
+  messageId: string;
+  hidden: boolean;
+}) {
+  const state = await readState();
+  const message = state.messages.find((candidate) => candidate.id === input.messageId && scopeMatches(input, candidate));
+  if (!message) throw new Error("Lead message was not found.");
+  message.hiddenAt = input.hidden ? nowIso() : undefined;
+  const conversation = state.conversations.find((candidate) => candidate.id === message.conversationId && scopeMatches(input, candidate));
+  if (conversation) {
+    recalculateConversation(state, conversation.id);
+    updateLeadFromConversation(state, conversation.leadId);
+  }
+  await writeState(state);
+  return message;
 }
 
 export async function setLeadKnowledgeStatus(input: Scope & { leadId: string; leadStatus: LeadKnowledgeStatus }) {
