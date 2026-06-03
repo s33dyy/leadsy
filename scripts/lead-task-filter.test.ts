@@ -3,6 +3,9 @@ import { readFileSync } from "node:fs";
 
 const leadsPage = readFileSync("apps/web/src/app/app/leads/page.tsx", "utf8");
 
+assert(leadsPage.includes('from "next/link"'), "leads page should use Next Link for internal CRM navigation");
+assert((leadsPage.match(/scroll=\{false\}/g) ?? []).length >= 4, "lead list, filters, tabs, and channel links should preserve scroll");
+assert(leadsPage.includes("LeadScrollKeeper"), "leads page should restore scroll across form redirects and reloads");
 assert(leadsPage.includes("listExtensionTasks"), "leads page should read extension tasks for the selected lead workspace");
 assert(leadsPage.includes("listExtensionTaskEvents"), "leads page should read worker task events for selected lead tasks");
 assert(leadsPage.includes("function tasksForLead"), "leads page should have an explicit selected-lead task filter");

@@ -18,7 +18,9 @@ import {
   UserRound,
   Workflow
 } from "lucide-react";
+import Link from "next/link";
 import { Badge, EmptyState, Panel, PrimaryLink, SectionTitle } from "@/components/ui";
+import { LeadScrollKeeper } from "@/components/lead-scroll-keeper";
 import { SelectedLeadTasks } from "@/components/selected-lead-tasks";
 import { getCurrentSession } from "@/lib/auth";
 import { listExtensionTaskEvents, listExtensionTasks, type ExtensionTask, type ExtensionTaskEvent } from "@/lib/extension-store";
@@ -366,6 +368,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
 
   return (
     <div className="space-y-5">
+      <LeadScrollKeeper />
       <Panel className="p-5 md:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <SectionTitle eyebrow="Lead Operations" title="CRM pipeline" />
@@ -469,9 +472,10 @@ function LeadListPane({
       <div className="mt-3 flex max-w-full items-center gap-2 overflow-x-auto pb-1">
         <Filter size={15} className="shrink-0 text-[var(--muted)]" />
         {viewFilters.map((filter) => (
-          <a
+          <Link
             key={filter.id}
             href={crmHref({ view: filter.id, q: query, contact: selectedLead?.id, tab: activeTab, commChannel })}
+            scroll={false}
             className={`inline-flex h-9 shrink-0 items-center rounded-[6px] border px-3 text-xs font-medium ${
               activeView === filter.id
                 ? "border-teal-300/40 bg-teal-300/[0.12] text-teal-100"
@@ -479,7 +483,7 @@ function LeadListPane({
             }`}
           >
             {filter.label}
-          </a>
+          </Link>
         ))}
       </div>
 
@@ -489,9 +493,10 @@ function LeadListPane({
             const selected = selectedLead?.id === lead.id;
             const stage = crmStage(lead);
             return (
-              <a
+              <Link
                 key={lead.id}
                 href={crmHref({ view: activeView, q: query, contact: lead.id, tab: activeTab, commChannel })}
+                scroll={false}
                 className={`block rounded-[8px] border p-3 ${
                   selected
                     ? "border-teal-300/35 bg-teal-300/[0.1]"
@@ -520,7 +525,7 @@ function LeadListPane({
                   <Clock size={13} />
                   {shortDate(lead.lastMessageAt)}
                 </div>
-              </a>
+              </Link>
             );
           })}
         </div>
@@ -567,9 +572,10 @@ function LeadRecordWorkspace({
 
       <div className="flex max-w-full gap-2 overflow-x-auto border-b border-[var(--line)] pb-3">
         {workspaceTabs.map((tab) => (
-          <a
+          <Link
             key={tab.id}
             href={crmHref({ view: activeView, q: query, contact: lead.id, tab: tab.id, commChannel })}
+            scroll={false}
             className={`inline-flex h-10 min-w-[118px] shrink-0 items-center justify-center rounded-[6px] border px-3 text-sm font-medium ${
               activeTab === tab.id
                 ? "border-teal-300/40 bg-teal-300/[0.12] text-teal-100"
@@ -577,7 +583,7 @@ function LeadRecordWorkspace({
             }`}
           >
             {tab.label}
-          </a>
+          </Link>
         ))}
       </div>
 
@@ -753,9 +759,10 @@ function LeadCommsTab({
     <div className="space-y-4">
       <div className="flex max-w-full gap-2 overflow-x-auto pb-1">
         {commFilters.map((filter) => (
-          <a
+          <Link
             key={filter.id}
             href={crmHref({ view: activeView, q: query, contact: lead.id, tab: "comms", commChannel: filter.id })}
+            scroll={false}
             className={`inline-flex h-9 shrink-0 items-center rounded-[6px] border px-3 text-xs font-medium ${
               commChannel === filter.id
                 ? "border-teal-300/40 bg-teal-300/[0.12] text-teal-100"
@@ -763,7 +770,7 @@ function LeadCommsTab({
             }`}
           >
             {filter.label}
-          </a>
+          </Link>
         ))}
       </div>
 
