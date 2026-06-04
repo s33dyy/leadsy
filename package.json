@@ -2,7 +2,7 @@
   "name": "leadsy",
   "version": "0.1.0",
   "private": true,
-  "description": "Leadsy Revenue OS - AI-native revenue intelligence, CRM, outreach, routing, and automation platform.",
+  "description": "Leadsy AI Lead Intelligence & Operations Platform for prospect research, lead knowledge, operator tasks, and human-approved outreach.",
   "workspaces": [
     "apps/*",
     "packages/*"

@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Leadsy Revenue OS",
+  title: "Leadsy AI Lead Intelligence & Operations Platform",
   description:
-    "AI-native revenue intelligence, CRM, routing, outreach automation, and analytics for modern revenue teams.",
+    "Research prospects, build lead knowledge, generate operator tasks, and draft outreach for human approval.",
 };
 
 export default function RootLayout({

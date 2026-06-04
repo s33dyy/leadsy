@@ -5,7 +5,7 @@ export function leadMagnetArchivedResponse() {
   return NextResponse.json(
     {
       error: "lead_magnet_archived",
-      message: "Lead Magnet is archived. Use the Leads CRM workspace for Meta and browser conversation tracking."
+      message: "Lead Magnet is archived. Use the Lead Intelligence workspace for Meta and browser conversation tracking."
     },
     { status: 410 }
   );

@@ -1,4 +1,4 @@
-# Leadsy - Lead Magnet, Automation, Management & Intelligence
+# Leadsy - AI Lead Intelligence & Operations Platform
 
 ## Machine Safety Rules
 
@@ -51,9 +51,9 @@ The old external-drive copy under `/Volumes/Pratik's SSD/Projects/leadsy` caused
 
 ## Product Identity
 
-Leadsy is an AI-powered **lead magnet engine** that finds prospects from approved public sources, turns them into qualified conversations, and manages the entire lead lifecycle through automation.
+Leadsy is an **AI Lead Intelligence & Operations Platform** that researches prospects, builds durable lead knowledge, generates tasks for human operators, drafts outreach for approval, and supports qualification without autonomous sends.
 
-**Core loop**: Research → Score → Draft → Qualify → Route → Nurture → Report
+**Core loop**: Research → Knowledge → Task → Draft → Approve → Qualify → Support
 
 ## Stack Architecture
 
@@ -67,7 +67,7 @@ Leadsy is an AI-powered **lead magnet engine** that finds prospects from approve
 
 | Package | Purpose |
 |---------|---------|
-| `apps/web` | Product UI, API routes, onboarding, command center |
+| `apps/web` | Product UI, API routes, authentication, lead intelligence workspace, extension support, and connection setup |
 | `packages/domain` | Lead, agency, Meta, WhatsApp, CRM, enrichment models |
 | `packages/ai` | Lead research, scoring, message drafting, copilot interfaces |
 | `packages/db` | Prisma schema with pgvector support |
@@ -110,7 +110,7 @@ npm run seed             # Print seed counts
 
 1. **Local-first**: Works with `AI_PROVIDER=deterministic` (no API keys)
 2. **OpenRouter + Leadsy tools**: OpenRouter plans, scores, extracts, and drafts; Leadsy runs the actual free public search/fetch tools and stores source evidence.
-3. **Provider abstraction**: `RevenueAIModel` interface for swapping providers
+3. **Provider abstraction**: existing model interface for swapping providers
 4. **Guardrails**: Public sources only, no fake data, manual review for unknown-consent
 
 Key AI flows:

@@ -2,15 +2,15 @@
 
 ## Project Context
 
-This is the **Leadsy Lead Magnet & Automation OS** web application. It's an AI-powered lead discovery, qualification, and management platform for agencies and revenue teams.
+This is the **Leadsy AI Lead Intelligence & Operations Platform** web application. It researches prospects, builds lead knowledge, generates tasks for human operators, drafts outreach for approval, and supports qualification work for agencies and revenue teams.
 
 **NOT** a generic Next.js template — this is a domain-specific product with:
 - Lead research engine (OSINT discovery + evidence tracking)
 - Meta lead ingestion + WhatsApp qualification flow
 - Multi-client agency workspaces
 - AI-powered outreach drafting with approval workflow
-- Pipeline/CRM with deal stages
-- Automation builder for typed workflows
+- Qualification pipeline and CRM-adjacent lead management
+- Worker/task workflows with human approval gates
 
 ## Architecture Overview
 

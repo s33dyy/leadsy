@@ -48,10 +48,10 @@ export default async function LoginPage({
               <LockKeyhole size={20} />
             </div>
             <div className="mt-5">
-              <SectionTitle eyebrow="Login + signup" title="Enter your Leadsy workspace" />
+              <SectionTitle eyebrow="Login + signup" title="Enter your lead intelligence workspace" />
             </div>
             <p className="mt-4 text-sm leading-7 text-[var(--muted-2)]">
-              Create your Leadsy account with Google, or sign in with an existing workspace password.
+              Create your Leadsy account with Google, or sign in to research prospects, build lead knowledge, and approve worker-generated tasks.
             </p>
           </Panel>
 
