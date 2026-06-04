@@ -22,7 +22,7 @@ import Link from "next/link";
 import { Badge, EmptyState, Panel, PrimaryLink, SectionTitle } from "@/components/ui";
 import { LeadScrollKeeper } from "@/components/lead-scroll-keeper";
 import { ManualLeadIntake } from "@/components/manual-lead-intake";
-import { SelectedLeadTasks } from "@/components/selected-lead-tasks";
+import { LeadTaskGenerateMenu, SelectedLeadTasks } from "@/components/selected-lead-tasks";
 import { getCurrentSession } from "@/lib/auth";
 import { listExtensionTaskEvents, listExtensionTasks, type ExtensionTask, type ExtensionTaskEvent } from "@/lib/extension-store";
 import {
@@ -582,7 +582,8 @@ function LeadRecordWorkspace({
           <h3 className="mt-1 truncate text-2xl font-semibold text-white md:text-3xl">{contactLabel(lead)}</h3>
           <div className="mono mt-2 break-all text-xs text-[var(--muted)]">{lead.id}</div>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-start justify-end gap-2">
+          <LeadTaskGenerateMenu leadId={lead.id} label="AI Generate tasks" />
           <Badge tone={stageTone(crmStage(lead))}>{crmStage(lead)}</Badge>
           <Badge tone="neutral">{lead.messageCount} comms</Badge>
         </div>

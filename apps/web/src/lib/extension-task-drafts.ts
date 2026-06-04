@@ -1,7 +1,7 @@
 import type { ExtensionTaskType } from "./extension-store";
 import type { LeadKnowledgeRecord } from "./lead-knowledge-store";
 
-type OutreachTaskType = Extract<ExtensionTaskType, "initiate_conversation" | "follow_up">;
+type OutreachTaskType = Extract<ExtensionTaskType, "initiate_conversation" | "follow_up" | "reply_to_inbound">;
 type DraftableLead = Pick<LeadKnowledgeRecord, "contact" | "summary" | "nextAction" | "channels">;
 
 export function draftExtensionTaskMessage(lead: DraftableLead, type: OutreachTaskType) {
@@ -10,6 +10,10 @@ export function draftExtensionTaskMessage(lead: DraftableLead, type: OutreachTas
 
   if (type === "follow_up") {
     return `Hi ${name}, just following up to see if improving ${segment.followUpFocus} is worth a quick conversation this week?`;
+  }
+
+  if (type === "reply_to_inbound") {
+    return `Hi ${name}, thanks for reaching out. Happy to help with ${segment.followUpFocus}. What follow-up gap should we look at first?`;
   }
 
   return `Hi ${name}, I help ${segment.audience} ${segment.outcome}. Would it make sense to discuss this this week?`;

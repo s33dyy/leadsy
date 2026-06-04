@@ -10,7 +10,7 @@ export const runtime = "nodejs";
 
 const schema = z.object({
   leadIds: z.array(z.string().trim().min(1).max(160)).max(50).optional(),
-  type: z.enum(["initiate_conversation", "follow_up"]).default("initiate_conversation")
+  type: z.enum(["initiate_conversation", "follow_up", "reply_to_inbound"]).default("initiate_conversation")
 });
 
 export async function POST(request: NextRequest) {
@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
   const leads = records
     .filter((lead) => !selectedLeadIds.size || selectedLeadIds.has(lead.id))
     .filter((lead) => lead.leadStatus !== "excluded")
-    .filter((lead) => lead.conversations.some((conversation) => conversation.knowledgeStatus === "included"))
+    .filter(leadHasTaskTarget)
     .slice(0, 25);
 
   const tasks = [];
@@ -82,4 +82,22 @@ function targetUrlForLead(lead: LeadKnowledgeRecord) {
     if (digits) return `https://web.whatsapp.com/send?phone=${digits}`;
   }
   return lead.contact.profileUrl || lead.conversations.find((conversation) => conversation.sourceUrl)?.sourceUrl;
+}
+
+function leadHasTaskTarget(lead: LeadKnowledgeRecord) {
+  return Boolean(
+    targetUrlForLead(lead) ||
+      lead.contact.displayName ||
+      lead.contact.email ||
+      lead.contact.handle ||
+      lead.summary ||
+      lead.nextAction ||
+      lead.lastMessagePreview ||
+      lead.facts.length ||
+      hasIncludedConversation(lead)
+  );
+}
+
+function hasIncludedConversation(lead: LeadKnowledgeRecord) {
+  return lead.conversations.some(({ knowledgeStatus }) => knowledgeStatus === "included");
 }
