@@ -217,11 +217,18 @@ async function main() {
   assert(!rootLayout.includes("Revenue OS"), "app metadata should not position Leadsy as Revenue OS");
 
   const workerPage = await readFile(join(root, "apps/web/src/app/app/worker/page.tsx"), "utf8");
+  const extensionPairing = await readFile(join(root, "apps/web/src/components/extension-pairing.tsx"), "utf8");
+  const extensionTokenRoute = await readFile(join(root, "apps/web/src/app/api/extension/tokens/route.ts"), "utf8");
   assert(workerPage.includes("ExtensionTaskBoard"), "worker page should keep the extension task board");
   assert(workerPage.includes("listExtensionChannelMonitorHealth"), "worker page should derive dashboard-visible channel monitor health");
   assert(workerPage.includes("Hybrid channel monitor"), "worker page should explain the V4 hybrid monitor");
   assert(workerPage.includes("Official webhook"), "worker page should show official webhook as the preferred source");
   assert(workerPage.includes("Browser extension fallback"), "worker page should show browser extension fallback status");
+  assert(extensionPairing.includes("Delete token"), "worker pairing should expose a delete control for worker tokens");
+  assert(extensionPairing.includes('method: "DELETE"'), "worker pairing delete control should call the token delete API");
+  assert(extensionPairing.includes("tokenId"), "worker pairing delete control should send the selected token id");
+  assert(extensionTokenRoute.includes("export async function DELETE"), "extension token API should support deleting worker tokens");
+  assert(extensionTokenRoute.includes("deleteExtensionToken"), "extension token API should revoke worker tokens through the store");
   const extensionTaskBoard = await readFile(join(root, "apps/web/src/components/extension-task-board.tsx"), "utf8");
   assert(extensionTaskBoard.includes("Edit task"), "worker board should expose task edit controls");
   assert(extensionTaskBoard.includes("Delete task"), "worker board should expose soft-delete controls");

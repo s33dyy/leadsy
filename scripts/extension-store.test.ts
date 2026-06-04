@@ -14,12 +14,14 @@ async function main() {
     completeExtensionTask,
     createExtensionTask,
     createExtensionToken,
+    deleteExtensionToken,
     editExtensionTask,
     logExtensionTaskEvent,
     listExtensionTasks,
     listExtensionConversations,
     listExtensionChannelMonitorHealth,
     listExtensionTaskEvents,
+    listExtensionTokens,
     softDeleteExtensionTask,
     prepareExtensionTask,
     resolveExtensionBearerToken,
@@ -41,6 +43,25 @@ async function main() {
     { tenantId: "tenant_test", ownerId: "usr_owner" },
     "bearer token should resolve to the paired owner scope"
   );
+
+  const intruderDelete = await deleteExtensionToken({
+    tenantId: "tenant_test",
+    ownerId: "usr_intruder",
+    tokenId: token.record.id
+  });
+  assert.equal(intruderDelete, null, "token deletion should be scoped to the owner");
+
+  const deletedToken = await deleteExtensionToken({
+    tenantId: "tenant_test",
+    ownerId: "usr_owner",
+    tokenId: token.record.id
+  });
+  assert.equal(deletedToken?.id, token.record.id, "token deletion should return the deleted token record");
+  assert.equal(Number.isFinite(Date.parse(deletedToken?.revokedAt ?? "")), true, "deleted tokens should be revoked immediately");
+  assert.equal(await resolveExtensionBearerToken(`Bearer ${token.token}`), null, "deleted worker token should no longer authenticate");
+
+  const activeTokens = await listExtensionTokens("tenant_test", "usr_owner");
+  assert.equal(activeTokens.some((item) => item.id === token.record.id), false, "deleted worker tokens should disappear from active token lists");
 
   const synced = await syncExtensionConversation({
     tenantId: "tenant_test",

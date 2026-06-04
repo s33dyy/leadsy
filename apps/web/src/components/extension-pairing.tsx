@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, Clipboard, KeyRound, Loader2, RefreshCw } from "lucide-react";
+import { CheckCircle2, Clipboard, KeyRound, Loader2, RefreshCw, Trash2 } from "lucide-react";
+import { ConfirmationModal } from "./confirmation-modal";
 import { Badge, EmptyState } from "./ui";
 
 type TokenRecord = {
@@ -17,6 +18,8 @@ export function ExtensionPairing({ initialTokens }: { initialTokens: TokenRecord
   const [token, setToken] = useState("");
   const [label, setLabel] = useState("Chrome worker");
   const [loading, setLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState("");
+  const [pendingDeleteToken, setPendingDeleteToken] = useState<TokenRecord | null>(null);
   const [notice, setNotice] = useState("");
 
   async function createToken() {
@@ -42,6 +45,26 @@ export function ExtensionPairing({ initialTokens }: { initialTokens: TokenRecord
     if (!token) return;
     await navigator.clipboard.writeText(token);
     setNotice("Token copied.");
+  }
+
+  async function deleteToken(tokenId: string) {
+    setDeletingId(tokenId);
+    setNotice("");
+    const response = await fetch("/api/extension/tokens", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ tokenId })
+    });
+    const payload = await response.json().catch(() => ({}));
+    setDeletingId("");
+    if (!response.ok) {
+      setNotice(payload.message ?? payload.error ?? "Could not delete token.");
+      return;
+    }
+    setTokens((current) => current.filter((item) => item.id !== tokenId));
+    setPendingDeleteToken(null);
+    setToken("");
+    setNotice("Worker token deleted. Create a new token before pairing that extension again.");
   }
 
   return (
@@ -94,12 +117,23 @@ export function ExtensionPairing({ initialTokens }: { initialTokens: TokenRecord
           <div className="grid gap-3">
             {tokens.map((item) => (
               <article key={item.id} className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-3">
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-2 text-sm font-semibold text-white">
                     <CheckCircle2 size={16} className="text-[var(--teal)]" />
                     {item.label}
                   </div>
-                  <span className="mono text-xs text-[var(--muted)]">{item.tokenPreview}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="mono text-xs text-[var(--muted)]">{item.tokenPreview}</span>
+                    <button
+                      type="button"
+                      onClick={() => setPendingDeleteToken(item)}
+                      disabled={deletingId === item.id}
+                      className="inline-flex h-8 items-center gap-2 rounded-[6px] border border-rose-300/25 bg-rose-300/[0.08] px-2 text-xs text-rose-100 hover:bg-rose-300/[0.14] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {deletingId === item.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                      Delete token
+                    </button>
+                  </div>
                 </div>
                 <div className="mono mt-2 text-[10px] uppercase text-[var(--muted)]">
                   created {new Date(item.createdAt).toLocaleString("en-IN")}
@@ -112,6 +146,22 @@ export function ExtensionPairing({ initialTokens }: { initialTokens: TokenRecord
           <EmptyState icon={KeyRound} title="No paired workers" detail="Create a token, then paste it into the extension side panel." />
         )}
       </section>
+
+      <ConfirmationModal
+        open={Boolean(pendingDeleteToken)}
+        title="Delete worker token"
+        description={`Delete ${pendingDeleteToken?.label ?? "this worker token"}? The paired extension will stop syncing until you create and save a new token.`}
+        confirmLabel="Delete token"
+        loading={Boolean(pendingDeleteToken && deletingId === pendingDeleteToken.id)}
+        tone="danger"
+        onCancel={() => {
+          if (deletingId) return;
+          setPendingDeleteToken(null);
+        }}
+        onConfirm={() => {
+          if (pendingDeleteToken) void deleteToken(pendingDeleteToken.id);
+        }}
+      />
     </div>
   );
 }

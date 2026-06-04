@@ -398,7 +398,7 @@ export async function listExtensionTokens(tenantId: string, ownerId: string) {
   const state = await readState();
   const scoped = scopeKey(tenantId, ownerId);
   return state.tokens
-    .filter((token) => scopeKey(token.tenantId, token.ownerId) === scoped)
+    .filter((token) => scopeKey(token.tenantId, token.ownerId) === scoped && !token.revokedAt)
     .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
     .map((token) => ({
       id: token.id,
@@ -411,6 +411,35 @@ export async function listExtensionTokens(tenantId: string, ownerId: string) {
       lastUsedAt: token.lastUsedAt,
       revokedAt: token.revokedAt
     }));
+}
+
+export async function deleteExtensionToken(input: {
+  tenantId: string;
+  ownerId: string;
+  tokenId: string;
+}) {
+  const state = await readState();
+  const token = state.tokens.find(
+    (candidate) =>
+      candidate.id === input.tokenId &&
+      scopeKey(candidate.tenantId, candidate.ownerId) === scopeKey(input.tenantId, input.ownerId) &&
+      !candidate.revokedAt
+  );
+  if (!token) return null;
+
+  token.revokedAt = new Date().toISOString();
+  await writeState(state);
+  return {
+    id: token.id,
+    tenantId: token.tenantId,
+    ownerId: token.ownerId,
+    label: token.label,
+    tokenPreview: token.tokenPreview,
+    createdAt: token.createdAt,
+    expiresAt: token.expiresAt,
+    lastUsedAt: token.lastUsedAt,
+    revokedAt: token.revokedAt
+  };
 }
 
 export async function createExtensionTask(input: {
