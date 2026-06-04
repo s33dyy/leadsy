@@ -26,6 +26,7 @@
     "test:preserved-integrations": "tsx scripts/preserved-integrations.test.ts",
     "test:openrouter-cost": "tsx scripts/openrouter-cost-constraints.test.ts",
     "test:auth-page-surface": "tsx scripts/auth-page-surface.test.ts",
+    "test:global-components": "tsx scripts/global-components-surface.test.ts",
     "test:extension-download": "tsx scripts/extension-download-page.test.ts",
     "test:user-facing-surface": "tsx scripts/user-facing-surface.test.ts",
     "test:google-workspace-auth": "NODE_OPTIONS='--conditions=react-server' tsx scripts/google-workspace-auth.test.ts",
