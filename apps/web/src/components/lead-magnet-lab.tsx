@@ -741,8 +741,18 @@ export function LeadMagnetLab({ initialWorkspace, initialError = "", initialNoti
       const payload = await submitJson("/api/lead-magnet/brief", form);
       setWorkspace(normalizeWorkspace(payload));
       setNotice("Brief saved. You can see it in history below.");
+      toast({
+        title: "Brief saved",
+        detail: "Your lead research brief is saved in history.",
+        tone: "success"
+      });
     } catch (caught) {
       setError((caught as Error).message);
+      toast({
+        title: "Brief was not saved",
+        detail: (caught as Error).message,
+        tone: "error"
+      });
     } finally {
       setLoading(null);
     }
@@ -951,8 +961,18 @@ export function LeadMagnetLab({ initialWorkspace, initialError = "", initialNoti
       setImportText("");
       setActiveLeadId(firstLeadIdForBrief(nextWorkspace.leads, nextWorkspace.brief, nextWorkspace.runs));
       setNotice("Imported leads were scored and the run was saved in history.");
+      toast({
+        title: "Leads imported",
+        detail: "Imported leads were scored and saved in history.",
+        tone: "success"
+      });
     } catch (caught) {
       setError((caught as Error).message);
+      toast({
+        title: "Import did not finish",
+        detail: (caught as Error).message,
+        tone: "error"
+      });
     } finally {
       setLoading(null);
     }
@@ -976,8 +996,18 @@ export function LeadMagnetLab({ initialWorkspace, initialError = "", initialNoti
       await loadWorkspace();
       setActiveLeadId(leadId);
       setNotice("Draft created. It is saved with this lead.");
+      toast({
+        title: "Draft created",
+        detail: "The draft is saved with this lead for human review.",
+        tone: "success"
+      });
     } catch (caught) {
       setError((caught as Error).message);
+      toast({
+        title: "Draft was not created",
+        detail: (caught as Error).message,
+        tone: "error"
+      });
       setLoading(null);
     }
   }
@@ -1038,8 +1068,18 @@ export function LeadMagnetLab({ initialWorkspace, initialError = "", initialNoti
       setLeadEditForm(null);
       setLeadModalMode("view");
       setNotice("Lead updated. The change is saved in your workspace.");
+      toast({
+        title: "Lead updated",
+        detail: "The lead record was saved in your workspace.",
+        tone: "success"
+      });
     } catch (caught) {
       setError((caught as Error).message);
+      toast({
+        title: "Lead was not updated",
+        detail: (caught as Error).message,
+        tone: "error"
+      });
     } finally {
       setLoading(null);
     }

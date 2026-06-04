@@ -47,12 +47,12 @@ export function ConfirmationModal({
       : "border-teal-300/30 bg-teal-300/[0.12] text-teal-100 hover:bg-teal-300/[0.18]";
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[80] flex items-stretch justify-center bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:p-4">
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirmation-modal-title"
-        className="w-full max-w-md rounded-[8px] border border-[var(--line)] bg-[var(--surface)] p-5 shadow-2xl"
+        className="flex min-h-[100dvh] w-full flex-col justify-between border border-[var(--line)] bg-[var(--surface)] p-5 shadow-2xl sm:min-h-0 sm:max-w-md sm:rounded-[8px]"
       >
         <div className="flex items-start justify-between gap-4">
           <div>
