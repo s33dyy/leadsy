@@ -24,6 +24,7 @@
     "test:meta-whatsapp": "tsx scripts/meta-whatsapp-webhook.test.ts",
     "test:meta-routing": "tsx --tsconfig apps/web/tsconfig.json scripts/meta-webhook-routing.test.ts",
     "test:preserved-integrations": "tsx scripts/preserved-integrations.test.ts",
+    "test:openrouter-cost": "tsx scripts/openrouter-cost-constraints.test.ts",
     "test:extension-download": "tsx scripts/extension-download-page.test.ts",
     "test:user-facing-surface": "tsx scripts/user-facing-surface.test.ts",
     "test:google-workspace-auth": "NODE_OPTIONS='--conditions=react-server' tsx scripts/google-workspace-auth.test.ts",

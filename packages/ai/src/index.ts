@@ -2005,6 +2005,7 @@ function researchBudgetForBrief(brief: LeadBrief, progress = campaignProgressFor
 }
 
 const defaultSpendCapInr = 1;
+const defaultRoutineOpenRouterModel = "openrouter/free";
 
 function spendCapFromEnv() {
   const configured = parseNumber(process.env.LEADSY_SPEND_CAP_INR) ?? parseNumber(process.env.LEADSY_DEFAULT_SPEND_CAP_INR);
@@ -2012,11 +2013,11 @@ function spendCapFromEnv() {
 }
 
 function openRouterPlannerModel() {
-  return process.env.OPENROUTER_FAST_MODEL || process.env.OPENROUTER_RESEARCH_MODEL || process.env.AI_DEFAULT_MODEL || "openai/gpt-5.2";
+  return process.env.OPENROUTER_FAST_MODEL || process.env.OPENROUTER_RESEARCH_MODEL || process.env.AI_DEFAULT_MODEL || defaultRoutineOpenRouterModel;
 }
 
 function openRouterDossierModel() {
-  return process.env.OPENROUTER_DOSSIER_MODEL || process.env.OPENROUTER_RESEARCH_MODEL || process.env.OPENROUTER_SENTIMENT_MODEL || process.env.AI_DEFAULT_MODEL || "openai/gpt-5.2";
+  return process.env.OPENROUTER_DOSSIER_MODEL || process.env.OPENROUTER_RESEARCH_MODEL || process.env.OPENROUTER_SENTIMENT_MODEL || process.env.AI_DEFAULT_MODEL || defaultRoutineOpenRouterModel;
 }
 
 function expensiveResearchModel() {
@@ -5561,7 +5562,7 @@ export async function draftLeadMessage(input: {
           "x-title": "Leadsy Message Drafting"
         },
         body: JSON.stringify({
-          model: process.env.OPENROUTER_FAST_MODEL || "openai/gpt-5.2",
+          model: process.env.OPENROUTER_FAST_MODEL || defaultRoutineOpenRouterModel,
           messages: [
             {
               role: "system",
