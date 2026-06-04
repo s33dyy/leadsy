@@ -3,6 +3,7 @@ import { isAbsolute, resolve } from "node:path";
 function resolveDataDir() {
   const configured = process.env.LEADSY_DATA_DIR?.trim();
   const root = process.env.INIT_CWD?.trim() || process.cwd();
+  if (!configured && process.env.RAILWAY_ENVIRONMENT) return "/data/leadsy";
   if (!configured) return resolve(root, "data/app");
   return isAbsolute(configured) ? configured : resolve(root, configured);
 }
