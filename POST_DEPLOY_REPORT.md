@@ -31,15 +31,15 @@
 
 ## Deployment Health
 
-- Railway: unhealthy - no Railway deployment was triggered or verified from this session.
-- Meta integrations: unhealthy - local preservation checks exist, but live Meta OAuth and webhook health were not verified after deployment.
+- Railway: healthy - linked production service `@leadsy/web` is Online at `https://leadsy.up.railway.app`; latest deployment `e63d0a32-511a-40f6-843f-ad1b249a9f0b` succeeded on 2026-06-04 at 18:22:29 +05:30.
+- Meta integrations: unhealthy - local preservation checks exist and routes built successfully, but live Meta OAuth/login and webhook delivery were not fully smoke-tested after deployment.
 - OpenRouter: unhealthy - local cost/provider checks exist, but live API key and model-routing health were not verified after deployment.
 - Extension sync: unhealthy - local extension endpoint checks exist, but live browser extension pairing and sync were not verified after deployment.
-- Authentication: unhealthy - local auth, route, and onboarding checks exist, but live production authentication was not verified after deployment.
+- Authentication: healthy - `/login` returns HTTP 200, `/dashboard` redirects as expected, `/api/health` returns HTTP 200 with `ok: true`, and runtime logs include successful Google auth audit events after deployment.
 
 ## Known Issues / Remaining Work
 
-- No production deployment was observed or verified, so this is a post-work report rather than a confirmed post-production deployment report.
+- Production deployment was observed and verified at the Railway service level, but not every live integration flow has been smoke-tested.
 - Dashboard, CRM, Worker Center, and Settings route aliases exist, but the full Phase 1 page-by-page specification is not complete.
 - The onboarding wizard is wired as a first-login experience, but AI-generated target-customer questions are not yet backed by a live OpenRouter call.
 - CRM notes CRUD, task approval flow, communication logging UI, and knowledge-base update hooks still need full Phase 1 implementation.
@@ -50,7 +50,7 @@
 
 ## Risks
 
-- Deployment health remains unknown until Railway deploy logs and live smoke checks are run.
+- Railway deployment is currently healthy, but ongoing confidence depends on deployment logs, health checks, and live smoke checks after each push.
 - Meta login can regress if production callback URLs, embedded signup URLs, or cookie settings differ from local assumptions.
 - Auth route guards can regress if production session persistence differs from the JSON auth store used in local tests.
 - Onboarding completion behavior may need a durable production user-profile field before it can be considered complete for all users.
