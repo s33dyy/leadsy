@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { AlertTriangle, CheckCircle2, Clock3, Loader2, Pencil, Send, Trash2, Workflow } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, Clock3, Loader2, Pencil, Send, Trash2, Workflow } from "lucide-react";
 import { Badge, EmptyState } from "./ui";
 
 type SelectedLeadTask = {
@@ -41,7 +41,102 @@ type SelectedLeadTaskEvent = {
   occurredAt: string;
 };
 
-type QueueTaskType = "initiate_conversation" | "follow_up";
+type QueueTaskType = "initiate_conversation" | "follow_up" | "reply_to_inbound";
+
+const taskGenerationOptions: Array<{ type: QueueTaskType; label: string; detail: string }> = [
+  {
+    type: "initiate_conversation",
+    label: "Intro task",
+    detail: "Draft a first outreach task for this lead."
+  },
+  {
+    type: "follow_up",
+    label: "Follow-up task",
+    detail: "Prepare a nudge based on known context."
+  },
+  {
+    type: "reply_to_inbound",
+    label: "Reply to inbound",
+    detail: "Draft a reply for an incoming enquiry."
+  }
+];
+
+export function LeadTaskGenerateMenu({
+  leadId,
+  onTasksGenerated,
+  className = "",
+  label = "AI Generate tasks"
+}: {
+  leadId: string;
+  onTasksGenerated?: (tasks: SelectedLeadTask[]) => void;
+  className?: string;
+  label?: string;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState<QueueTaskType | "">("");
+  const [error, setError] = useState("");
+
+  async function queueExtensionTask(type: QueueTaskType) {
+    setLoading(type);
+    setError("");
+    const response = await fetch("/api/extension/tasks/generate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type, leadIds: [leadId] })
+    });
+    const payload = (await response.json().catch(() => ({}))) as { tasks?: SelectedLeadTask[]; error?: string };
+    setLoading("");
+    if (!response.ok) {
+      setError(payload.error === "rate_limited" ? "Task generation is rate limited. Try again shortly." : "Task was not generated. Check the lead contact details and try again.");
+      return;
+    }
+    onTasksGenerated?.(payload.tasks ?? []);
+    setOpen(false);
+    router.refresh();
+  }
+
+  return (
+    <div className={`relative ${className}`}>
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        className="inline-flex h-10 items-center justify-center gap-2 rounded-[6px] border border-teal-300/35 bg-teal-300/[0.12] px-3 text-sm font-medium text-teal-100 hover:bg-teal-300/[0.18]"
+      >
+        {loading ? <Loader2 size={15} className="animate-spin" /> : <Workflow size={15} />}
+        {label}
+        <ChevronDown size={14} />
+      </button>
+      {open ? (
+        <div
+          role="menu"
+          className="absolute right-0 z-20 mt-2 w-72 rounded-[8px] border border-[var(--line)] bg-[#0f1619] p-2 shadow-2xl shadow-black/40"
+        >
+          <div className="px-2 py-2 text-xs leading-5 text-[var(--muted-2)]">Generate an extension task for this lead. Human approval is still required before any send.</div>
+          {taskGenerationOptions.map((option) => (
+            <button
+              key={option.type}
+              type="button"
+              role="menuitem"
+              disabled={Boolean(loading)}
+              onClick={() => queueExtensionTask(option.type)}
+              className="flex w-full items-start gap-2 rounded-[6px] px-2 py-2 text-left hover:bg-white/[0.05] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {loading === option.type ? <Loader2 size={14} className="mt-0.5 shrink-0 animate-spin text-teal-100" /> : <Send size={14} className="mt-0.5 shrink-0 text-[var(--teal)]" />}
+              <span>
+                <span className="block text-sm font-medium text-white">{option.label}</span>
+                <span className="mt-1 block text-xs leading-5 text-[var(--muted)]">{option.detail}</span>
+              </span>
+            </button>
+          ))}
+          {error ? <div className="mt-2 rounded-[6px] border border-amber-300/25 bg-amber-300/10 px-2 py-2 text-xs leading-5 text-amber-100">{error}</div> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 export function SelectedLeadTasks({
   leadId,
@@ -57,20 +152,6 @@ export function SelectedLeadTasks({
   const [loading, setLoading] = useState("");
   const taskIds = new Set(tasks.map((task) => task.id));
   const events = initialEvents.filter((event) => taskIds.has(event.taskId));
-
-  async function queueExtensionTask(type: QueueTaskType) {
-    setLoading(`queue:${type}`);
-    const response = await fetch("/api/extension/tasks/generate", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ type, leadIds: [leadId] })
-    });
-    const payload = (await response.json().catch(() => ({}))) as { tasks?: SelectedLeadTask[] };
-    setLoading("");
-    if (!response.ok) return;
-    setTasks((current) => mergeGeneratedTasks(payload.tasks ?? [], current));
-    router.refresh();
-  }
 
   async function approvePreparedSend(task: SelectedLeadTask, action: "approve" | "reject") {
     setLoading(`${action}:${task.id}`);
@@ -128,26 +209,7 @@ export function SelectedLeadTasks({
               No extension = log manually. With the extension, queue a human-approved browser task for this lead only.
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => queueExtensionTask("initiate_conversation")}
-              disabled={Boolean(loading)}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-teal-300/25 bg-teal-300/10 px-3 text-xs font-medium text-teal-100 hover:bg-teal-300/[0.16] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {loading === "queue:initiate_conversation" ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-              Queue extension intro
-            </button>
-            <button
-              type="button"
-              onClick={() => queueExtensionTask("follow_up")}
-              disabled={Boolean(loading)}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-lime-300/25 bg-lime-300/10 px-3 text-xs font-medium text-lime-100 hover:bg-lime-300/[0.16] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {loading === "queue:follow_up" ? <Loader2 size={14} className="animate-spin" /> : <Workflow size={14} />}
-              Queue extension follow-up
-            </button>
-          </div>
+          <LeadTaskGenerateMenu leadId={leadId} onTasksGenerated={(nextTasks) => setTasks((current) => mergeGeneratedTasks(nextTasks, current))} />
         </div>
       </div>
 
@@ -226,7 +288,7 @@ export function SelectedLeadTasks({
           ))}
         </div>
       ) : (
-        <EmptyState icon={Workflow} title="No tasks for this lead" detail="Queue an extension task here, or keep tracking replies by logging manual comms." />
+        <EmptyState icon={Workflow} title="No tasks for this lead" detail="Use AI Generate tasks above, or keep tracking replies by logging manual comms." />
       )}
 
       <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
