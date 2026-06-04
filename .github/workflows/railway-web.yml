@@ -1,33 +1,21 @@
-name: Web CI/CD
+name: Web CI
 
 on:
   pull_request:
     branches:
       - main
-    paths:
-      - ".github/workflows/railway-web.yml"
-      - "apps/web/**"
-      - "packages/**"
-      - "package.json"
-      - "package-lock.json"
   push:
     branches:
       - main
-    paths:
-      - ".github/workflows/railway-web.yml"
-      - "apps/web/**"
-      - "packages/**"
-      - "package.json"
-      - "package-lock.json"
   workflow_dispatch:
 
 concurrency:
-  group: web-cicd-${{ github.ref }}
+  group: web-ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   verify:
-    name: Verify Web
+    name: Verify Web Before Railway Deploy
     runs-on: ubuntu-latest
 
     steps:
@@ -43,52 +31,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Lint
+        run: npm run lint
+
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Test
+        run: npm run test
+
       - name: Build
         run: npm run build
-
-  deploy:
-    name: Deploy Web To Railway
-    runs-on: ubuntu-latest
-    needs: verify
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-    environment: production
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Check Railway token
-        id: railway-token
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: |
-          if [ -z "$RAILWAY_TOKEN" ]; then
-            echo "::warning::RAILWAY_TOKEN is not set; skipping Railway CLI deploy. Railway's GitHub integration can still deploy this push."
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          echo "present=true" >> "$GITHUB_OUTPUT"
-
-      - name: Install Railway CLI
-        if: steps.railway-token.outputs.present == 'true'
-        run: npm install -g @railway/cli
-
-      - name: Deploy to Railway
-        if: steps.railway-token.outputs.present == 'true'
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: |
-          railway up \
-            --project 5d01eaf7-79b0-43b1-b427-7bc3ac122df7 \
-            --environment 7b7fa246-b552-4a88-938c-672107c8dca4 \
-            --service efa9e589-cdb9-4268-b255-4c663bb32150 \
-            --detach \
-            --message "GitHub Actions deploy ${GITHUB_SHA}"

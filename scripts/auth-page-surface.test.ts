@@ -52,7 +52,8 @@ async function main() {
   assert(loginForm.includes("auth-tab-signup"), "auth card should expose a signup tab button");
   assert(loginForm.includes("setMode"), "login/signup tabs should switch client-side without a page reload");
   assert(loginForm.includes("/forgot-password"), "login form should link to forgot password route");
-  assert(loginForm.includes("/api/auth/login"), "login should preserve existing password auth endpoint");
+  assert(loginForm.includes('/api/auth/login/form'), "password login should use the server redirect route so Set-Cookie and navigation happen together");
+  assert(!loginForm.includes('fetch("/api/auth/login"'), "password login should not depend on an AJAX Set-Cookie before navigation");
   assert(loginForm.includes("/api/auth/google"), "signup should preserve existing Google auth flow");
   assert(loginForm.includes("Create workspace with Google"), "signup mode should use existing Google signup logic");
   assert(loginForm.includes("fieldErrors"), "auth form should use inline field validation");

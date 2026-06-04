@@ -67,42 +67,22 @@ export function LoginForm({ nextPath, initialMode = "login" }: LoginFormProps) {
   }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
     setNotice("");
     setError("");
 
     if (mode === "forgot") {
+      event.preventDefault();
       if (!validateRecovery()) return;
       setNotice("Password reset is not automated yet. Use Google sign-in or ask your workspace owner to issue a new password.");
       return;
     }
 
-    if (!validateLogin()) return;
+    if (!validateLogin()) {
+      event.preventDefault();
+      return;
+    }
 
     setLoading(true);
-    try {
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ emailOrPhone, password, next: nextPath })
-      });
-
-      if (!response.ok) {
-        if (response.status === 428) {
-          setError("Create your workspace with Google first.");
-          return;
-        }
-        setError(response.status === 401 ? "Wrong user ID or password." : "Login failed. Check your connection and try again.");
-        return;
-      }
-
-      const payload = (await response.json()) as { redirectTo: string };
-      window.location.assign(payload.redirectTo);
-    } catch {
-      setError("Login could not reach Leadsy. Check your connection and try again.");
-    } finally {
-      setLoading(false);
-    }
   }
 
   if (mode === "signup") {
