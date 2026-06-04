@@ -45,6 +45,12 @@ async function main() {
   assert(appShell.includes("data-testid=\"notification-center\""), "notification bell should open a notification center");
   assert(appShell.includes("data-testid=\"user-menu\""), "top bar should include a user avatar menu");
   assert(appShell.includes("ToastProvider"), "app shell should wrap workspace content in the toast provider");
+  assert(appShell.includes('fetch("/api/auth/logout"'), "logout should use an explicit POST API call");
+  assert(!appShell.includes('href="/logout"'), "logout must not use a prefetchable navigation link");
+
+  const logoutRoute = await read("apps/web/src/app/logout/route.ts");
+  assert(!logoutRoute.includes("clearSessionCookie"), "GET /logout must not clear cookies because links can be prefetched");
+  assert(!logoutRoute.includes("destroySessionFromRequest"), "GET /logout must not destroy sessions because links can be prefetched");
 
   const toastProvider = await read("apps/web/src/components/toast-provider.tsx");
   assert(toastProvider.includes('"use client"'), "toast provider should be a client component");

@@ -32,7 +32,9 @@ Rules:
 Every code or documentation change must leave the local machine in a server-visible state unless the user explicitly asks for a local-only commit.
 
 Rules:
+- Required release sequence after every local change: create/use a feature branch, make the change locally, verify locally, commit the feature branch, push the feature branch, switch to `main`, merge the feature branch into `main`, push `main`, confirm the GitHub Actions CI pipeline runs on `main`, and then confirm Railway creates the production deployment from that successful `main` CI run.
 - Production deploy flow is: make the local change on a feature branch, verify it, commit it, push the feature branch, merge the feature branch into `main`, then push `main`. GitHub Actions must run on `main`; Railway is connected to `main` with "Wait for CI" enabled and performs the production deploy only after CI succeeds.
+- Never assume Railway deployed a feature-branch push. Railway production watches `main`, so the deploy is not complete until `main` is pushed, CI passes on `main`, and Railway shows a successful deployment for that exact `main` commit hash.
 - Do not use ad hoc `railway up` for normal code changes. Use Railway CLI only for inspection, logs, status checks, or an explicit emergency/manual deploy requested by the user.
 - Before committing application code, run verification sequentially in this order unless the change is docs-only: `npm run typecheck`, `npm run lint`, relevant focused `npm run test:*` commands, then `npm run build` when UI/app behavior changed.
 - For docs-only changes, at minimum run `git diff --check` before committing.

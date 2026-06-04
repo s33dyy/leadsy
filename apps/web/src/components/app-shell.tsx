@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Bell,
   BookOpen,
@@ -73,10 +73,12 @@ export function AppShell({
   hasMetaConnection?: boolean;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [logoutPending, setLogoutPending] = useState(false);
   const page = pageTitleForPath(pathname);
   const setupIssues = hasMetaConnection ? 0 : 1;
   const onboardingReminder = session.onboardingCompletedAt ? 0 : 1;
@@ -116,6 +118,22 @@ export function AppShell({
   );
 
   const sidebarWidth = sidebarExpanded ? "lg:pl-[248px]" : "lg:pl-[88px]";
+
+  async function logout() {
+    if (logoutPending) return;
+    setLogoutPending(true);
+    try {
+      const response = await fetch("/api/auth/logout", {
+        method: "POST",
+        credentials: "include"
+      });
+      const payload = (await response.json().catch(() => ({}))) as { redirectTo?: unknown };
+      router.replace(typeof payload.redirectTo === "string" ? payload.redirectTo : "/login");
+      router.refresh();
+    } finally {
+      setLogoutPending(false);
+    }
+  }
 
   const nav = (
     <nav className="flex flex-1 flex-col gap-2" aria-label="Primary">
@@ -198,13 +216,15 @@ export function AppShell({
                 ) : null}
               </div>
               {sidebarExpanded ? (
-                <Link
-                  href="/logout"
-                  className="mt-2 flex h-9 items-center gap-2 rounded-[6px] px-2 text-sm text-[var(--muted-2)] hover:bg-white/[0.04] hover:text-white"
+                <button
+                  type="button"
+                  onClick={logout}
+                  disabled={logoutPending}
+                  className="mt-2 flex h-9 w-full items-center gap-2 rounded-[6px] px-2 text-sm text-[var(--muted-2)] hover:bg-white/[0.04] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <LogOut size={16} />
-                  Logout
-                </Link>
+                  {logoutPending ? "Logging out..." : "Logout"}
+                </button>
               ) : null}
             </div>
           </div>
@@ -325,10 +345,15 @@ export function AppShell({
                   <Link href="/app/connect?panel=settings" className="flex h-9 items-center rounded-[6px] px-2 text-sm text-[var(--muted-2)] hover:bg-white/[0.04] hover:text-white">
                     Settings
                   </Link>
-                  <Link href="/logout" className="flex h-9 items-center gap-2 rounded-[6px] px-2 text-sm text-rose-100 hover:bg-rose-300/10">
+                  <button
+                    type="button"
+                    onClick={logout}
+                    disabled={logoutPending}
+                    className="flex h-9 w-full items-center gap-2 rounded-[6px] px-2 text-left text-sm text-rose-100 hover:bg-rose-300/10 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
                     <LogOut size={15} />
-                    Logout
-                  </Link>
+                    {logoutPending ? "Logging out..." : "Logout"}
+                  </button>
                 </div>
               ) : null}
             </div>
