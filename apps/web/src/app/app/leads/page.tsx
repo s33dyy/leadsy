@@ -21,6 +21,7 @@ import {
 import Link from "next/link";
 import { Badge, EmptyState, Panel, PrimaryLink, SectionTitle } from "@/components/ui";
 import { LeadScrollKeeper } from "@/components/lead-scroll-keeper";
+import { ManualLeadIntake } from "@/components/manual-lead-intake";
 import { SelectedLeadTasks } from "@/components/selected-lead-tasks";
 import { getCurrentSession } from "@/lib/auth";
 import { listExtensionTaskEvents, listExtensionTasks, type ExtensionTask, type ExtensionTaskEvent } from "@/lib/extension-store";
@@ -138,6 +139,7 @@ function noticeCopy(params: Record<string, string | string[] | undefined>) {
   if (notice === "lead-restored") return "Lead restored.";
   if (notice === "conversation-excluded") return "Conversation excluded from AI knowledge.";
   if (notice === "conversation-restored") return "Conversation restored to AI knowledge.";
+  if (notice === "manual-lead-added") return "Manual lead added. Intake answers updated the knowledge base.";
   if (notice === "manual-message-added") return "Manual communication logged.";
   if (notice === "lead-edited") return "Lead details updated.";
   if (notice === "lead-archived") return "Lead archived. History is preserved.";
@@ -365,6 +367,11 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
   const excludedLeads = leads.filter((lead) => lead.leadStatus === "excluded");
   const metaLeads = leads.filter((lead) => matchesView(lead, "meta"));
   const notice = noticeCopy(params);
+  const relatedLeadOptions = leads.map((lead) => ({
+    id: lead.id,
+    label: contactLabel(lead),
+    detail: lead.contact.email || lead.contact.phone || lead.contact.handle || lead.id
+  }));
 
   return (
     <div className="space-y-5">
@@ -398,6 +405,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
           <LeadListPane
             leads={filteredLeads}
             selectedLead={selectedLead}
+            relatedLeads={relatedLeadOptions}
             activeView={activeView}
             query={query}
             activeTab={activeTab}
@@ -433,6 +441,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
 function LeadListPane({
   leads,
   selectedLead,
+  relatedLeads,
   activeView,
   query,
   activeTab,
@@ -440,6 +449,7 @@ function LeadListPane({
 }: {
   leads: LeadKnowledgeRecord[];
   selectedLead: LeadKnowledgeRecord | null;
+  relatedLeads: Array<{ id: string; label: string; detail?: string }>;
   activeView: ViewFilter;
   query: string;
   activeTab: LeadWorkspaceTab;
@@ -452,7 +462,10 @@ function LeadListPane({
           <ListChecks size={17} className="text-[var(--teal)]" />
           Leads list, filters
         </div>
-        <Badge tone="neutral">{leads.length} shown</Badge>
+        <div className="flex items-center gap-2">
+          <ManualLeadIntake relatedLeads={relatedLeads} endpoint="/api/leads/manual" />
+          <Badge tone="neutral">{leads.length} shown</Badge>
+        </div>
       </div>
 
       <form method="get" action="/app/leads" className="mt-4 flex min-w-0 items-center gap-2 rounded-[8px] border border-[var(--line)] bg-black/20 px-3">
@@ -531,7 +544,12 @@ function LeadListPane({
         </div>
       ) : (
         <div className="mt-4">
-          <EmptyState icon={Inbox} title="No records in this view" detail="Change the filter or wait for Meta webhooks, extension sync, or manual communication logs." />
+          <EmptyState
+            icon={Inbox}
+            title="No records in this view"
+            detail="Change the filter, wait for Meta webhooks or extension sync, or add a manual lead now."
+            action={<ManualLeadIntake relatedLeads={relatedLeads} endpoint="/api/leads/manual" buttonLabel="Add Lead" />}
+          />
         </div>
       )}
     </div>

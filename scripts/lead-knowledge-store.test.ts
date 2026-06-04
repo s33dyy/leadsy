@@ -171,9 +171,33 @@ async function main() {
       body: "Call note: parent wants a weekend counselling slot.",
       occurredAt: "2026-06-02T08:07:00.000Z"
     });
+    const manualOnlyLead = await appendManualLeadMessage({
+      ...scope,
+      direction: "note",
+      channel: "manual",
+      contact: {
+        displayName: "Manual Prospect",
+        phone: "+91 90000 00000",
+        email: "manual@example.com",
+        handle: "@manual-prospect"
+      },
+      body: [
+        "Manual lead created from CRM intake.",
+        "Company: Manual Labs",
+        "Priority: High",
+        "Estimated budget: 250000",
+        "Related lead: Asha Buyer",
+        "Additional email: buyer-team@example.com"
+      ].join("\n"),
+      occurredAt: "2026-06-02T08:08:00.000Z"
+    });
+    assert.equal(manualOnlyLead.contact.displayName, "Manual Prospect");
+    assert.equal(manualOnlyLead.contact.email, "manual@example.com");
+    assert.equal(manualOnlyLead.channels.includes("manual"), true);
+    assert.equal(manualOnlyLead.messages.some((message) => message.body.includes("Manual lead created from CRM intake")), true);
 
     const leads = await listLeadKnowledgeRecords(scope);
-    assert.equal(leads.length, 3, "WhatsApp, Instagram, and Facebook contacts should be tracked as lead records");
+    assert.equal(leads.length, 4, "WhatsApp, Instagram, Facebook, and manual contacts should be tracked as lead records");
     const asha = leads.find((lead) => lead.contact.displayName === "Asha Buyer");
     assert(asha, "Asha lead should exist");
     assert.equal(asha.messageCount, 5);
