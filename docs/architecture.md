@@ -1,6 +1,6 @@
 # Architecture
 
-Leadsy is designed as a modular lead operating system rather than a directory clone. The current product priority is Indian SMB and agency lead conversion: Meta ads in, AI qualifies immediately, WhatsApp converts, humans handle only the leads where they add leverage.
+Leadsy is an AI Lead Intelligence & Operations Platform rather than a Revenue OS or CRM-first product. The current product priority is Indian SMB and agency lead intelligence: research prospects, build durable lead knowledge, generate human-operator tasks, draft outreach for approval, and support qualification work without autonomous sends.
 
 ## System Shape
 
@@ -27,7 +27,7 @@ flowchart LR
 - Next.js App Router keeps the product shell, server-rendered data views, and route handlers close while still allowing package-level separation.
 - PostgreSQL with pgvector is the default database for multitenant agency clients, Meta leads, WhatsApp conversations, CRM records, audit logs, embeddings, and analytics-ready facts.
 - Redis is the intended cache, queue, and rate-limit backend. The current package uses in-memory primitives for local development with compatible interfaces.
-- AI logic lives behind `RevenueAIModel`, so deterministic local responses can be replaced by OpenAI, Anthropic, Vercel AI Gateway, or a private model router.
+- AI logic lives behind the existing model abstraction, so deterministic local responses can be replaced by OpenAI, Anthropic, Vercel AI Gateway, OpenRouter, or a private model router.
 - Workflow definitions are typed DAG-like objects with Meta triggers, normalization, AI qualification, WhatsApp messaging, routing, and booking nodes.
 - Every mutation-facing route calls RBAC, rate limiting, audit logging, and structured spans.
 - The Lead Magnet layer separates research/scoring from messaging. AI can discover, enrich, score, summarize, and draft at high volume, while automated outreach requires an approved source or consent context.
@@ -43,13 +43,14 @@ Every revenue object carries a `tenantId`. Production storage should enforce thi
 
 ## AI Plane
 
-The AI plane should be split into:
+The AI plane should support the lead-intelligence mission hierarchy:
 
-- Copilot: conversational actions over CRM, deals, forecasts, segments, and workflows
+- Research agents: prospect research, public evidence collection, enrichment, and fit signals
+- Knowledge agents: lead summaries, buying-signal detection, duplicate reasoning, and account briefs
+- Task agents: proposed next actions for human operators, with approval before execution
+- Drafting agents: outreach drafts and follow-up planning that require human approval before any send
 - Lead Magnet agents: OpenRouter free public web search/fetch, free directory research, public social profile research, contact-page extraction, review/reputation checks, content-gap analysis, hiring/news signals, competitor context, fit scoring, evidence checks, first-touch drafting, and follow-up planning
-- Intelligence agents: lead summaries, buying-signal detection, duplicate reasoning, account briefs
-- Outreach agents: personalization, channel selection, sequence branches, deliverability feedback
-- Analytics agents: anomaly detection, forecast narratives, cohort interpretation
+- Analytics agents: secondary reporting, anomaly detection, and cohort interpretation
 
 The local implementation is deterministic so the app runs without secrets. Production providers plug into the same interface.
 

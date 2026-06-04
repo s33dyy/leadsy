@@ -143,7 +143,7 @@ function noticeCopy(params: Record<string, string | string[] | undefined>) {
   if (notice === "lead-archived") return "Lead archived. History is preserved.";
   if (notice === "message-hidden") return "Communication hidden from the active timeline.";
   if (notice === "message-restored") return "Communication restored.";
-  if (notice === "lead-magnet-archived") return "Lead Magnet is archived. Leads is the active workspace.";
+  if (notice === "lead-magnet-archived") return "Lead Magnet is archived. Lead Intelligence is the active workspace.";
   return "";
 }
 
@@ -371,7 +371,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
       <LeadScrollKeeper />
       <Panel className="p-5 md:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <SectionTitle eyebrow="Lead Operations" title="CRM pipeline" />
+          <SectionTitle eyebrow="Lead Intelligence" title="Knowledge workspace" />
           <div className="flex flex-wrap gap-2">
             <Badge tone="teal">All Meta and browser conversations</Badge>
             <Badge tone="amber">{replyQueue.length} Needs reply</Badge>

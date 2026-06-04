@@ -6,28 +6,28 @@ import { Badge, GhostLink, PrimaryLink } from "@/components/ui";
 const modules = [
   {
     icon: MessageCircle,
-    title: "Meta message leads",
-    detail: "Record incoming WhatsApp, Instagram, and Facebook messages from official Meta webhooks."
+    title: "Research prospects",
+    detail: "Collect Meta, browser extension, and manual context before AI adds any generated interpretation."
   },
   {
     icon: Cable,
-    title: "Connection config",
-    detail: "Keep Meta authorization and worker pairing in one clean setup page."
+    title: "Build lead knowledge",
+    detail: "Turn notes, conversations, status changes, and worker findings into one living lead profile."
   },
   {
     icon: Bot,
-    title: "Browser worker",
-    detail: "Pair the private extension, queue tasks, and let the worker report browser conversations back to Leadsy."
+    title: "Generate operator tasks",
+    detail: "Let workers propose next steps while humans keep control of approval, edits, and completion."
   },
   {
     icon: Download,
-    title: "Private extension",
-    detail: "Give users a direct download page with manual Chrome install steps outside the Chrome Web Store."
+    title: "Draft with approval",
+    detail: "Prepare outreach drafts without sending autonomously; operators approve every action first."
   },
   {
     icon: ShieldCheck,
-    title: "Consent-first identity",
-    detail: "No hidden clicker data. Leadsy records the phone number only when the person actually sends a message."
+    title: "Support human operators",
+    detail: "Keep qualification, communication logs, and task queues focused on daily lead operations."
   }
 ];
 
@@ -57,25 +57,25 @@ export default function Home() {
 
       <section className="mx-auto grid max-w-7xl gap-8 px-4 pb-8 pt-8 md:px-8 lg:grid-cols-[0.72fr_1.28fr] lg:items-center lg:pb-14">
         <div className="max-w-xl">
-          <Badge tone="teal">AI-powered lead operating system</Badge>
+          <Badge tone="teal">{"AI Lead Intelligence & Operations Platform"}</Badge>
           <h1 className="mt-6 text-5xl font-semibold leading-[1.02] text-white md:text-7xl">
-            Leadsy Lead OS
+            Leadsy
           </h1>
           <p className="mt-6 text-lg leading-8 text-[var(--muted-2)]">
-            Capture the Meta messages that actually arrive, pair a browser worker for the live chat, and keep every lead conversation in one clean operator workspace.
+            Research prospects, build knowledge about every lead, generate tasks for human operators, and draft outreach that waits for approval before anything is sent.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <PrimaryLink href="/login?next=/app/leads">
-              Open leads
+              Open lead intelligence
               <ArrowRight className="ml-2" size={16} />
             </PrimaryLink>
             <GhostLink href="/extension">Download extension</GhostLink>
           </div>
           <div className="mt-8 grid grid-cols-3 gap-3">
             {[
-              ["0", "connected sources"],
-              ["0", "live leads"],
-              ["0", "bookings"]
+              ["0", "knowledge records"],
+              ["0", "operator tasks"],
+              ["0", "autonomous sends"]
             ].map(([value, label]) => (
               <div key={label} className="panel-quiet p-3">
                 <div className="text-2xl font-semibold text-white">{value}</div>

@@ -55,7 +55,7 @@ test("built extension stays quiet on Leadsy app pages", async () => {
     const page = await context.newPage();
     await page.route("http://localhost:3000/**", (route) =>
       route.fulfill({
-        body: "<!doctype html><html><body><main><h1>Leadsy Lead OS</h1></main></body></html>",
+        body: "<!doctype html><html><body><main><h1>Leadsy Lead Intelligence</h1></main></body></html>",
         contentType: "text/html"
       })
     );

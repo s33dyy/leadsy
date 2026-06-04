@@ -26,3 +26,17 @@ Rules:
 - Local data lives in `data/app`, Postgres data in `data/postgres`, and Redis data in `data/redis`; do not create duplicate hidden data stores.
 - The external SSD copy is archival only. Do not start dev servers from `/Volumes/Pratik's SSD/Projects/leadsy`.
 - Keep status updates concise and mention when a process is intentionally left running.
+
+## commit and ci/cd handoff
+
+Every code or documentation change must leave the local machine in a server-visible state unless the user explicitly asks for a local-only commit.
+
+Rules:
+- Before committing application code, run verification sequentially in this order unless the change is docs-only: `npm run typecheck`, `npm run lint`, relevant focused `npm run test:*` commands, then `npm run build` when UI/app behavior changed.
+- For docs-only changes, at minimum run `git diff --check` before committing.
+- After every successful commit, immediately push the current branch to `origin` with upstream tracking if needed: `git push -u origin HEAD`.
+- After pushing, verify the commit reached the remote with `git ls-remote --heads origin "$(git branch --show-current)"` or `git status -sb`.
+- Do not tell the user work is complete unless the commit hash and push status are known. If push fails, report the failure plainly and include the exact next action needed.
+- Never leave local-only commits at the end of a task unless the user explicitly requested that.
+- Keep commits atomic and small; if a change needs multiple commits, push after each commit so CI/CD can run on every increment.
+- Do not push directly to `main`; work on a feature branch and let the remote CI/CD pipeline validate it before merge/deploy.

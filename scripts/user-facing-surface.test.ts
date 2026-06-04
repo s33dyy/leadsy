@@ -19,6 +19,8 @@ async function main() {
   const expectedPages = [
     "apps/web/src/app/page.tsx",
     "apps/web/src/app/login/page.tsx",
+    "apps/web/src/app/signup/page.tsx",
+    "apps/web/src/app/forgot-password/page.tsx",
     "apps/web/src/app/extension/page.tsx",
     "apps/web/src/app/app/connect/page.tsx",
     "apps/web/src/app/app/leads/page.tsx",
@@ -86,13 +88,23 @@ async function main() {
   assert(!loginForm.includes("/client/register"), "login/signup page should not expose client registration");
 
   const loginPage = await readFile(join(root, "apps/web/src/app/login/page.tsx"), "utf8");
+  const authPage = await readFile(join(root, "apps/web/src/components/auth-page.tsx"), "utf8");
   for (const adminCopy of ["owner", "Railway", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "local access"]) {
     assert(!loginPage.includes(adminCopy), `login page should not expose admin copy: ${adminCopy}`);
+    assert(!authPage.includes(adminCopy), `auth page should not expose admin copy: ${adminCopy}`);
   }
+  assert(authPage.includes("lead intelligence workspace"), "auth page should frame access around lead intelligence");
 
   const landingPage = await readFile(join(root, "apps/web/src/app/page.tsx"), "utf8");
   assert(landingPage.includes("/login?next=/app/leads"), "landing page should enter the leads page");
   assert(landingPage.includes("/extension"), "landing page should link to the extension download page");
+  assert(landingPage.includes("AI Lead Intelligence & Operations Platform"), "landing page should use the Step 2 product identity");
+  assert(landingPage.includes("Research prospects"), "landing page should lead with prospect research");
+  assert(landingPage.includes("Build lead knowledge"), "landing page should highlight lead knowledge");
+  assert(landingPage.includes("Generate operator tasks"), "landing page should highlight human operator tasks");
+  assert(landingPage.includes("Draft with approval"), "landing page should keep outreach human-approved");
+  assert(!landingPage.includes("Leadsy Lead OS"), "landing page should not position Leadsy as a Lead OS");
+  assert(!landingPage.includes("lead operating system"), "landing page should not position Leadsy as an operating system");
   assert(!landingPage.includes("/app/magnet"), "landing page should not link to archived Magnet");
   assert(!landingPage.includes("Lead Magnet"), "landing page should not market archived Lead Magnet");
   assert(!landingPage.includes("/onboarding"), "landing page should not link to old onboarding");
@@ -124,8 +136,9 @@ async function main() {
   assert(leadsPage.includes("/api/leads/manual-message"), "leads page should allow manual communication logging");
   assert(leadsPage.includes("/api/leads/status"), "leads page should allow lead-level exclude and restore");
   assert(leadsPage.includes("/api/leads/conversation-status"), "leads page should allow conversation-level knowledge exclusion");
-  assert(leadsPage.includes("Lead Operations"), "leads page should be positioned as the main CRM ops surface");
-  assert(leadsPage.includes("CRM pipeline"), "leads page should show a CRM-style pipeline table");
+  assert(leadsPage.includes("Lead Intelligence"), "leads page should be positioned around lead intelligence");
+  assert(leadsPage.includes("Knowledge workspace"), "leads page should make knowledge primary over CRM copy");
+  assert(!leadsPage.includes("CRM pipeline"), "leads page should not be positioned as CRM-first");
   assert(leadsPage.includes("Activity timeline"), "leads page should expose logged communication activity");
   assert(leadsPage.includes("Next action"), "leads page should make next operational action visible");
   assert(leadsPage.includes("Needs reply"), "leads page should separate conversations that need a response");
@@ -158,6 +171,14 @@ async function main() {
   const magnetPage = await readFile(join(root, "apps/web/src/app/app/magnet/page.tsx"), "utf8");
   assert(magnetPage.includes("redirect(\"/app/leads"), "archived Magnet page should redirect to Leads");
   assert(!magnetPage.includes("LeadMagnetLab"), "archived Magnet page should not render the old lab");
+
+  const rootPackage = await readFile(join(root, "package.json"), "utf8");
+  assert(rootPackage.includes("AI Lead Intelligence & Operations Platform"), "package metadata should use the Step 2 product identity");
+  assert(!rootPackage.includes("Revenue OS"), "package metadata should not position Leadsy as Revenue OS");
+
+  const rootLayout = await readFile(join(root, "apps/web/src/app/layout.tsx"), "utf8");
+  assert(rootLayout.includes("AI Lead Intelligence & Operations Platform"), "app metadata should use the Step 2 product identity");
+  assert(!rootLayout.includes("Revenue OS"), "app metadata should not position Leadsy as Revenue OS");
 
   const workerPage = await readFile(join(root, "apps/web/src/app/app/worker/page.tsx"), "utf8");
   assert(workerPage.includes("ExtensionTaskBoard"), "worker page should keep the extension task board");

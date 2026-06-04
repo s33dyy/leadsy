@@ -46,6 +46,8 @@ import type {
 } from "@leadsy/domain";
 import { LEAD_MAGNET_DEFAULT_BATCH_SIZE, LEAD_MAGNET_MAX_LEAD_GOAL, leadBriefFingerprint } from "@leadsy/domain";
 import { Badge, EmptyState, ProgressBar } from "./ui";
+import { ConfirmationModal } from "./confirmation-modal";
+import { useToast } from "./toast-provider";
 
 type SourceHealth = {
   publicSearch: boolean;
@@ -606,6 +608,7 @@ function buildResearchFeed(input: {
 }
 
 export function LeadMagnetLab({ initialWorkspace, initialError = "", initialNotice = "" }: LeadMagnetLabProps) {
+  const { toast } = useToast();
   const [workspace, setWorkspace] = useState<WorkspaceResponse>(() => normalizeWorkspace(initialWorkspace));
   const [form, setForm] = useState<BriefForm>(toForm(initialWorkspace.brief));
   const [activeLeadId, setActiveLeadId] = useState(firstLeadIdForBrief(initialWorkspace.leads, initialWorkspace.brief, initialWorkspace.runs));
@@ -617,6 +620,7 @@ export function LeadMagnetLab({ initialWorkspace, initialError = "", initialNoti
   const [editingLeadId, setEditingLeadId] = useState("");
   const [leadModalMode, setLeadModalMode] = useState<"view" | "edit" | null>(null);
   const [leadEditForm, setLeadEditForm] = useState<LeadEditForm | null>(null);
+  const [pendingDeleteLeadId, setPendingDeleteLeadId] = useState("");
   const [transcriptMode, setTranscriptMode] = useState<"simple" | "technical">("simple");
   const [activeResultTab, setActiveResultTab] = useState<ResultTab>("good");
   const [planPreview, setPlanPreview] = useState<ResearchPlanPreview | null>(null);
@@ -677,6 +681,11 @@ export function LeadMagnetLab({ initialWorkspace, initialError = "", initialNoti
     return workspace.drafts.find((draft) => draft.leadId === activeLead.id) ?? null;
   }, [activeLead, workspace.drafts]);
 
+  const pendingDeleteLead = useMemo(() => {
+    if (!pendingDeleteLeadId) return null;
+    return workspace.leads.find((lead) => lead.id === pendingDeleteLeadId) ?? null;
+  }, [pendingDeleteLeadId, workspace.leads]);
+
   async function loadWorkspace() {
     setLoading("refresh");
     setError("");
@@ -732,8 +741,18 @@ export function LeadMagnetLab({ initialWorkspace, initialError = "", initialNoti
       const payload = await submitJson("/api/lead-magnet/brief", form);
       setWorkspace(normalizeWorkspace(payload));
       setNotice("Brief saved. You can see it in history below.");
+      toast({
+        title: "Brief saved",
+        detail: "Your lead research brief is saved in history.",
+        tone: "success"
+      });
     } catch (caught) {
       setError((caught as Error).message);
+      toast({
+        title: "Brief was not saved",
+        detail: (caught as Error).message,
+        tone: "error"
+      });
     } finally {
       setLoading(null);
     }
@@ -942,8 +961,18 @@ export function LeadMagnetLab({ initialWorkspace, initialError = "", initialNoti
       setImportText("");
       setActiveLeadId(firstLeadIdForBrief(nextWorkspace.leads, nextWorkspace.brief, nextWorkspace.runs));
       setNotice("Imported leads were scored and the run was saved in history.");
+      toast({
+        title: "Leads imported",
+        detail: "Imported leads were scored and saved in history.",
+        tone: "success"
+      });
     } catch (caught) {
       setError((caught as Error).message);
+      toast({
+        title: "Import did not finish",
+        detail: (caught as Error).message,
+        tone: "error"
+      });
     } finally {
       setLoading(null);
     }
@@ -967,8 +996,18 @@ export function LeadMagnetLab({ initialWorkspace, initialError = "", initialNoti
       await loadWorkspace();
       setActiveLeadId(leadId);
       setNotice("Draft created. It is saved with this lead.");
+      toast({
+        title: "Draft created",
+        detail: "The draft is saved with this lead for human review.",
+        tone: "success"
+      });
     } catch (caught) {
       setError((caught as Error).message);
+      toast({
+        title: "Draft was not created",
+        detail: (caught as Error).message,
+        tone: "error"
+      });
       setLoading(null);
     }
   }
@@ -1029,20 +1068,39 @@ export function LeadMagnetLab({ initialWorkspace, initialError = "", initialNoti
       setLeadEditForm(null);
       setLeadModalMode("view");
       setNotice("Lead updated. The change is saved in your workspace.");
+      toast({
+        title: "Lead updated",
+        detail: "The lead record was saved in your workspace.",
+        tone: "success"
+      });
     } catch (caught) {
       setError((caught as Error).message);
+      toast({
+        title: "Lead was not updated",
+        detail: (caught as Error).message,
+        tone: "error"
+      });
     } finally {
       setLoading(null);
     }
   }
 
-  async function deleteLead(leadId: string) {
+  function requestDeleteLead(leadId: string) {
+    setPendingDeleteLeadId(leadId);
+    setError("");
+  }
+
+  function cancelDeleteLead() {
+    if (loading === "delete") return;
+    setPendingDeleteLeadId("");
+  }
+
+  async function confirmDeleteLead() {
+    const leadId = pendingDeleteLeadId;
+    if (!leadId) return;
+
     const lead = workspace.leads.find((candidate) => candidate.id === leadId);
     const leadName = lead?.businessName ?? "this lead";
-    const confirmed = window.confirm(`Delete ${leadName}? This removes the lead and its draft from your workspace.`);
-    if (!confirmed) {
-      return;
-    }
 
     setLoading("delete");
     setError("");
@@ -1060,9 +1118,20 @@ export function LeadMagnetLab({ initialWorkspace, initialError = "", initialNoti
       if (activeLeadId === leadId) {
         setLeadModalMode(null);
       }
+      setPendingDeleteLeadId("");
       setNotice(`${leadName} deleted. It will not appear in your lead list anymore.`);
+      toast({
+        title: "Lead deleted",
+        detail: `${leadName} will not appear in your lead list anymore.`,
+        tone: "success"
+      });
     } catch (caught) {
       setError((caught as Error).message);
+      toast({
+        title: "Lead was not deleted",
+        detail: (caught as Error).message,
+        tone: "error"
+      });
     } finally {
       setLoading(null);
     }
@@ -1421,7 +1490,7 @@ export function LeadMagnetLab({ initialWorkspace, initialError = "", initialNoti
                         </button>
                         <button
                           type="button"
-                          onClick={() => deleteLead(lead.id)}
+                          onClick={() => requestDeleteLead(lead.id)}
                           disabled={busy}
                           className={`inline-flex h-8 items-center justify-center gap-2 rounded-[6px] border border-rose-300/25 bg-rose-300/10 px-2 text-xs font-medium text-rose-100 hover:bg-rose-300/15 disabled:cursor-not-allowed disabled:opacity-55 ${buttonMotion}`}
                         >
@@ -2433,7 +2502,7 @@ export function LeadMagnetLab({ initialWorkspace, initialError = "", initialNoti
                     </button>
                     <button
                       type="button"
-                      onClick={() => deleteLead(lead.id)}
+                      onClick={() => requestDeleteLead(lead.id)}
                       disabled={busy}
                       className={`inline-flex h-8 items-center justify-center gap-2 rounded-[6px] border border-rose-300/25 bg-rose-300/10 px-2 text-xs font-medium text-rose-100 hover:bg-rose-300/15 disabled:cursor-not-allowed disabled:opacity-55 ${buttonMotion}`}
                     >
@@ -2607,7 +2676,7 @@ export function LeadMagnetLab({ initialWorkspace, initialError = "", initialNoti
                         </button>
                         <button
                           type="button"
-                          onClick={() => deleteLead(lead.id)}
+                          onClick={() => requestDeleteLead(lead.id)}
                           disabled={busy}
                           className={`inline-flex h-8 items-center justify-center gap-2 rounded-[6px] border border-rose-300/25 bg-rose-300/10 px-2 text-xs font-medium text-rose-100 hover:bg-rose-300/15 disabled:cursor-not-allowed disabled:opacity-55 ${buttonMotion}`}
                         >
@@ -2661,7 +2730,7 @@ export function LeadMagnetLab({ initialWorkspace, initialError = "", initialNoti
 	                        </button>
 	                        <button
 	                          type="button"
-	                          onClick={() => deleteLead(lead.id)}
+	                          onClick={() => requestDeleteLead(lead.id)}
 	                          disabled={busy}
 	                          className={`inline-flex h-8 items-center justify-center gap-2 rounded-[6px] border border-rose-300/25 bg-rose-300/10 px-2 text-xs font-medium text-rose-100 hover:bg-rose-300/15 disabled:cursor-not-allowed disabled:opacity-55 ${buttonMotion}`}
 	                        >
@@ -2792,6 +2861,17 @@ export function LeadMagnetLab({ initialWorkspace, initialError = "", initialNoti
             )}
           </div>
 
+          <ConfirmationModal
+            open={Boolean(pendingDeleteLeadId)}
+            title="Delete lead?"
+            description={`Delete ${pendingDeleteLead?.businessName ?? "this lead"}? This removes the lead and its draft from your workspace.`}
+            confirmLabel="Delete lead"
+            loading={loading === "delete"}
+            tone="danger"
+            onCancel={cancelDeleteLead}
+            onConfirm={confirmDeleteLead}
+          />
+
           <div className={leadModalMode ? "fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/75 p-3 pt-16 backdrop-blur-sm md:p-8" : "hidden"}>
             {!activeLead ? (
               <div className="w-full max-w-3xl rounded-[8px] border border-[var(--line)] bg-[var(--panel)] p-5 shadow-2xl">
@@ -2830,7 +2910,7 @@ export function LeadMagnetLab({ initialWorkspace, initialError = "", initialNoti
                     </button>
                     <button
                       type="button"
-                      onClick={() => deleteLead(activeLead.id)}
+                      onClick={() => requestDeleteLead(activeLead.id)}
                       disabled={busy}
                       className={`inline-flex h-8 items-center gap-2 rounded-[6px] border border-rose-300/25 bg-rose-300/10 px-3 text-xs font-medium text-rose-100 hover:bg-rose-300/15 disabled:cursor-not-allowed disabled:opacity-55 ${buttonMotion}`}
                     >

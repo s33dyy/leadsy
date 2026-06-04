@@ -1,6 +1,6 @@
 # Roadmap
 
-## Phase 1: Agency Lead OS Foundation
+## Phase 1: AI Lead Intelligence Foundation
 
 - Monorepo architecture
 - App shell, landing page, onboarding

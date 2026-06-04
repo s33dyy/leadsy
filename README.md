@@ -1,6 +1,6 @@
-# Leadsy Revenue OS
+# Leadsy
 
-Leadsy is an AI-powered Lead Operating System for agencies, Indian SMBs, real estate teams, and revenue operators. It finds prospects from approved sources, turns expensive Meta leads into qualified WhatsApp conversations, books appointments, manages follow-ups, and produces client-ready reporting.
+Leadsy is an AI Lead Intelligence & Operations Platform for agencies, Indian SMBs, real estate teams, and revenue operators. It researches prospects, builds durable lead knowledge, generates tasks for human operators, drafts outreach for approval, and supports qualification work without autonomous sends.
 
 ## Stack
 
@@ -9,7 +9,7 @@ Leadsy is an AI-powered Lead Operating System for agencies, Indian SMBs, real es
 - Data plane: PostgreSQL + pgvector schema, Redis-ready queue/cache layer
 - AI plane: typed provider abstraction with deterministic local provider and gateway-ready environment contract
 - Backend: Next.js route handlers, domain packages, event bus, rate limits, audit logging, RBAC
-- UI: dark-mode first product workspace with command center, lead magnet, CRM, enrichment, outreach, workflows, analytics, capture, onboarding
+- UI: dark-mode first product workspace with lead intelligence, operator tasks, knowledge views, human-approved outreach drafts, extension support, and connection setup
 
 ## Quick Start
 
@@ -73,9 +73,9 @@ npm run docker:down # stop Docker Compose services
 
 ## Package Map
 
-- `apps/web`: product UI, API routes, onboarding, command center
-- `packages/domain`: typed agency, Meta lead, WhatsApp, qualification, CRM, and analytics domain model
-- `packages/ai`: copilot, lead discovery, Meta qualification, WhatsApp reply, enrichment, and scoring interfaces
+- `apps/web`: product UI, API routes, authentication, lead intelligence workspace, extension support, and connection setup
+- `packages/domain`: typed agency, Meta lead, WhatsApp, qualification, CRM-adjacent, and analytics domain model
+- `packages/ai`: lead discovery, Meta qualification, WhatsApp reply, enrichment, task, and scoring interfaces
 - `packages/security`: RBAC, tenant guards, rate limits, audit logs
 - `packages/events`: event bus contract
 - `packages/workflows`: workflow definition, validation, execution
@@ -94,10 +94,9 @@ npm run docker:down # stop Docker Compose services
 
 ## Current Core Flow
 
-0. Lead Magnet scans approved sources and creates prospect candidates.
-1. Instagram/Facebook lead arrives through Meta webhook.
-2. Leadsy maps it to the correct agency client workspace.
-3. AI qualifies budget, location, intent, timeline, language, sentiment, urgency, and spam risk.
-4. WhatsApp first reply is queued immediately.
-5. Hot leads are escalated to human closers or booked for meetings/site visits.
-6. Follow-ups and client reports are generated from the same lifecycle data.
+0. Approved sources, Meta webhooks, browser extension sync, or manual entry create lead records.
+1. Leadsy maps each signal to the correct workspace and lead knowledge record.
+2. Workers research, summarize, qualify, and propose tasks from existing evidence first.
+3. Human operators approve, edit, reject, or complete generated tasks and outreach drafts.
+4. Notes, task changes, communication logs, and qualification updates refresh lead knowledge.
+5. Revenue reporting remains secondary to daily lead intelligence and operator support.
