@@ -40,6 +40,20 @@ export interface ConversationLog {
   updatedAt: number;
 }
 
+export type ConversationSyncEventType =
+  | "detected"
+  | "inbound-synced"
+  | "reply-generated"
+  | "reply-sent"
+  | "reply-paused"
+  | "fallback-used"
+  | "error"
+  | "monitor_started"
+  | "monitor_synced"
+  | "monitor_stale"
+  | "monitor_blocked"
+  | "monitor_error";
+
 export interface ResponderDecision {
   action: ResponderAction;
   replyText: string;

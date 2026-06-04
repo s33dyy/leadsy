@@ -1,9 +1,17 @@
-import { Cable, ShieldCheck } from "lucide-react";
+import { Cable, RadioTower, ShieldCheck } from "lucide-react";
 import { ExtensionTaskBoard } from "@/components/extension-task-board";
 import { ExtensionPairing } from "@/components/extension-pairing";
 import { Badge, Panel, SectionTitle } from "@/components/ui";
 import { getCurrentSession } from "@/lib/auth";
-import { listExtensionConversations, listExtensionTaskEvents, listExtensionTasks, listExtensionTokens } from "@/lib/extension-store";
+import {
+  listExtensionChannelMonitorHealth,
+  listExtensionConversations,
+  listExtensionTaskEvents,
+  listExtensionTasks,
+  listExtensionTokens,
+  type ExtensionChannelMonitorHealth
+} from "@/lib/extension-store";
+import { listMetaOAuthConnections } from "@/lib/meta-oauth-store";
 
 export const dynamic = "force-dynamic";
 
@@ -11,8 +19,11 @@ export default async function WorkerPage() {
   const session = await getCurrentSession();
   const tokens = session ? await listExtensionTokens(session.tenantId, session.id) : [];
   const conversations = session ? await listExtensionConversations(session.tenantId, session.id) : [];
+  const monitorHealth = session ? await listExtensionChannelMonitorHealth(session.tenantId, session.id) : [];
+  const metaConnections = session ? await listMetaOAuthConnections(session.tenantId, session.id) : [];
   const tasks = session ? await listExtensionTasks(session.tenantId, session.id) : [];
   const taskEvents = session ? await listExtensionTaskEvents(session.tenantId, session.id) : [];
+  const officialChannels = metaConnections[0]?.channels;
 
   return (
     <div className="space-y-6">
@@ -23,6 +34,47 @@ export default async function WorkerPage() {
         </div>
         <div className="mt-6">
           <ExtensionPairing initialTokens={tokens} />
+        </div>
+      </Panel>
+
+      <Panel className="p-5 md:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <SectionTitle eyebrow="Hybrid channel monitor" title="Official webhook first, browser extension fallback" />
+          <Badge tone="teal">V4 monitor</Badge>
+        </div>
+        <div className="mt-5 grid gap-3 lg:grid-cols-[0.38fr_0.62fr]">
+          <div className="rounded-[8px] border border-lime-300/25 bg-lime-300/[0.07] p-4">
+            <div className="flex items-center gap-2 text-sm font-semibold text-lime-50">
+              <RadioTower size={16} />
+              Official webhook
+            </div>
+            <p className="mt-2 text-sm leading-6 text-[var(--muted-2)]">
+              Meta webhooks are the preferred 24/7 source when WhatsApp, Instagram, and Facebook assets are connected.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {[
+                { label: "WhatsApp", status: officialChannels?.whatsapp.status },
+                { label: "Instagram", status: officialChannels?.instagram.status },
+                { label: "Facebook", status: officialChannels?.facebook.status }
+              ].map((channel) => (
+                <Badge key={channel.label} tone={channel.status === "connected" ? "lime" : "neutral"}>
+                  {channel.label}: {channel.status === "connected" ? "connected" : "pending"}
+                </Badge>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-[8px] border border-sky-300/25 bg-sky-300/[0.07] p-4">
+            <div className="flex items-center gap-2 text-sm font-semibold text-sky-50">
+              <Cable size={16} />
+              Browser extension fallback
+            </div>
+            <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+              {monitorHealth.map((item) => (
+                <MonitorHealthCard key={item.platform} item={item} />
+              ))}
+            </div>
+          </div>
         </div>
       </Panel>
 
@@ -52,6 +104,26 @@ export default async function WorkerPage() {
           </p>
         </Panel>
       </section>
+    </div>
+  );
+}
+
+function MonitorHealthCard({ item }: { item: ExtensionChannelMonitorHealth }) {
+  return (
+    <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-sm font-semibold text-white">{item.platform.replace(/-/g, " ")}</div>
+        <Badge tone={item.status === "error" || item.status === "blocked" ? "amber" : item.status === "active" ? "lime" : "neutral"}>
+          {item.status}
+        </Badge>
+      </div>
+      <p className="mt-2 text-xs leading-5 text-[var(--muted-2)]">
+        {item.lastSyncedAt ? `Last sync ${new Date(item.lastSyncedAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}` : "No browser sync yet"}
+      </p>
+      <div className="mt-2 flex flex-wrap gap-1">
+        <Badge tone="sky">{item.captureSource ?? "browser-extension"}</Badge>
+        {typeof item.captureConfidence === "number" ? <Badge tone="neutral">{Math.round(item.captureConfidence * 100)}% confidence</Badge> : null}
+      </div>
     </div>
   );
 }

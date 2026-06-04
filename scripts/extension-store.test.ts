@@ -18,6 +18,7 @@ async function main() {
     logExtensionTaskEvent,
     listExtensionTasks,
     listExtensionConversations,
+    listExtensionChannelMonitorHealth,
     listExtensionTaskEvents,
     softDeleteExtensionTask,
     prepareExtensionTask,
@@ -47,6 +48,11 @@ async function main() {
     platform: "whatsapp-web",
     sourceUrl: "https://web.whatsapp.com/",
     chatFingerprint: "https://web.whatsapp.com/chat/123",
+    captureSource: "browser-extension",
+    captureConfidence: 0.94,
+    tabUrl: "https://web.whatsapp.com/",
+    observedAt: "2026-06-02T06:00:12.000Z",
+    profileId: "local:whatsapp",
     contact: {
       displayName: "Asha Buyer",
       phone: "+919830000000"
@@ -68,9 +74,14 @@ async function main() {
     ],
     events: [
       {
-        type: "reply-sent",
-        summary: "Full-auto reply sent by extension.",
+        type: "monitor_started",
+        summary: "Browser monitor started on WhatsApp Web.",
         occurredAt: "2026-06-02T06:00:11.000Z"
+      },
+      {
+        type: "monitor_synced",
+        summary: "Browser monitor synced visible WhatsApp messages.",
+        occurredAt: "2026-06-02T06:00:12.000Z"
       }
     ],
     insight: {
@@ -82,6 +93,11 @@ async function main() {
   });
 
   assert.equal(synced.conversation.contact.displayName, "Asha Buyer");
+  assert.equal(synced.conversation.captureSource, "browser-extension");
+  assert.equal(synced.conversation.captureConfidence, 0.94);
+  assert.equal(synced.conversation.tabUrl, "https://web.whatsapp.com/");
+  assert.equal(synced.conversation.observedAt, "2026-06-02T06:00:12.000Z");
+  assert.equal(synced.conversation.profileId, "local:whatsapp");
   assert.equal(synced.conversation.messageCount, 2);
   assert.equal(synced.conversation.lastMessagePreview, "Yes, what team size should I quote for?");
   assert.equal(synced.conversation.nextAction, "Ask budget and timeline.");
@@ -118,6 +134,17 @@ async function main() {
   assert.equal(conversations[0].messages.length, 3, "message sync should dedupe by external id");
   assert.equal(conversations[0].conversation.messageCount, 3);
   assert.equal(conversations[0].conversation.lastMessagePreview, "Need this by Friday.");
+  assert.equal(conversations[0].events.some((event) => event.type === "monitor_started"), true);
+  assert.equal(conversations[0].events.some((event) => event.type === "monitor_synced"), true);
+
+  const monitorHealth = await listExtensionChannelMonitorHealth("tenant_test", "usr_owner");
+  const whatsAppHealth = monitorHealth.find((item) => item.platform === "whatsapp-web");
+  assert(whatsAppHealth, "monitor health should summarize WhatsApp Web");
+  assert.equal(whatsAppHealth.captureSource, "browser-extension");
+  assert.equal(whatsAppHealth.status, "active");
+  assert.equal(whatsAppHealth.lastSyncedAt, "2026-06-02T06:01:00.000Z");
+  assert.equal(whatsAppHealth.lastEventType, "monitor_synced");
+  assert.equal(whatsAppHealth.captureConfidence, 0.94);
 
   const task = await createExtensionTask({
     tenantId: "tenant_test",
@@ -207,7 +234,7 @@ async function main() {
     tenantId: "tenant_test",
     ownerId: "usr_owner",
     taskId: blocked.id,
-    type: "worker_blocked",
+    type: "monitor_blocked",
     reason: "target_not_on_whatsapp",
     summary: "The number +91 124 425 2720 is not on WhatsApp."
   });
@@ -223,6 +250,7 @@ async function main() {
   const taskEvents = await listExtensionTaskEvents("tenant_test", "usr_owner", blocked.id);
   assert.equal(taskEvents.length, 2);
   assert.equal(taskEvents.some((event) => event.reason === "target_not_on_whatsapp"), true);
+  assert.equal(taskEvents.some((event) => event.type === "monitor_blocked"), true);
 
   const postponed = await completeExtensionTask({
     tenantId: "tenant_test",

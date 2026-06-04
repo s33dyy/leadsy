@@ -157,8 +157,8 @@ async function main() {
   assert(leadsPage.includes("Activity timeline"), "leads page should expose logged communication activity");
   assert(leadsPage.includes("Next action"), "leads page should make next operational action visible");
   assert(leadsPage.includes("Needs reply"), "leads page should separate conversations that need a response");
-  assert(leadsPage.includes("LeadTaskGenerateMenu"), "selected lead header should expose the AI task generation menu");
-  assert(leadsPage.includes("AI Generate tasks"), "selected lead workspace should show the AI Generate tasks control");
+  assert(!leadsPage.includes("<LeadTaskGenerateMenu"), "selected lead header should not expose the AI task generation menu");
+  assert(leadsPage.includes("SelectedLeadTasks"), "tasks tab should still expose selected lead task controls");
   assert(leadsPage.includes("Manual reply handoff"), "selected lead comms should expose a manual reply handoff");
   assert(leadsPage.includes("Leadsy tracks this. You send it."), "manual reply workflow should make no-extension sending boundaries explicit");
   assert(leadsPage.includes("Open WhatsApp Web"), "manual reply workflow should offer a WhatsApp handoff when a phone exists");
@@ -177,14 +177,19 @@ async function main() {
   assert(leadsPage.includes("tasksForLead"), "leads page should filter task records by selected lead");
   const selectedLeadTasks = await readFile(join(root, "apps/web/src/components/selected-lead-tasks.tsx"), "utf8");
   assert(selectedLeadTasks.includes("LeadTaskGenerateMenu"), "tasks tab should reuse the selected lead AI generation menu");
-  assert(selectedLeadTasks.includes("Intro task"), "task generation menu should include an intro option");
-  assert(selectedLeadTasks.includes("Follow-up task"), "task generation menu should include a follow-up option");
-  assert(selectedLeadTasks.includes("Reply to inbound"), "task generation menu should include a reply-to-inbound option");
+  assert(selectedLeadTasks.includes("AI Generate tasks"), "selected lead tasks tab should show the AI Generate tasks control");
+  assert(selectedLeadTasks.includes("Auto-detect best task"), "task generation should auto-detect the best task");
+  assert(!selectedLeadTasks.includes("Intro task"), "task generation should not ask operators to choose intro manually");
+  assert(!selectedLeadTasks.includes("Follow-up task"), "task generation should not ask operators to choose follow-up manually");
+  assert(!selectedLeadTasks.includes("Reply to inbound"), "task generation should not ask operators to choose reply-to-inbound manually");
   assert(selectedLeadTasks.includes("/api/extension/tasks/generate"), "selected lead tasks should queue extension-assisted reply work");
   assert(selectedLeadTasks.includes("leadIds: [leadId]"), "selected lead extension queueing should target only the selected lead");
+  assert(selectedLeadTasks.includes('type: "auto_detect"'), "selected lead task generation should delegate task type detection to the server");
   assert(selectedLeadTasks.includes("Generate an extension task for this lead"), "selected lead tasks should explain AI task generation is selected-lead scoped");
   assert(selectedLeadTasks.includes("No extension = log manually"), "selected lead tasks should keep the no-extension tracking boundary visible");
   assert(leadsPage.includes("All Meta and browser conversations"), "leads page should track all Meta and extension conversations");
+  assert(leadsPage.includes("Official webhook"), "lead comms should badge official Meta webhook messages");
+  assert(leadsPage.includes("Browser capture"), "lead comms should badge browser extension captured messages");
   assert(leadsPage.includes("Open conversation"), "lead rows should open channel-specific conversations when possible");
   assert(leadsPage.includes("Exclude lead"), "leads page should let non-lead contacts be excluded");
   assert(leadsPage.includes("Restore as lead"), "excluded contacts should be restorable without deleting the conversation");
@@ -213,6 +218,10 @@ async function main() {
 
   const workerPage = await readFile(join(root, "apps/web/src/app/app/worker/page.tsx"), "utf8");
   assert(workerPage.includes("ExtensionTaskBoard"), "worker page should keep the extension task board");
+  assert(workerPage.includes("listExtensionChannelMonitorHealth"), "worker page should derive dashboard-visible channel monitor health");
+  assert(workerPage.includes("Hybrid channel monitor"), "worker page should explain the V4 hybrid monitor");
+  assert(workerPage.includes("Official webhook"), "worker page should show official webhook as the preferred source");
+  assert(workerPage.includes("Browser extension fallback"), "worker page should show browser extension fallback status");
   const extensionTaskBoard = await readFile(join(root, "apps/web/src/components/extension-task-board.tsx"), "utf8");
   assert(extensionTaskBoard.includes("Edit task"), "worker board should expose task edit controls");
   assert(extensionTaskBoard.includes("Delete task"), "worker board should expose soft-delete controls");

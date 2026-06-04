@@ -114,6 +114,38 @@ async function main() {
     assert.equal(savedInstagram.saved.length, 1);
     assert.equal(savedFacebook.saved.length, 1);
 
+    const browserDuplicate = await syncLeadsyExtensionConversation({
+      ...scope,
+      platform: "whatsapp-web",
+      sourceUrl: "https://web.whatsapp.com/send?phone=919830000000",
+      chatFingerprint: "https://web.whatsapp.com/chat/919830000000",
+      captureSource: "browser-extension",
+      captureConfidence: 0.92,
+      tabUrl: "https://web.whatsapp.com/",
+      observedAt: "2026-06-02T08:00:02.000Z",
+      profileId: "local:whatsapp",
+      contact: {
+        displayName: "Asha Buyer",
+        phone: "+91 98300 00000"
+      },
+      messages: [
+        {
+          externalId: "browser-local-duplicate-1",
+          direction: "inbound",
+          body: "Interested in MCA admission",
+          sentAt: "2026-06-02T09:06:40.000Z"
+        }
+      ],
+      events: [
+        {
+          type: "monitor_synced",
+          summary: "Browser monitor saw the same WhatsApp message already received from Meta.",
+          occurredAt: "2026-06-02T08:00:02.000Z"
+        }
+      ]
+    });
+    assert.equal(browserDuplicate.lead.messageCount, 1, "browser capture should not duplicate an official webhook message");
+
     const extensionSync = await syncLeadsyExtensionConversation({
       ...scope,
       platform: "whatsapp-web",

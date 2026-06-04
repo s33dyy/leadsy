@@ -36,6 +36,7 @@ export type ExtensionConversationContact = {
 
 export type ExtensionMessageDirection = "inbound" | "outbound" | "system";
 export type ExtensionMessageGeneratedBy = "leadsy" | "fallback" | "human";
+export type ExtensionCaptureSource = "official-webhook" | "browser-extension";
 
 export type ExtensionConversationMessage = {
   id: string;
@@ -55,7 +56,12 @@ export type ExtensionConversationEvent = {
     | "reply-sent"
     | "reply-paused"
     | "fallback-used"
-    | "error";
+    | "error"
+    | "monitor_started"
+    | "monitor_synced"
+    | "monitor_stale"
+    | "monitor_blocked"
+    | "monitor_error";
   summary: string;
   occurredAt: string;
 };
@@ -74,7 +80,12 @@ export type ExtensionTaskEventType =
   | "task_edited"
   | "task_deleted"
   | "monitoring_event"
-  | "inbound_issue";
+  | "inbound_issue"
+  | "monitor_started"
+  | "monitor_synced"
+  | "monitor_stale"
+  | "monitor_blocked"
+  | "monitor_error";
 
 export type ExtensionTaskEvent = {
   id: string;
@@ -168,8 +179,26 @@ export type ExtensionConversation = {
   qualification?: string;
   nextAction?: string;
   sentiment?: ExtensionConversationInsight["sentiment"];
+  captureSource?: ExtensionCaptureSource;
+  captureConfidence?: number;
+  tabUrl?: string;
+  observedAt?: string;
+  profileId?: string;
   createdAt: string;
   updatedAt: string;
+};
+
+export type ExtensionChannelMonitorHealth = {
+  platform: ExtensionPlatform;
+  status: "active" | "idle" | "stale" | "blocked" | "error";
+  conversationCount: number;
+  captureSource?: ExtensionCaptureSource;
+  captureConfidence?: number;
+  tabUrl?: string;
+  profileId?: string;
+  lastSyncedAt?: string;
+  lastEventType?: ExtensionConversationEvent["type"];
+  lastError?: string;
 };
 
 export type ExtensionConversationBundle = {
@@ -184,6 +213,11 @@ export type SyncExtensionConversationInput = {
   platform: ExtensionPlatform;
   sourceUrl: string;
   chatFingerprint: string;
+  captureSource?: ExtensionCaptureSource;
+  captureConfidence?: number;
+  tabUrl?: string;
+  observedAt?: string;
+  profileId?: string;
   contact?: ExtensionConversationContact;
   leadId?: string;
   leadSource?: ExtensionConversation["leadSource"];
@@ -864,6 +898,11 @@ export async function syncExtensionConversation(input: SyncExtensionConversation
     qualification: input.insight?.qualification ?? existing?.qualification,
     nextAction: input.insight?.nextAction ?? existing?.nextAction,
     sentiment: input.insight?.sentiment ?? existing?.sentiment,
+    captureSource: input.captureSource ?? existing?.captureSource,
+    captureConfidence: input.captureConfidence ?? existing?.captureConfidence,
+    tabUrl: input.tabUrl ?? existing?.tabUrl,
+    observedAt: input.observedAt ?? existing?.observedAt,
+    profileId: input.profileId ?? existing?.profileId,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now
   };
@@ -908,4 +947,41 @@ export async function listExtensionConversations(tenantId: string, ownerId: stri
         .filter((event) => event.id.startsWith(`${conversation.id}:`))
         .sort((left, right) => left.occurredAt.localeCompare(right.occurredAt))
     }));
+}
+
+export async function listExtensionChannelMonitorHealth(tenantId: string, ownerId: string): Promise<ExtensionChannelMonitorHealth[]> {
+  const bundles = await listExtensionConversations(tenantId, ownerId);
+  const platforms: ExtensionPlatform[] = ["whatsapp-web", "instagram-web", "facebook-web", "generic-web-chat"];
+
+  return platforms.map((platform) => {
+    const platformBundles = bundles.filter((bundle) => bundle.conversation.platform === platform);
+    const latestBundle = [...platformBundles].sort((left, right) => {
+      const leftAt = left.conversation.lastMessageAt ?? left.conversation.observedAt ?? left.conversation.updatedAt;
+      const rightAt = right.conversation.lastMessageAt ?? right.conversation.observedAt ?? right.conversation.updatedAt;
+      return rightAt.localeCompare(leftAt);
+    })[0];
+    const latestEvent = latestBundle?.events.at(-1);
+    const lastSyncedAt = latestBundle?.conversation.lastMessageAt ?? latestBundle?.conversation.observedAt ?? latestBundle?.conversation.updatedAt;
+
+    return {
+      platform,
+      status: monitorStatus(latestEvent?.type, lastSyncedAt),
+      conversationCount: platformBundles.length,
+      captureSource: latestBundle?.conversation.captureSource,
+      captureConfidence: latestBundle?.conversation.captureConfidence,
+      tabUrl: latestBundle?.conversation.tabUrl,
+      profileId: latestBundle?.conversation.profileId,
+      lastSyncedAt,
+      lastEventType: latestEvent?.type,
+      lastError: latestEvent?.type === "monitor_error" || latestEvent?.type === "error" ? latestEvent.summary : undefined
+    };
+  });
+}
+
+function monitorStatus(type?: ExtensionConversationEvent["type"], lastSyncedAt?: string): ExtensionChannelMonitorHealth["status"] {
+  if (type === "monitor_error" || type === "error") return "error";
+  if (type === "monitor_blocked") return "blocked";
+  if (type === "monitor_stale") return "stale";
+  if (lastSyncedAt) return "active";
+  return "idle";
 }

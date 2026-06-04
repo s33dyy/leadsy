@@ -2,12 +2,16 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const content = readFileSync("apps/extension/src/content/index.ts", "utf8");
+const automation = readFileSync("apps/extension/src/content/automation.ts", "utf8");
 const sidepanel = readFileSync("apps/extension/src/sidepanel/index.ts", "utf8");
 const background = readFileSync("apps/extension/src/background/index.ts", "utf8");
 
 assert(content.includes("batchRunId"), "content worker should only execute active tasks that belong to an explicit batch run");
 assert(content.includes("sendTaskWithoutApproval"), "selected batch tasks should send automatically after one deliberate Run selected action");
 assert(!content.includes("if (activeTask && taskCanBeHandled(activeTask))"), "content worker should not auto-handle stored tasks on page boot");
+assert(automation.includes("monitor_started"), "content worker should report browser monitor startup events");
+assert(automation.includes("monitor_synced"), "content worker should report browser monitor sync events");
+assert(automation.includes("monitor_error"), "content worker should report browser monitor errors");
 
 assert(!sidepanel.includes("Approve send"), "extension side panel should not contain send approval controls");
 assert(!sidepanel.includes("leadsy:approveTaskSend"), "extension side panel should not approve sends");

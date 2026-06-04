@@ -2,7 +2,7 @@ import { loadConnectionSettings, saveConnectionSettings, type LeadsyConnectionSe
 import { LeadsyWorkerClient, type WorkerModelClient } from "../core/leadsy-client";
 import { OpenRouterClient } from "../core/openrouter";
 import { defaultAssistantSettings, getOpenRouterApiKey } from "../core/settings";
-import type { AssistantSettings, ChatMessage, ConversationLog, DomSnapshot, KnowledgeContext } from "../core/types";
+import type { AssistantSettings, ChatMessage, ConversationLog, ConversationSyncEventType, DomSnapshot, KnowledgeContext } from "../core/types";
 import type { ExtensionTask, ExtensionTaskEventType } from "../core/tasks";
 import { getOrCreateTaskTab } from "./task-tabs";
 
@@ -50,7 +50,7 @@ type RuntimeMessage =
       chat: ConversationLog;
       messages: ChatMessage[];
       event?: {
-        type: "detected" | "inbound-synced" | "reply-generated" | "reply-sent" | "reply-paused" | "fallback-used" | "error";
+        type: ConversationSyncEventType;
         summary: string;
       };
     };

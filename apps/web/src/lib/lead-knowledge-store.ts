@@ -6,6 +6,7 @@ import type {
   ExtensionConversationContact,
   ExtensionConversationEvent,
   ExtensionConversationInsight,
+  ExtensionCaptureSource,
   ExtensionMessageDirection,
   ExtensionMessageGeneratedBy,
   ExtensionPlatform,
@@ -179,6 +180,33 @@ function timestampToIso(timestamp: unknown, fallback: string) {
 
 function cleanPreview(body: string) {
   return body.trim().replace(/\s+/g, " ").slice(0, 180);
+}
+
+function normalizedMessageBody(body: string) {
+  return body.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function channelFamily(channel: LeadKnowledgeChannel) {
+  if (channel === "whatsapp" || channel === "whatsapp-web") return "whatsapp";
+  if (channel === "instagram" || channel === "instagram-web") return "instagram";
+  if (channel === "facebook" || channel === "facebook-web") return "facebook";
+  return channel;
+}
+
+function timestampDeltaMs(left: string, right: string) {
+  const leftTime = Date.parse(left);
+  const rightTime = Date.parse(right);
+  if (!Number.isFinite(leftTime) || !Number.isFinite(rightTime)) return Number.POSITIVE_INFINITY;
+  return Math.abs(leftTime - rightTime);
+}
+
+function messageLooksLikeDuplicate(left: LeadKnowledgeMessage, right: Omit<LeadKnowledgeMessage, "id" | "tenantId" | "ownerId">) {
+  if (left.leadId !== right.leadId) return false;
+  if (left.direction !== right.direction) return false;
+  if (left.direction !== "inbound" && left.direction !== "outbound") return false;
+  if (channelFamily(left.channel) !== channelFamily(right.channel)) return false;
+  if (normalizedMessageBody(left.body) !== normalizedMessageBody(right.body)) return false;
+  return timestampDeltaMs(left.sentAt, right.sentAt) <= 120_000;
 }
 
 function scopeMatches(scope: Scope, item: Scope) {
@@ -389,6 +417,9 @@ function addMessage(state: LeadKnowledgeState, scope: Scope, input: Omit<LeadKno
       (message.externalId === input.externalId || (message.conversationId === input.conversationId && message.externalId === input.externalId))
   );
   if (existing) return { saved: false, message: existing };
+
+  const duplicate = state.messages.find((message) => scopeMatches(scope, message) && messageLooksLikeDuplicate(message, input));
+  if (duplicate) return { saved: false, message: duplicate };
 
   const message: LeadKnowledgeMessage = {
     id: `leadmsg_${crypto.randomUUID()}`,
@@ -820,6 +851,11 @@ export async function syncLeadsyExtensionConversation(input: Scope & {
   platform: ExtensionPlatform;
   sourceUrl: string;
   chatFingerprint: string;
+  captureSource?: ExtensionCaptureSource;
+  captureConfidence?: number;
+  tabUrl?: string;
+  observedAt?: string;
+  profileId?: string;
   contact?: ExtensionConversationContact;
   messages?: Array<{
     externalId: string;
@@ -870,7 +906,14 @@ export async function syncLeadsyExtensionConversation(input: Scope & {
       messageType: "text",
       sentAt: message.sentAt,
       receivedAt: message.sentAt,
-      generatedBy: message.generatedBy
+      generatedBy: message.generatedBy,
+      raw: {
+        captureSource: input.captureSource,
+        captureConfidence: input.captureConfidence,
+        tabUrl: input.tabUrl,
+        observedAt: input.observedAt,
+        profileId: input.profileId
+      }
     });
     if (result.saved) saved.push(result.message);
   }

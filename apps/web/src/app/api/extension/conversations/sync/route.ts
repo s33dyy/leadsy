@@ -7,11 +7,30 @@ import { syncExtensionConversation } from "@/lib/extension-store";
 
 const platformSchema = z.enum(["whatsapp-web", "instagram-web", "facebook-web", "generic-web-chat"]);
 const directionSchema = z.enum(["inbound", "outbound", "system"]);
+const monitorEventSchema = z.enum([
+  "detected",
+  "inbound-synced",
+  "reply-generated",
+  "reply-sent",
+  "reply-paused",
+  "fallback-used",
+  "error",
+  "monitor_started",
+  "monitor_synced",
+  "monitor_stale",
+  "monitor_blocked",
+  "monitor_error"
+]);
 
 const schema = z.object({
   platform: platformSchema,
   sourceUrl: z.string().trim().min(1).max(1000),
   chatFingerprint: z.string().trim().min(1).max(1000),
+  captureSource: z.enum(["official-webhook", "browser-extension"]).optional(),
+  captureConfidence: z.number().min(0).max(1).optional(),
+  tabUrl: z.string().trim().max(1000).optional(),
+  observedAt: z.string().trim().max(80).optional(),
+  profileId: z.string().trim().max(300).optional(),
   contact: z
     .object({
       displayName: z.string().trim().max(160).optional(),
@@ -35,7 +54,7 @@ const schema = z.object({
   events: z
     .array(
       z.object({
-        type: z.enum(["detected", "inbound-synced", "reply-generated", "reply-sent", "reply-paused", "fallback-used", "error"]),
+        type: monitorEventSchema,
         summary: z.string().trim().min(1).max(1000),
         occurredAt: z.string().trim().min(1).max(80)
       })

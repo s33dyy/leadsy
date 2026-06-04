@@ -2,6 +2,7 @@ import type {
   AssistantSettings,
   ChatMessage,
   ChatSiteProfile,
+  ConversationSyncEventType,
   ConversationLog,
   DomSnapshot,
   KnowledgeContext,
@@ -91,7 +92,7 @@ export class LeadsyWorkerClient implements WorkerModelClient {
     chat: ConversationLog;
     messages: ChatMessage[];
     event?: {
-      type: "detected" | "inbound-synced" | "reply-generated" | "reply-sent" | "reply-paused" | "fallback-used" | "error";
+      type: ConversationSyncEventType;
       summary: string;
     };
   }): Promise<void> {
@@ -107,6 +108,10 @@ export class LeadsyWorkerClient implements WorkerModelClient {
         platform: platformFromUrl(lastMessage?.sourceUrl || input.chat.chatFingerprint),
         sourceUrl: lastMessage?.sourceUrl || input.chat.chatFingerprint,
         chatFingerprint: input.chat.chatFingerprint,
+        captureSource: "browser-extension",
+        tabUrl: lastMessage?.sourceUrl || input.chat.chatFingerprint,
+        observedAt: new Date().toISOString(),
+        profileId: input.chat.profileId,
         messages: input.messages.map((message) => ({
           externalId: message.id,
           direction: message.direction === "incoming" ? "inbound" : message.direction === "outgoing" ? "outbound" : "system",

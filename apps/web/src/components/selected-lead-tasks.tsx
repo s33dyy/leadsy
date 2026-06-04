@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { AlertTriangle, CheckCircle2, ChevronDown, Clock3, Loader2, Pencil, Send, Trash2, Workflow } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock3, Loader2, Pencil, Send, Sparkles, Trash2, Workflow } from "lucide-react";
 import { Badge, EmptyState } from "./ui";
 
 type SelectedLeadTask = {
@@ -41,26 +41,6 @@ type SelectedLeadTaskEvent = {
   occurredAt: string;
 };
 
-type QueueTaskType = "initiate_conversation" | "follow_up" | "reply_to_inbound";
-
-const taskGenerationOptions: Array<{ type: QueueTaskType; label: string; detail: string }> = [
-  {
-    type: "initiate_conversation",
-    label: "Intro task",
-    detail: "Draft a first outreach task for this lead."
-  },
-  {
-    type: "follow_up",
-    label: "Follow-up task",
-    detail: "Prepare a nudge based on known context."
-  },
-  {
-    type: "reply_to_inbound",
-    label: "Reply to inbound",
-    detail: "Draft a reply for an incoming enquiry."
-  }
-];
-
 export function LeadTaskGenerateMenu({
   leadId,
   onTasksGenerated,
@@ -73,67 +53,42 @@ export function LeadTaskGenerateMenu({
   label?: string;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState<QueueTaskType | "">("");
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  async function queueExtensionTask(type: QueueTaskType) {
-    setLoading(type);
+  async function queueExtensionTask() {
+    setLoading(true);
     setError("");
     const response = await fetch("/api/extension/tasks/generate", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ type, leadIds: [leadId] })
+      body: JSON.stringify({ type: "auto_detect", leadIds: [leadId] })
     });
     const payload = (await response.json().catch(() => ({}))) as { tasks?: SelectedLeadTask[]; error?: string };
-    setLoading("");
+    setLoading(false);
     if (!response.ok) {
       setError(payload.error === "rate_limited" ? "Task generation is rate limited. Try again shortly." : "Task was not generated. Check the lead contact details and try again.");
       return;
     }
     onTasksGenerated?.(payload.tasks ?? []);
-    setOpen(false);
     router.refresh();
   }
 
   return (
-    <div className={`relative ${className}`}>
+    <div className={`grid gap-2 ${className}`}>
       <button
         type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((current) => !current)}
+        disabled={loading}
+        onClick={queueExtensionTask}
         className="inline-flex h-10 items-center justify-center gap-2 rounded-[6px] border border-teal-300/35 bg-teal-300/[0.12] px-3 text-sm font-medium text-teal-100 hover:bg-teal-300/[0.18]"
       >
-        {loading ? <Loader2 size={15} className="animate-spin" /> : <Workflow size={15} />}
+        {loading ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
         {label}
-        <ChevronDown size={14} />
       </button>
-      {open ? (
-        <div
-          role="menu"
-          className="absolute right-0 z-20 mt-2 w-72 rounded-[8px] border border-[var(--line)] bg-[#0f1619] p-2 shadow-2xl shadow-black/40"
-        >
-          <div className="px-2 py-2 text-xs leading-5 text-[var(--muted-2)]">Generate an extension task for this lead. Human approval is still required before any send.</div>
-          {taskGenerationOptions.map((option) => (
-            <button
-              key={option.type}
-              type="button"
-              role="menuitem"
-              disabled={Boolean(loading)}
-              onClick={() => queueExtensionTask(option.type)}
-              className="flex w-full items-start gap-2 rounded-[6px] px-2 py-2 text-left hover:bg-white/[0.05] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {loading === option.type ? <Loader2 size={14} className="mt-0.5 shrink-0 animate-spin text-teal-100" /> : <Send size={14} className="mt-0.5 shrink-0 text-[var(--teal)]" />}
-              <span>
-                <span className="block text-sm font-medium text-white">{option.label}</span>
-                <span className="mt-1 block text-xs leading-5 text-[var(--muted)]">{option.detail}</span>
-              </span>
-            </button>
-          ))}
-          {error ? <div className="mt-2 rounded-[6px] border border-amber-300/25 bg-amber-300/10 px-2 py-2 text-xs leading-5 text-amber-100">{error}</div> : null}
-        </div>
-      ) : null}
+      <div className="text-xs leading-5 text-[var(--muted-2)]">
+        Auto-detect best task from lead context. Generate an extension task for this lead; human approval is still required before any send.
+      </div>
+      {error ? <div className="rounded-[6px] border border-amber-300/25 bg-amber-300/10 px-2 py-2 text-xs leading-5 text-amber-100">{error}</div> : null}
     </div>
   );
 }

@@ -64,5 +64,7 @@ assert.equal(
 const generateRoute = readFileSync("apps/web/src/app/api/extension/tasks/generate/route.ts", "utf8");
 
 assert(generateRoute.includes('"reply_to_inbound"'), "selected lead task generation should accept reply_to_inbound");
+assert(generateRoute.includes('"auto_detect"'), "selected lead task generation should accept auto_detect");
+assert(generateRoute.includes("detectExtensionTaskType"), "selected lead task generation should classify the best task type from lead context");
 assert(generateRoute.includes("leadHasTaskTarget"), "selected lead task generation should allow manual leads with usable contact or knowledge");
 assert(!generateRoute.includes("lead.conversations.some((conversation) => conversation.knowledgeStatus === \"included\")"), "selected lead task generation should not require an extension conversation");

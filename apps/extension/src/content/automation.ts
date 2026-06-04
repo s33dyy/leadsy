@@ -19,7 +19,8 @@ import type {
   KnowledgeContext,
   KnowledgeProvider,
   OverlayState,
-  ResponderDecision
+  ResponderDecision,
+  ConversationSyncEventType
 } from "../core/types";
 import type { ExtensionTask } from "../core/tasks";
 
@@ -48,7 +49,7 @@ export interface AutomationModelClient {
     chat: ConversationLog;
     messages: ChatMessage[];
     event?: {
-      type: "detected" | "inbound-synced" | "reply-generated" | "reply-sent" | "reply-paused" | "fallback-used" | "error";
+      type: ConversationSyncEventType;
       summary: string;
     };
   }): Promise<void>;
@@ -120,7 +121,7 @@ export class ChatAutomationController {
       this.log = await this.loadOrCreateLog(siteFingerprint, this.profile.id);
       this.startObserver();
       await this.processVisibleMessages();
-      await this.syncToLeadsy("detected", "Extension armed and chat controls validated.");
+      await this.syncToLeadsy("monitor_started", "Browser monitor armed and chat controls validated.");
       if (this.mode === "detecting") {
         this.setState({ mode: "auto_active", statusText: "Armed. Waiting for incoming messages." });
       }
@@ -383,6 +384,7 @@ export class ChatAutomationController {
     }
     this.processTimer = globalThis.setTimeout(() => {
       void this.processVisibleMessages().catch((error) => {
+        void this.syncToLeadsy("monitor_error", error instanceof Error ? error.message : "Failed while processing new chat messages.");
         this.setState({
           mode: "error",
           statusText: "Failed while processing new chat messages.",
@@ -402,7 +404,7 @@ export class ChatAutomationController {
     this.log.messages = merged;
     this.log.updatedAt = Date.now();
     await this.store.saveLog(this.log);
-    await this.syncToLeadsy("inbound-synced", "Visible chat messages synced to Leadsy.");
+    await this.syncToLeadsy("monitor_synced", "Visible chat messages synced to Leadsy.");
 
     const unansweredIncoming = getUnansweredIncomingTurn(merged);
     const latestIncoming = unansweredIncoming.at(-1);
@@ -471,7 +473,7 @@ export class ChatAutomationController {
     this.emit(state);
   }
 
-  private async syncToLeadsy(type: NonNullable<Parameters<NonNullable<AutomationModelClient["syncConversation"]>>[0]["event"]>["type"], summary: string) {
+  private async syncToLeadsy(type: ConversationSyncEventType, summary: string) {
     if (!this.log || !this.openRouter.syncConversation) return;
     await this.openRouter.syncConversation({
       chat: this.log,

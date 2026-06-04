@@ -22,7 +22,7 @@ import Link from "next/link";
 import { Badge, EmptyState, Panel, PrimaryLink, SectionTitle } from "@/components/ui";
 import { LeadScrollKeeper } from "@/components/lead-scroll-keeper";
 import { ManualLeadIntake } from "@/components/manual-lead-intake";
-import { LeadTaskGenerateMenu, SelectedLeadTasks } from "@/components/selected-lead-tasks";
+import { SelectedLeadTasks } from "@/components/selected-lead-tasks";
 import { getCurrentSession } from "@/lib/auth";
 import { listExtensionTaskEvents, listExtensionTasks, type ExtensionTask, type ExtensionTaskEvent } from "@/lib/extension-store";
 import {
@@ -321,6 +321,18 @@ function toneForChannel(channel: LeadKnowledgeChannel): "teal" | "amber" | "lime
   return "teal";
 }
 
+function sourceLabel(message: LeadKnowledgeMessage) {
+  if (message.source === "meta-webhook") return "Official webhook";
+  if (message.source === "extension") return "Browser capture";
+  return "Manual log";
+}
+
+function sourceTone(message: LeadKnowledgeMessage): "teal" | "amber" | "lime" | "sky" | "neutral" {
+  if (message.source === "meta-webhook") return "lime";
+  if (message.source === "extension") return "sky";
+  return "amber";
+}
+
 function Metric({
   label,
   value,
@@ -583,7 +595,6 @@ function LeadRecordWorkspace({
           <div className="mono mt-2 break-all text-xs text-[var(--muted)]">{lead.id}</div>
         </div>
         <div className="flex flex-wrap items-start justify-end gap-2">
-          <LeadTaskGenerateMenu leadId={lead.id} label="AI Generate tasks" />
           <Badge tone={stageTone(crmStage(lead))}>{crmStage(lead)}</Badge>
           <Badge tone="neutral">{lead.messageCount} comms</Badge>
         </div>
@@ -1066,6 +1077,7 @@ function MessageEvent({ lead, message }: { lead: LeadKnowledgeRecord; message: L
       <div className="mt-2 flex flex-wrap gap-2 text-xs text-[var(--muted)]">
         <span>{formatDate(message.sentAt)}</span>
         <Badge tone={toneForChannel(message.channel)}>{channelLabel(message.channel)}</Badge>
+        <Badge tone={sourceTone(message)}>{sourceLabel(message)}</Badge>
         <form action="/api/leads/message-status" method="post">
           <input type="hidden" name="leadId" value={lead.id} />
           <input type="hidden" name="messageId" value={message.id} />

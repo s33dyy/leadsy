@@ -2,6 +2,7 @@ import type {
   AssistantSettings,
   ChatMessage,
   ChatSiteProfile,
+  ConversationSyncEventType,
   ConversationLog,
   DomSnapshot,
   KnowledgeContext,
@@ -48,7 +49,7 @@ export class RuntimeWorkerClient implements WorkerModelClient {
     chat: ConversationLog;
     messages: ChatMessage[];
     event?: {
-      type: "detected" | "inbound-synced" | "reply-generated" | "reply-sent" | "reply-paused" | "fallback-used" | "error";
+      type: ConversationSyncEventType;
       summary: string;
     };
   }): Promise<void> {
