@@ -98,9 +98,14 @@ export function OnboardingWizard({
     try {
       const response = await fetch("/api/onboarding", {
         method: "POST",
+        credentials: "same-origin",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ profile, complete })
       });
+      if (response.status === 401) {
+        toast({ title: "Onboarding session expired", detail: "Refresh the page, then continue setup.", tone: "error" });
+        return false;
+      }
       if (!response.ok) {
         toast({ title: "Onboarding was not saved", detail: "Check your connection and try again.", tone: "error" });
         return false;
