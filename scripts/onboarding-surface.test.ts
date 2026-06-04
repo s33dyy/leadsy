@@ -45,7 +45,7 @@ async function main() {
   }
   assert(wizard.includes("/api/onboarding"), "wizard should save progress through the onboarding API");
   assert(
-    /fetch\("\/api\/onboarding",\s*{[\s\S]*credentials:\s*"same-origin"/.test(wizard),
+    /fetch\("\/api\/onboarding",\s*{[\s\S]*credentials:\s*"include"/.test(wizard),
     "wizard should preserve the authenticated session when saving onboarding progress"
   );
   assert(wizard.includes("aria-invalid"), "wizard should use inline validation");

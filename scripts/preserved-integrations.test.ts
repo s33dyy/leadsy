@@ -166,9 +166,9 @@ const protectedSurfaces: ProtectedSurface[] = [
     markers: ["model Tenant", "model User", "model AuthSession", "@@index([tenantId", 'url      = env("DATABASE_URL")']
   },
   {
-    label: "Railway GitHub Actions workflow",
+    label: "Railway GitHub Actions CI gate",
     path: ".github/workflows/railway-web.yml",
-    markers: ["Deploy Web To Railway", "RAILWAY_TOKEN", "railway up", "npm run typecheck", "npm run build"]
+    markers: ["Verify Web Before Railway Deploy", "npm run lint", "npm run typecheck", "npm run test", "npm run build"]
   }
 ];
 
@@ -238,6 +238,9 @@ async function main() {
   for (const surface of protectedSurfaces) {
     await assertSurface(root, surface);
   }
+
+  const railwayWorkflow = await read(root, ".github/workflows/railway-web.yml");
+  assert(!railwayWorkflow.includes("railway up"), "Railway deployment should be handled by the connected main branch after CI, not by ad hoc GitHub Actions CLI deploys");
 
   const envExample = await read(root, ".env.example");
   for (const key of protectedEnvKeys) {

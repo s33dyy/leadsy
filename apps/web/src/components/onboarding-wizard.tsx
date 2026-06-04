@@ -98,7 +98,7 @@ export function OnboardingWizard({
     try {
       const response = await fetch("/api/onboarding", {
         method: "POST",
-        credentials: "same-origin",
+        credentials: "include",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ profile, complete })
       });
