@@ -122,6 +122,10 @@ async function main() {
   assert(connectPage.includes("channelAssetsForConnection"), "connection config should derive per-channel asset readiness from saved Meta connection records");
   assert(connectPage.includes("Connected"), "connection config should show connected state after OAuth");
   assert(connectPage.includes("Reconnect Meta account"), "connection config should allow reconnecting without pretending setup is missing");
+  assert(connectPage.includes("Facebook Login is currently unavailable"), "connection config should explain the common Meta feature-unavailable state");
+  assert(connectPage.includes("Configure Meta later from Profile Settings"), "connection config should give users a safe skip-later path");
+  assert(connectPage.includes("Steps to connect Meta"), "connection config should show customer-friendly Meta setup steps");
+  assert(connectPage.includes("Skip Meta for later"), "connection config should include skip-later guidance");
   assert(connectPage.includes("Advanced developer details"), "connection config should demote webhook details to an advanced section");
   assert(connectPage.includes("/api/meta/whatsapp/webhook"), "connection config may expose the WhatsApp webhook callback only as advanced details");
   assert(!connectPage.includes("Connect WhatsApp leads and the browser worker"), "connection config should not present worker setup as the main Meta connection flow");
@@ -132,7 +136,18 @@ async function main() {
   }
 
   const leadsPage = await readFile(join(root, "apps/web/src/app/app/leads/page.tsx"), "utf8");
+  const manualLeadIntake = await readFile(join(root, "apps/web/src/components/manual-lead-intake.tsx"), "utf8");
+  const leadSurface = `${leadsPage}\n${manualLeadIntake}`;
   assert(leadsPage.includes("listLeadKnowledgeRecords"), "leads page should read unified lead knowledge records");
+  assert.equal(await fileExists(join(root, "apps/web/src/app/api/leads/manual/route.ts")), true, "leads page should have a dedicated manual lead create endpoint");
+  assert(leadsPage.includes("/api/leads/manual"), "leads page should create manual leads through the dedicated endpoint");
+  assert(leadSurface.includes("Add Lead"), "leads page should expose a manual Add Lead entry point");
+  assert(leadSurface.includes("role=\"dialog\""), "manual Add Lead should open as modal/drawer UI");
+  assert(leadSurface.includes("All questions are skippable"), "manual lead AI-style intake questions should be skippable");
+  assert(leadSurface.includes("Question type: MCQ"), "manual lead intake should include MCQ guidance");
+  assert(leadSurface.includes("Question type: Number"), "manual lead intake should include numerical guidance");
+  assert(leadSurface.includes("Related lead"), "manual lead intake should allow connecting context to other leads");
+  assert(leadSurface.includes("Additional emails"), "manual lead intake should collect optional extra emails as knowledge facts");
   assert(leadsPage.includes("/api/leads/manual-message"), "leads page should allow manual communication logging");
   assert(leadsPage.includes("/api/leads/status"), "leads page should allow lead-level exclude and restore");
   assert(leadsPage.includes("/api/leads/conversation-status"), "leads page should allow conversation-level knowledge exclusion");

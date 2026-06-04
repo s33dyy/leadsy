@@ -158,6 +158,38 @@ export default async function ConnectPage({ searchParams }: ConnectPageProps) {
                 {metaStatus}
               </div>
             ) : null}
+
+            <div className="mt-5 grid gap-3">
+              <details className="rounded-[8px] border border-amber-300/25 bg-amber-300/[0.08] p-3">
+                <summary className="cursor-pointer list-none text-sm font-semibold text-amber-100">
+                  Facebook Login is currently unavailable
+                </summary>
+                <p className="mt-3 text-sm leading-6 text-[var(--muted-2)]">
+                  This message is shown by Meta when the Facebook app or login product is not available for the
+                  account opening the flow. Leadsy cannot override that page, but you can keep using manual leads,
+                  the browser extension, and worker approvals while Meta is configured.
+                </p>
+              </details>
+
+              <details className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-3">
+                <summary className="cursor-pointer list-none text-sm font-semibold text-white">Steps to connect Meta</summary>
+                <ol className="mt-3 grid gap-2 text-sm leading-6 text-[var(--muted-2)]">
+                  <li>1. Confirm the Meta app is live or that your Facebook user is assigned as a tester/admin.</li>
+                  <li>2. Confirm Facebook Login or Embedded Signup is available for the app.</li>
+                  <li>3. Confirm the Leadsy callback URL is allowed in Meta&apos;s login settings.</li>
+                  <li>4. Connect the Facebook Page, Instagram business account, and WhatsApp Business assets.</li>
+                  <li>5. Return here and use Connect Meta account again.</li>
+                </ol>
+              </details>
+
+              <details className="rounded-[8px] border border-teal-300/25 bg-teal-300/[0.07] p-3">
+                <summary className="cursor-pointer list-none text-sm font-semibold text-teal-100">Skip Meta for later</summary>
+                <p className="mt-3 text-sm leading-6 text-[var(--muted-2)]">
+                  Configure Meta later from Profile Settings. Until then, operators can add leads manually, log
+                  calls/emails, pair the browser extension, and keep all lead knowledge in Leadsy.
+                </p>
+              </details>
+            </div>
           </section>
 
           <section className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">

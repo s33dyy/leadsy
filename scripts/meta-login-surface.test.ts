@@ -30,6 +30,10 @@ async function main() {
   const connectPage = await read("apps/web/src/app/app/connect/page.tsx");
   assert(connectPage.includes('href="/api/meta/oauth/start"'), "connect page should not link directly to Meta before checking the Leadsy session");
   assert(connectPage.includes("META_EMBEDDED_SIGNUP_URL"), "connect page should still use existing Meta env configuration for readiness only");
+  assert(connectPage.includes("Facebook Login is currently unavailable"), "connect page should explain Meta-side feature-unavailable failures");
+  assert(connectPage.includes("Configure Meta later from Profile Settings"), "connect page should let operators keep working when Meta app setup is unavailable");
+  assert(connectPage.includes("Steps to connect Meta"), "connect page should include an accordion-style Meta setup checklist");
+  assert(connectPage.includes("Skip Meta for later"), "connect page should include skip-later instructions");
 
   const authPage = await read("apps/web/src/components/auth-page.tsx");
   assert(authPage.includes("meta_session"), "auth page should explain Meta reconnect sessions instead of showing a blank login");
