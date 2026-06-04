@@ -65,6 +65,13 @@ export type MetaWhatsAppConversation = {
   messages: MetaWhatsAppInboundMessage[];
 };
 
+type MetaWhatsAppConversationScope = {
+  tenantId: string;
+  ownerId: string;
+  whatsappBusinessAccountId?: string;
+  phoneNumberId?: string;
+};
+
 type InboundState = {
   messages: MetaWhatsAppInboundMessage[];
   contactStatuses: MetaWhatsAppContactLeadStatus[];
@@ -178,6 +185,13 @@ function statusKey(input: Pick<MetaWhatsAppContactLeadStatus, "tenantId" | "owne
 
 function cleanPhoneForWhatsApp(value: string) {
   return value.replace(/\D/g, "");
+}
+
+function messageMatchesConversationScope(message: MetaWhatsAppInboundMessage, input: MetaWhatsAppConversationScope) {
+  if (!input.whatsappBusinessAccountId && !input.phoneNumberId) return false;
+  if (input.phoneNumberId && message.phoneNumberId !== input.phoneNumberId) return false;
+  if (input.whatsappBusinessAccountId && message.whatsappBusinessAccountId !== input.whatsappBusinessAccountId) return false;
+  return true;
 }
 
 export function whatsappConversationUrl(contactId: string) {
@@ -296,7 +310,7 @@ export async function setMetaWhatsAppContactLeadStatus(input: {
   return nextStatus;
 }
 
-export async function listMetaWhatsAppConversations(input: { tenantId: string; ownerId: string }) {
+export async function listMetaWhatsAppConversations(input: MetaWhatsAppConversationScope) {
   const state = await readState();
   const statuses = new Map(
     state.contactStatuses
@@ -305,7 +319,7 @@ export async function listMetaWhatsAppConversations(input: { tenantId: string; o
   );
   const grouped = new Map<string, MetaWhatsAppInboundMessage[]>();
 
-  for (const message of state.messages) {
+  for (const message of state.messages.filter((candidate) => messageMatchesConversationScope(candidate, input))) {
     const contactId = message.contactId || message.from || message.waId;
     if (!contactId) continue;
     grouped.set(contactId, [...(grouped.get(contactId) ?? []), normalizeMessage({ ...message, contactId })]);

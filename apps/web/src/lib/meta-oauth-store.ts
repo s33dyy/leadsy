@@ -133,12 +133,11 @@ function channelReadiness(input: {
 }
 
 function connectionMatchesAssets(connection: MetaOAuthConnectionRecord, input: MetaOAuthAssetLookup) {
-  return Boolean(
-    (input.whatsappBusinessAccountId && connection.whatsappBusinessAccountId === input.whatsappBusinessAccountId) ||
-      (input.phoneNumberId && connection.phoneNumberId === input.phoneNumberId) ||
-      (input.facebookPageId && connection.facebookPageId === input.facebookPageId) ||
-      (input.instagramBusinessAccountId && connection.instagramBusinessAccountId === input.instagramBusinessAccountId)
-  );
+  if (input.phoneNumberId) return connection.phoneNumberId === input.phoneNumberId;
+  if (input.facebookPageId) return connection.facebookPageId === input.facebookPageId;
+  if (input.instagramBusinessAccountId) return connection.instagramBusinessAccountId === input.instagramBusinessAccountId;
+  if (input.whatsappBusinessAccountId) return connection.whatsappBusinessAccountId === input.whatsappBusinessAccountId;
+  return false;
 }
 
 function hasAnyAsset(input: MetaOAuthAssetLookup) {

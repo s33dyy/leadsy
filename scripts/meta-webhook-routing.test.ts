@@ -34,6 +34,24 @@ async function main() {
         phone_number_id: "phone_owner_y"
       }
     });
+    await saveMetaOAuthConnection({
+      tenantId: "tenant_shared_a",
+      ownerId: "owner_shared_a",
+      token: { access_token: "EAAB_shared_a" },
+      query: {
+        waba_id: "waba_shared",
+        phone_number_id: "phone_shared_a"
+      }
+    });
+    await saveMetaOAuthConnection({
+      tenantId: "tenant_shared_b",
+      ownerId: "owner_shared_b",
+      token: { access_token: "EAAB_shared_b" },
+      query: {
+        waba_id: "waba_shared",
+        phone_number_id: "phone_shared_b"
+      }
+    });
 
     const payload = {
       object: "whatsapp_business_account",
@@ -94,6 +112,66 @@ async function main() {
     assert.equal(ownerXLeads[0].lastMessagePreview, "Owner X private message");
     assert.equal(ownerYLeads.length, 0, "owner Y must not see owner X webhook messages");
     assert.equal(defaultLeads.length, 0, "webhook messages must not fall back to the default owner");
+
+    const sharedPayload = {
+      object: "whatsapp_business_account",
+      entry: [
+        {
+          id: "waba_shared",
+          changes: [
+            {
+              field: "messages",
+              value: {
+                messaging_product: "whatsapp",
+                metadata: {
+                  display_phone_number: "16505552222",
+                  phone_number_id: "phone_shared_a"
+                },
+                contacts: [
+                  {
+                    profile: { name: "Shared A Lead" },
+                    wa_id: "16315552222"
+                  }
+                ],
+                messages: [
+                  {
+                    from: "16315552222",
+                    id: "wamid.shared-a-1",
+                    timestamp: "1780391260",
+                    type: "text",
+                    text: { body: "Shared WABA should route by phone" }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    };
+    const sharedRawBody = JSON.stringify(sharedPayload);
+    const sharedSignature = `sha256=${createHmac("sha256", process.env.META_APP_SECRET).update(sharedRawBody).digest("hex")}`;
+
+    const sharedResponse = await POST(
+      new Request("https://leadsy.test/api/meta/whatsapp/webhook", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-hub-signature-256": sharedSignature
+        },
+        body: sharedRawBody
+      }) as never
+    );
+    assert.equal(sharedResponse.status, 200);
+    const sharedBody = await sharedResponse.json();
+    assert.equal(sharedBody.ambiguous, 0, "shared WABA must not make phone-specific webhooks ambiguous");
+    assert.equal(sharedBody.saved, 1);
+
+    const sharedALeads = await listLeadKnowledgeRecords({ tenantId: "tenant_shared_a", ownerId: "owner_shared_a" });
+    const sharedBLeads = await listLeadKnowledgeRecords({ tenantId: "tenant_shared_b", ownerId: "owner_shared_b" });
+    assert.equal(sharedALeads.length, 1);
+    assert.equal(sharedALeads[0].contact.displayName, "Shared A Lead");
+    assert.equal(sharedALeads[0].lastMessagePreview, "Shared WABA should route by phone");
+    assert.equal(sharedBLeads.length, 0, "shared WABA owner B must not see owner A phone messages");
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

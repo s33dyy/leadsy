@@ -112,16 +112,61 @@ async function main() {
       ]
     };
     const followUpSave = await saveMetaWhatsAppInboundMessages(followUpPayload, "2026-06-02T08:01:00.000Z");
+    const otherTenantPayload = {
+      object: "whatsapp_business_account",
+      entry: [
+        {
+          id: "waba_other",
+          changes: [
+            {
+              field: "messages",
+              value: {
+                messaging_product: "whatsapp",
+                metadata: {
+                  display_phone_number: "15559876543",
+                  phone_number_id: "phone_number_other"
+                },
+                contacts: [
+                  {
+                    profile: { name: "Other Buyer" },
+                    wa_id: "919840000000"
+                  }
+                ],
+                messages: [
+                  {
+                    from: "919840000000",
+                    id: "wamid.other-1",
+                    timestamp: "1780391320",
+                    type: "text",
+                    text: { body: "This belongs to another Meta asset" }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    };
+    const otherTenantSave = await saveMetaWhatsAppInboundMessages(otherTenantPayload, "2026-06-02T08:02:00.000Z");
     const saved = await listMetaWhatsAppInboundMessages();
     assert.equal(firstSave.saved.length, 1);
     assert.equal(secondSave.saved.length, 0, "same WhatsApp message id should be deduped");
     assert.equal(followUpSave.saved.length, 1);
-    assert.equal(saved.length, 2);
-    assert.equal(saved[0].messageId, "wamid.inbound-2");
+    assert.equal(otherTenantSave.saved.length, 1);
+    assert.equal(saved.length, 3);
+    assert.equal(saved[0].messageId, "wamid.other-1");
+
+    const unscopedConversations = await listMetaWhatsAppConversations({
+      tenantId: "tenant_test",
+      ownerId: "owner_test"
+    });
+    assert.equal(unscopedConversations.length, 0, "legacy conversation reads must require a Meta asset scope");
 
     const conversations = await listMetaWhatsAppConversations({
       tenantId: "tenant_test",
-      ownerId: "owner_test"
+      ownerId: "owner_test",
+      whatsappBusinessAccountId: "waba_123",
+      phoneNumberId: "phone_number_123"
     });
     assert.equal(conversations.length, 1);
     assert.equal(conversations[0].contactId, "919830000000");
@@ -139,10 +184,22 @@ async function main() {
     });
     const excludedConversations = await listMetaWhatsAppConversations({
       tenantId: "tenant_test",
-      ownerId: "owner_test"
+      ownerId: "owner_test",
+      whatsappBusinessAccountId: "waba_123",
+      phoneNumberId: "phone_number_123"
     });
     assert.equal(excludedConversations[0].leadStatus, "excluded");
     assert.equal(excludedConversations[0].messageCount, 2, "excluded contacts should keep their conversation history");
+
+    const otherConversations = await listMetaWhatsAppConversations({
+      tenantId: "tenant_other",
+      ownerId: "owner_other",
+      whatsappBusinessAccountId: "waba_other",
+      phoneNumberId: "phone_number_other"
+    });
+    assert.equal(otherConversations.length, 1);
+    assert.equal(otherConversations[0].contactId, "919840000000");
+    assert.equal(otherConversations[0].messageCount, 1);
 
     assert.equal(
       verifyMetaWebhookChallenge({
