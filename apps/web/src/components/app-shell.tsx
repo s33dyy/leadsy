@@ -27,13 +27,13 @@ import type { SessionUser } from "@leadsy/security";
 import { ToastProvider } from "@/components/toast-provider";
 
 const navItems: Array<{ href: string; label: string; icon: LucideIcon; activePaths: string[] }> = [
-  { href: "/app", label: "Dashboard", icon: Grid2X2, activePaths: ["/app"] },
-  { href: "/app/leads", label: "CRM", icon: UsersRound, activePaths: ["/app/leads"] },
-  { href: "/app/worker", label: "Workers", icon: Bot, activePaths: ["/app/worker"] },
-  { href: "/app/worker?tab=pending", label: "Approvals", icon: CheckCircle2, activePaths: ["/app/worker"] },
-  { href: "/app/leads?panel=knowledge", label: "Knowledge", icon: BookOpen, activePaths: ["/app/leads"] },
+  { href: "/dashboard", label: "Dashboard", icon: Grid2X2, activePaths: ["/app", "/dashboard"] },
+  { href: "/crm", label: "CRM", icon: UsersRound, activePaths: ["/app/leads", "/crm"] },
+  { href: "/workers", label: "Workers", icon: Bot, activePaths: ["/app/worker", "/workers"] },
+  { href: "/workers?tab=pending", label: "Approvals", icon: CheckCircle2, activePaths: ["/app/worker", "/workers"] },
+  { href: "/crm?panel=knowledge", label: "Knowledge", icon: BookOpen, activePaths: ["/app/leads", "/crm"] },
   { href: "/app/connect", label: "Integrations", icon: Plug, activePaths: ["/app/connect"] },
-  { href: "/app/connect?panel=settings", label: "Settings", icon: Settings, activePaths: ["/app/connect"] }
+  { href: "/settings", label: "Settings", icon: Settings, activePaths: ["/app/connect", "/settings"] }
 ];
 
 const pageTitles: Array<{ path: string; title: string; eyebrow: string }> = [
@@ -57,7 +57,7 @@ function pageTitleForPath(pathname: string) {
 }
 
 function isNavItemActive(pathname: string, label: string, activePaths: string[]) {
-  if (label === "Dashboard") return pathname === "/app";
+  if (label === "Dashboard") return pathname === "/app" || pathname === "/dashboard";
   if (label === "Approvals" || label === "Knowledge" || label === "Settings") return false;
   return activePaths.some((path) => pathname === path || pathname.startsWith(`${path}/`));
 }
