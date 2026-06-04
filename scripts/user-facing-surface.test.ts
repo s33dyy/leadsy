@@ -19,6 +19,8 @@ async function main() {
   const expectedPages = [
     "apps/web/src/app/page.tsx",
     "apps/web/src/app/login/page.tsx",
+    "apps/web/src/app/signup/page.tsx",
+    "apps/web/src/app/forgot-password/page.tsx",
     "apps/web/src/app/extension/page.tsx",
     "apps/web/src/app/app/connect/page.tsx",
     "apps/web/src/app/app/leads/page.tsx",
@@ -86,10 +88,12 @@ async function main() {
   assert(!loginForm.includes("/client/register"), "login/signup page should not expose client registration");
 
   const loginPage = await readFile(join(root, "apps/web/src/app/login/page.tsx"), "utf8");
+  const authPage = await readFile(join(root, "apps/web/src/components/auth-page.tsx"), "utf8");
   for (const adminCopy of ["owner", "Railway", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "local access"]) {
     assert(!loginPage.includes(adminCopy), `login page should not expose admin copy: ${adminCopy}`);
+    assert(!authPage.includes(adminCopy), `auth page should not expose admin copy: ${adminCopy}`);
   }
-  assert(loginPage.includes("lead intelligence workspace"), "login page should frame access around lead intelligence");
+  assert(authPage.includes("lead intelligence workspace"), "auth page should frame access around lead intelligence");
 
   const landingPage = await readFile(join(root, "apps/web/src/app/page.tsx"), "utf8");
   assert(landingPage.includes("/login?next=/app/leads"), "landing page should enter the leads page");
