@@ -11,7 +11,8 @@ const loginErrors: Record<string, string> = {
   signup_required: "Use Google to create your Leadsy account first.",
   google_unconfigured: "Google signup is not connected yet. Please contact Leadsy support.",
   google_state: "Google signup expired. Please try again.",
-  google_failed: "Google signup could not be completed."
+  google_failed: "Google signup could not be completed.",
+  meta_session: "Your Leadsy session expired before Meta authorization could finish. Log in, then reconnect Meta from Integrations."
 };
 
 const modeCopy: Record<AuthMode, { eyebrow: string; title: string; body: string }> = {

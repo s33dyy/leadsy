@@ -23,6 +23,8 @@ export type AuthUser = {
   role: AuthRole;
   createdAt: string;
   lastLoginAt?: string;
+  onboardingCompletedAt?: string;
+  onboardingProfile?: Record<string, unknown>;
 };
 
 type StoredAuthSession = {
@@ -273,6 +275,47 @@ export async function deleteAuthUser(userId: string) {
     users: state.users.filter((user) => user.id !== userId),
     sessions: state.sessions.filter((session) => session.userId !== userId)
   });
+}
+
+export async function saveUserOnboarding(input: { userId: string; profile: Record<string, unknown> }) {
+  const state = await readAuthState();
+  const user = state.users.find((candidate) => candidate.id === input.userId);
+  if (!user) return null;
+
+  const updatedUser: AuthUser = {
+    ...user,
+    onboardingProfile: {
+      ...(user.onboardingProfile ?? {}),
+      ...input.profile
+    }
+  };
+
+  await writeAuthState({
+    ...state,
+    users: state.users.map((candidate) => (candidate.id === user.id ? updatedUser : candidate))
+  });
+  return updatedUser;
+}
+
+export async function completeUserOnboarding(input: { userId: string; profile?: Record<string, unknown> }) {
+  const state = await readAuthState();
+  const user = state.users.find((candidate) => candidate.id === input.userId);
+  if (!user) return null;
+
+  const updatedUser: AuthUser = {
+    ...user,
+    onboardingCompletedAt: new Date().toISOString(),
+    onboardingProfile: {
+      ...(user.onboardingProfile ?? {}),
+      ...(input.profile ?? {})
+    }
+  };
+
+  await writeAuthState({
+    ...state,
+    users: state.users.map((candidate) => (candidate.id === user.id ? updatedUser : candidate))
+  });
+  return updatedUser;
 }
 
 export async function authenticateUser(emailOrPhone: string, password: string) {

@@ -16,6 +16,8 @@ export type SessionUser = {
   email: string;
   role: Role;
   clientId?: string;
+  onboardingCompletedAt?: string;
+  onboardingProfile?: Record<string, unknown>;
 };
 
 const rolePermissions: Record<Role, Permission[]> = {

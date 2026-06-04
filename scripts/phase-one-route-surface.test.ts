@@ -34,15 +34,15 @@ async function main() {
   }
 
   const appShell = await read("apps/web/src/components/app-shell.tsx");
-  for (const href of ['href: "/dashboard"', 'href: "/crm"', 'href: "/workers"', 'href: "/settings"']) {
-    assert(appShell.includes(href), `global sidebar should expose ${href}`);
+  for (const href of ['href: "/app"', 'href: "/app/leads"', 'href: "/app/worker"', 'href: "/app/connect?panel=settings"']) {
+    assert(appShell.includes(href), `global sidebar should keep tab navigation inside the authenticated shell with ${href}`);
   }
   for (const legacyPath of ["/app", "/app/leads", "/app/worker", "/app/connect"]) {
     assert(appShell.includes(legacyPath), `app shell should keep ${legacyPath} as a legacy active/preserved route`);
   }
   assert(appShell.includes("activePaths"), "app shell should preserve active path mapping for existing workspace routes");
-  assert(!appShell.includes('href: "/app/leads", label: "CRM"'), "CRM nav should use the Phase 1 /crm route");
-  assert(!appShell.includes('href: "/app/worker", label: "Workers"'), "Workers nav should use the Phase 1 /workers route");
+  assert(!appShell.includes('href: "/crm", label: "CRM"'), "CRM tab clicks should not leave the authenticated shell first");
+  assert(!appShell.includes('href: "/workers", label: "Workers"'), "Worker tab clicks should not leave the authenticated shell first");
 }
 
 main().catch((error) => {

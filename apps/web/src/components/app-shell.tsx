@@ -24,16 +24,17 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { SessionUser } from "@leadsy/security";
+import { OnboardingWizard } from "@/components/onboarding-wizard";
 import { ToastProvider } from "@/components/toast-provider";
 
 const navItems: Array<{ href: string; label: string; icon: LucideIcon; activePaths: string[] }> = [
-  { href: "/dashboard", label: "Dashboard", icon: Grid2X2, activePaths: ["/app", "/dashboard"] },
-  { href: "/crm", label: "CRM", icon: UsersRound, activePaths: ["/app/leads", "/crm"] },
-  { href: "/workers", label: "Workers", icon: Bot, activePaths: ["/app/worker", "/workers"] },
-  { href: "/workers?tab=pending", label: "Approvals", icon: CheckCircle2, activePaths: ["/app/worker", "/workers"] },
-  { href: "/crm?panel=knowledge", label: "Knowledge", icon: BookOpen, activePaths: ["/app/leads", "/crm"] },
+  { href: "/app", label: "Dashboard", icon: Grid2X2, activePaths: ["/app", "/dashboard"] },
+  { href: "/app/leads", label: "CRM", icon: UsersRound, activePaths: ["/app/leads", "/crm"] },
+  { href: "/app/worker", label: "Workers", icon: Bot, activePaths: ["/app/worker", "/workers"] },
+  { href: "/app/worker?tab=pending", label: "Approvals", icon: CheckCircle2, activePaths: ["/app/worker", "/workers"] },
+  { href: "/app/leads?panel=knowledge", label: "Knowledge", icon: BookOpen, activePaths: ["/app/leads", "/crm"] },
   { href: "/app/connect", label: "Integrations", icon: Plug, activePaths: ["/app/connect"] },
-  { href: "/settings", label: "Settings", icon: Settings, activePaths: ["/app/connect", "/settings"] }
+  { href: "/app/connect?panel=settings", label: "Settings", icon: Settings, activePaths: ["/app/connect", "/settings"] }
 ];
 
 const pageTitles: Array<{ path: string; title: string; eyebrow: string }> = [
@@ -78,11 +79,22 @@ export function AppShell({
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const page = pageTitleForPath(pathname);
   const setupIssues = hasMetaConnection ? 0 : 1;
+  const onboardingReminder = session.onboardingCompletedAt ? 0 : 1;
   const pendingApprovals = 0;
-  const notificationCount = setupIssues + pendingApprovals;
+  const notificationCount = setupIssues + pendingApprovals + onboardingReminder;
 
   const notificationItems = useMemo(
     () => [
+      ...(session.onboardingCompletedAt
+        ? []
+        : [
+            {
+              title: "Finish onboarding",
+              detail: "Complete your business profile so workers can generate better lead research and tasks.",
+              href: "/app/leads",
+              tone: "amber" as const
+            }
+          ]),
       ...(hasMetaConnection
         ? []
         : [
@@ -100,7 +112,7 @@ export function AppShell({
         tone: "teal" as const
       }
     ],
-    [hasMetaConnection, pendingApprovals]
+    [hasMetaConnection, pendingApprovals, session.onboardingCompletedAt]
   );
 
   const sidebarWidth = sidebarExpanded ? "lg:pl-[248px]" : "lg:pl-[88px]";
@@ -348,6 +360,7 @@ export function AppShell({
         <main className={sidebarWidth}>
           <div className="px-4 py-6 md:px-8">{children}</div>
         </main>
+        {!session.onboardingCompletedAt ? <OnboardingWizard session={session} hasMetaConnection={hasMetaConnection} /> : null}
       </div>
     </ToastProvider>
   );

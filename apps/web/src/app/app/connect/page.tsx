@@ -130,7 +130,7 @@ export default async function ConnectPage({ searchParams }: ConnectPageProps) {
             <div className="mt-5 flex flex-wrap items-center gap-3">
               {metaConnectUrl ? (
                 <a
-                  href={metaConnectUrl}
+                  href="/api/meta/oauth/start"
                   className="inline-flex h-11 items-center justify-center gap-2 rounded-[6px] border border-teal-300/30 bg-teal-300/[0.14] px-4 text-sm font-medium text-teal-50 hover:border-teal-200 hover:bg-teal-300/[0.2]"
                 >
                   {hasMetaConnection ? "Reconnect Meta account" : "Connect Meta account"}
