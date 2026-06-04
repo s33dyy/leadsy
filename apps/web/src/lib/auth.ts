@@ -60,7 +60,9 @@ export function toSessionUser(user: AuthUser): SessionUser {
     name: user.name,
     email: user.emailOrPhone,
     role: user.role,
-    clientId: user.clientId
+    clientId: user.clientId,
+    onboardingCompletedAt: user.onboardingCompletedAt,
+    onboardingProfile: user.onboardingProfile
   };
 }
 

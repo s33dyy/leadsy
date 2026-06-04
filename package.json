@@ -29,6 +29,8 @@
     "test:global-components": "tsx scripts/global-components-surface.test.ts",
     "test:ux-rules": "tsx scripts/ux-rules-surface.test.ts",
     "test:phase-one-routes": "tsx scripts/phase-one-route-surface.test.ts",
+    "test:onboarding-surface": "tsx scripts/onboarding-surface.test.ts",
+    "test:meta-login-surface": "tsx scripts/meta-login-surface.test.ts",
     "test:extension-download": "tsx scripts/extension-download-page.test.ts",
     "test:user-facing-surface": "tsx scripts/user-facing-surface.test.ts",
     "test:google-workspace-auth": "NODE_OPTIONS='--conditions=react-server' tsx scripts/google-workspace-auth.test.ts",
