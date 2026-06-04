@@ -102,15 +102,6 @@ async function writeAuthState(state: AuthState) {
   await rename(tempFile, authFile);
 }
 
-async function cleanExpiredSessions(state: AuthState) {
-  const now = Date.now();
-  const activeSessions = state.sessions.filter((session) => Date.parse(session.expiresAt) > now);
-  if (activeSessions.length !== state.sessions.length) {
-    state.sessions = activeSessions;
-    await writeAuthState(state);
-  }
-}
-
 export async function hashPassword(password: string) {
   const salt = randomBytes(16).toString("base64url");
   const derived = await derivePasswordKey(password, salt, 64, scryptOptions);
@@ -360,7 +351,6 @@ export async function createAuthSession(user: AuthUser) {
 
 export async function resolveAuthSession(token: string) {
   const state = await readAuthState();
-  await cleanExpiredSessions(state);
 
   const [sessionId] = token.split(".");
   const session = state.sessions.find((candidate) => candidate.id === sessionId && candidate.tokenHash === sha256(token));
@@ -373,8 +363,6 @@ export async function resolveAuthSession(token: string) {
     return null;
   }
 
-  session.lastSeenAt = new Date().toISOString();
-  await writeAuthState(state);
   return { session, user };
 }
 
