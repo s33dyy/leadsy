@@ -48,6 +48,12 @@ async function main() {
     /fetch\("\/api\/onboarding",\s*{[\s\S]*credentials:\s*"include"/.test(wizard),
     "wizard should preserve the authenticated session when saving onboarding progress"
   );
+  assert(wizard.includes("/api/extension/tokens"), "integration verification should create extension tokens through the existing API");
+  assert(wizard.includes("/downloads/leadsy-extension.zip"), "integration verification should link to the extension zip download");
+  assert(wizard.includes("chrome://extensions"), "integration verification should explain manual extension installation");
+  assert(wizard.includes("Optional during onboarding. Connect now or skip"), "Meta setup should be optional during onboarding");
+  assert(wizard.includes("Profile Settings"), "Meta setup should point users to profile settings for later configuration");
+  assert(wizard.includes("Leadsy already handles OpenRouter provider routing"), "OpenRouter setup should explain that Leadsy handles configured API keys");
   assert(wizard.includes("aria-invalid"), "wizard should use inline validation");
   assert(!wizard.includes("window.alert"), "wizard should not use browser alerts");
   assert(!wizard.includes("window.confirm"), "wizard should not use browser confirms");
