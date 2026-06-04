@@ -609,7 +609,7 @@ function LeadRecordWorkspace({
       {activeTab === "comms" ? (
         <LeadCommsTab lead={lead} activeView={activeView} query={query} commChannel={commChannel} />
       ) : null}
-      {activeTab === "tasks" ? <LeadTasksTab tasks={tasks} taskEvents={eventsForTasks(taskEvents, tasks)} /> : null}
+      {activeTab === "tasks" ? <LeadTasksTab lead={lead} tasks={tasks} taskEvents={eventsForTasks(taskEvents, tasks)} /> : null}
     </div>
   );
 }
@@ -794,6 +794,7 @@ function LeadCommsTab({
 
       <div className="grid gap-4 xl:grid-cols-[0.38fr_0.62fr]">
         <div className="space-y-4">
+          <ManualReplyHandoff lead={lead} />
           <ManualMessageForm lead={lead} commChannel={commChannel} />
           <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
             <div className="flex items-center justify-between gap-3">
@@ -834,7 +835,87 @@ function LeadCommsTab({
   );
 }
 
-function LeadTasksTab({ tasks, taskEvents }: { tasks: ExtensionTask[]; taskEvents: ExtensionTaskEvent[] }) {
+function ManualReplyHandoff({ lead }: { lead: LeadKnowledgeRecord }) {
+  const phone = (lead.contact.phone || lead.contact.waId || "").replace(/\D/g, "");
+  const email = lead.contact.email?.trim();
+  const profileUrl = lead.contact.profileUrl?.trim();
+  const conversationUrl = openHref(lead);
+  const metaUrl = conversationUrl && !conversationUrl.includes("web.whatsapp.com") ? conversationUrl : profileUrl;
+
+  return (
+    <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 text-sm font-semibold text-white">
+            <MessageCircle size={16} className="text-[var(--teal)]" />
+            Manual reply handoff
+          </div>
+          <p className="mt-2 text-sm leading-6 text-[var(--muted-2)]">
+            Leadsy tracks this. You send it. Reply in the real channel, then log the result below.
+          </p>
+        </div>
+        <Badge tone="amber">Human in loop</Badge>
+      </div>
+      <div className="mt-3 grid gap-2">
+        {phone ? (
+          <a
+            href={`https://web.whatsapp.com/send?phone=${phone}`}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-lime-300/25 bg-lime-300/10 px-3 text-xs font-medium text-lime-100 hover:bg-lime-300/[0.16]"
+          >
+            <MessageCircle size={14} />
+            Open WhatsApp Web
+            <ExternalLink size={12} />
+          </a>
+        ) : null}
+        {email ? (
+          <a
+            href={`mailto:${email}`}
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-sky-300/25 bg-sky-300/10 px-3 text-xs font-medium text-sky-100 hover:bg-sky-300/[0.16]"
+          >
+            <Mail size={14} />
+            Open email client
+            <ExternalLink size={12} />
+          </a>
+        ) : null}
+        {phone ? (
+          <a
+            href={`tel:${phone}`}
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-[var(--line)] bg-white/[0.03] px-3 text-xs font-medium text-[var(--muted-2)] hover:text-white"
+          >
+            <PhoneCall size={14} />
+            Call lead
+          </a>
+        ) : null}
+        {metaUrl ? (
+          <a
+            href={metaUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-[var(--line)] bg-white/[0.03] px-3 text-xs font-medium text-[var(--muted-2)] hover:text-white"
+          >
+            <ExternalLink size={14} />
+            Open profile or inbox
+          </a>
+        ) : null}
+      </div>
+      <p className="mt-3 text-xs leading-5 text-[var(--muted)]">
+        Log outbound after sending. Log any manual reply back as inbound so Needs reply and future worker context stay accurate.
+      </p>
+    </div>
+  );
+}
+
+function LeadTasksTab({
+  lead,
+  tasks,
+  taskEvents
+}: {
+  lead: LeadKnowledgeRecord;
+  tasks: ExtensionTask[];
+  taskEvents: ExtensionTaskEvent[];
+}) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -844,7 +925,7 @@ function LeadTasksTab({ tasks, taskEvents }: { tasks: ExtensionTask[]; taskEvent
         </div>
         <Badge tone="neutral">{tasks.length} tasks</Badge>
       </div>
-      <SelectedLeadTasks initialTasks={tasks} initialEvents={taskEvents} />
+      <SelectedLeadTasks leadId={lead.id} initialTasks={tasks} initialEvents={taskEvents} />
     </div>
   );
 }

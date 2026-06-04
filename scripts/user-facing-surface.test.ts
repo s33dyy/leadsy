@@ -157,6 +157,11 @@ async function main() {
   assert(leadsPage.includes("Activity timeline"), "leads page should expose logged communication activity");
   assert(leadsPage.includes("Next action"), "leads page should make next operational action visible");
   assert(leadsPage.includes("Needs reply"), "leads page should separate conversations that need a response");
+  assert(leadsPage.includes("Manual reply handoff"), "selected lead comms should expose a manual reply handoff");
+  assert(leadsPage.includes("Leadsy tracks this. You send it."), "manual reply workflow should make no-extension sending boundaries explicit");
+  assert(leadsPage.includes("Open WhatsApp Web"), "manual reply workflow should offer a WhatsApp handoff when a phone exists");
+  assert(leadsPage.includes("Open email client"), "manual reply workflow should offer an email handoff when an email exists");
+  assert(leadsPage.includes("Log outbound after sending"), "manual reply workflow should guide operators to log external replies");
   assert(leadsPage.includes("data-testid=\"lead-list-pane\""), "leads page should expose a stable lead list pane");
   assert(leadsPage.includes("data-testid=\"lead-workspace-pane\""), "leads page should expose a stable selected-record workspace");
   assert(leadsPage.includes("Details"), "selected lead workspace should expose a Details tab");
@@ -168,6 +173,11 @@ async function main() {
   }
   assert(leadsPage.includes("Selected lead tasks"), "tasks tab should focus on selected lead tasks");
   assert(leadsPage.includes("tasksForLead"), "leads page should filter task records by selected lead");
+  const selectedLeadTasks = await readFile(join(root, "apps/web/src/components/selected-lead-tasks.tsx"), "utf8");
+  assert(selectedLeadTasks.includes("/api/extension/tasks/generate"), "selected lead tasks should queue extension-assisted reply work");
+  assert(selectedLeadTasks.includes("leadIds: [leadId]"), "selected lead extension queueing should target only the selected lead");
+  assert(selectedLeadTasks.includes("Queue extension follow-up"), "selected lead tasks should expose a follow-up queue action");
+  assert(selectedLeadTasks.includes("No extension = log manually"), "selected lead tasks should keep the no-extension tracking boundary visible");
   assert(leadsPage.includes("All Meta and browser conversations"), "leads page should track all Meta and extension conversations");
   assert(leadsPage.includes("Open conversation"), "lead rows should open channel-specific conversations when possible");
   assert(leadsPage.includes("Exclude lead"), "leads page should let non-lead contacts be excluded");

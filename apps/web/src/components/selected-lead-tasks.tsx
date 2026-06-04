@@ -41,10 +41,14 @@ type SelectedLeadTaskEvent = {
   occurredAt: string;
 };
 
+type QueueTaskType = "initiate_conversation" | "follow_up";
+
 export function SelectedLeadTasks({
+  leadId,
   initialTasks,
   initialEvents
 }: {
+  leadId: string;
   initialTasks: SelectedLeadTask[];
   initialEvents: SelectedLeadTaskEvent[];
 }) {
@@ -53,6 +57,20 @@ export function SelectedLeadTasks({
   const [loading, setLoading] = useState("");
   const taskIds = new Set(tasks.map((task) => task.id));
   const events = initialEvents.filter((event) => taskIds.has(event.taskId));
+
+  async function queueExtensionTask(type: QueueTaskType) {
+    setLoading(`queue:${type}`);
+    const response = await fetch("/api/extension/tasks/generate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type, leadIds: [leadId] })
+    });
+    const payload = (await response.json().catch(() => ({}))) as { tasks?: SelectedLeadTask[] };
+    setLoading("");
+    if (!response.ok) return;
+    setTasks((current) => mergeGeneratedTasks(payload.tasks ?? [], current));
+    router.refresh();
+  }
 
   async function approvePreparedSend(task: SelectedLeadTask, action: "approve" | "reject") {
     setLoading(`${action}:${task.id}`);
@@ -97,85 +115,119 @@ export function SelectedLeadTasks({
     router.refresh();
   }
 
-  if (!tasks.length) {
-    return <EmptyState icon={Workflow} title="No tasks for this lead" detail="Queue lead tasks from the worker page or wait for prepared drafts to report back here." />;
-  }
-
   return (
     <div className="grid gap-4">
-      <div className="grid gap-3 lg:grid-cols-2">
-        {tasks.map((task) => (
-          <article key={task.id} className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <div className="text-sm font-semibold text-white">{task.type.replace(/_/g, " ")}</div>
-                <div className="mono mt-1 text-[10px] uppercase text-[var(--muted)]">{task.platform.replace(/-/g, " ")}</div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Badge tone={task.status === "blocked" || task.status === "failed" ? "amber" : task.status === "sent" ? "lime" : "teal"}>
-                  {task.status.replace(/_/g, " ")}
-                </Badge>
-                <Badge tone={task.priority === "urgent" || task.priority === "high" ? "amber" : "neutral"}>{task.priority}</Badge>
-              </div>
+      <div className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2 text-sm font-semibold text-white">
+              <Workflow size={16} className="text-[var(--teal)]" />
+              Reply execution mode
             </div>
-            <p className="mt-3 text-sm leading-6 text-[var(--muted-2)]">{task.contextSummary}</p>
-            <p className="mt-3 rounded-[6px] bg-white/[0.04] p-3 text-sm leading-6 text-white">{task.draftMessage}</p>
-            {task.resultSummary ? <p className="mt-3 text-sm leading-6 text-[var(--muted)]">{task.resultSummary}</p> : null}
-            <TaskState task={task} />
-            {task.status === "awaiting_send_approval" ? (
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => approvePreparedSend(task, "approve")}
-                  className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-lime-300/25 bg-lime-300/10 px-3 text-xs font-medium text-lime-100 hover:bg-lime-300/[0.16]"
-                >
-                  {loading === `approve:${task.id}` ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                  Approve send
-                </button>
-                <button
-                  type="button"
-                  onClick={() => approvePreparedSend(task, "reject")}
-                  className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-amber-300/25 bg-amber-300/10 px-3 text-xs font-medium text-amber-100 hover:bg-amber-300/[0.16]"
-                >
-                  {loading === `reject:${task.id}` ? <Loader2 size={14} className="animate-spin" /> : <AlertTriangle size={14} />}
-                  Reject
-                </button>
-              </div>
-            ) : null}
-            <details className="mt-3 rounded-[6px] border border-[var(--line)] bg-white/[0.03] p-3">
-              <summary className="cursor-pointer text-xs font-medium text-white">Edit task</summary>
-              <form
-                className="mt-3 grid gap-2"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  editTask(task, new FormData(event.currentTarget));
-                }}
-              >
-                <select name="priority" defaultValue={task.priority} className="h-9 rounded-[6px] border border-[var(--line)] bg-black/30 px-2 text-xs text-white">
-                  <option value="low">Low</option>
-                  <option value="normal">Normal</option>
-                  <option value="high">High</option>
-                  <option value="urgent">Urgent</option>
-                </select>
-                <textarea name="contextSummary" defaultValue={task.contextSummary} rows={2} className="rounded-[6px] border border-[var(--line)] bg-black/30 px-2 py-2 text-xs text-white" />
-                <textarea name="draftMessage" defaultValue={task.draftMessage} rows={3} className="rounded-[6px] border border-[var(--line)] bg-black/30 px-2 py-2 text-xs text-white" />
-                <button type="submit" className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-teal-300/25 bg-teal-300/10 px-3 text-xs font-medium text-teal-100 hover:bg-teal-300/[0.16]">
-                  {loading === `edit:${task.id}` ? <Loader2 size={14} className="animate-spin" /> : <Pencil size={14} />}
-                  Save task
-                </button>
-              </form>
-            </details>
+            <p className="mt-2 text-sm leading-6 text-[var(--muted-2)]">
+              No extension = log manually. With the extension, queue a human-approved browser task for this lead only.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => deleteTask(task)}
-              className="mt-3 inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-amber-300/25 bg-amber-300/10 px-3 text-xs font-medium text-amber-100 hover:bg-amber-300/[0.16]"
+              onClick={() => queueExtensionTask("initiate_conversation")}
+              disabled={Boolean(loading)}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-teal-300/25 bg-teal-300/10 px-3 text-xs font-medium text-teal-100 hover:bg-teal-300/[0.16] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {loading === `delete:${task.id}` ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-              Delete task
+              {loading === "queue:initiate_conversation" ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+              Queue extension intro
             </button>
-          </article>
-        ))}
+            <button
+              type="button"
+              onClick={() => queueExtensionTask("follow_up")}
+              disabled={Boolean(loading)}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-lime-300/25 bg-lime-300/10 px-3 text-xs font-medium text-lime-100 hover:bg-lime-300/[0.16] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {loading === "queue:follow_up" ? <Loader2 size={14} className="animate-spin" /> : <Workflow size={14} />}
+              Queue extension follow-up
+            </button>
+          </div>
+        </div>
       </div>
+
+      {tasks.length ? (
+        <div className="grid gap-3 lg:grid-cols-2">
+          {tasks.map((task) => (
+            <article key={task.id} className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-white">{task.type.replace(/_/g, " ")}</div>
+                  <div className="mono mt-1 text-[10px] uppercase text-[var(--muted)]">{task.platform.replace(/-/g, " ")}</div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Badge tone={task.status === "blocked" || task.status === "failed" ? "amber" : task.status === "sent" ? "lime" : "teal"}>
+                    {task.status.replace(/_/g, " ")}
+                  </Badge>
+                  <Badge tone={task.priority === "urgent" || task.priority === "high" ? "amber" : "neutral"}>{task.priority}</Badge>
+                </div>
+              </div>
+              <p className="mt-3 text-sm leading-6 text-[var(--muted-2)]">{task.contextSummary}</p>
+              <p className="mt-3 rounded-[6px] bg-white/[0.04] p-3 text-sm leading-6 text-white">{task.draftMessage}</p>
+              {task.resultSummary ? <p className="mt-3 text-sm leading-6 text-[var(--muted)]">{task.resultSummary}</p> : null}
+              <TaskState task={task} />
+              {task.status === "awaiting_send_approval" ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => approvePreparedSend(task, "approve")}
+                    className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-lime-300/25 bg-lime-300/10 px-3 text-xs font-medium text-lime-100 hover:bg-lime-300/[0.16]"
+                  >
+                    {loading === `approve:${task.id}` ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                    Approve send
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => approvePreparedSend(task, "reject")}
+                    className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-amber-300/25 bg-amber-300/10 px-3 text-xs font-medium text-amber-100 hover:bg-amber-300/[0.16]"
+                  >
+                    {loading === `reject:${task.id}` ? <Loader2 size={14} className="animate-spin" /> : <AlertTriangle size={14} />}
+                    Reject
+                  </button>
+                </div>
+              ) : null}
+              <details className="mt-3 rounded-[6px] border border-[var(--line)] bg-white/[0.03] p-3">
+                <summary className="cursor-pointer text-xs font-medium text-white">Edit task</summary>
+                <form
+                  className="mt-3 grid gap-2"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    editTask(task, new FormData(event.currentTarget));
+                  }}
+                >
+                  <select name="priority" defaultValue={task.priority} className="h-9 rounded-[6px] border border-[var(--line)] bg-black/30 px-2 text-xs text-white">
+                    <option value="low">Low</option>
+                    <option value="normal">Normal</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                  <textarea name="contextSummary" defaultValue={task.contextSummary} rows={2} className="rounded-[6px] border border-[var(--line)] bg-black/30 px-2 py-2 text-xs text-white" />
+                  <textarea name="draftMessage" defaultValue={task.draftMessage} rows={3} className="rounded-[6px] border border-[var(--line)] bg-black/30 px-2 py-2 text-xs text-white" />
+                  <button type="submit" className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-teal-300/25 bg-teal-300/10 px-3 text-xs font-medium text-teal-100 hover:bg-teal-300/[0.16]">
+                    {loading === `edit:${task.id}` ? <Loader2 size={14} className="animate-spin" /> : <Pencil size={14} />}
+                    Save task
+                  </button>
+                </form>
+              </details>
+              <button
+                type="button"
+                onClick={() => deleteTask(task)}
+                className="mt-3 inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-amber-300/25 bg-amber-300/10 px-3 text-xs font-medium text-amber-100 hover:bg-amber-300/[0.16]"
+              >
+                {loading === `delete:${task.id}` ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                Delete task
+              </button>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <EmptyState icon={Workflow} title="No tasks for this lead" detail="Queue an extension task here, or keep tracking replies by logging manual comms." />
+      )}
 
       <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
         <div className="flex items-center justify-between gap-3">
@@ -203,6 +255,11 @@ export function SelectedLeadTasks({
       </div>
     </div>
   );
+}
+
+function mergeGeneratedTasks(nextTasks: SelectedLeadTask[], currentTasks: SelectedLeadTask[]) {
+  const nextTaskIds = new Set(nextTasks.map((task) => task.id));
+  return [...nextTasks, ...currentTasks.filter((task) => !nextTaskIds.has(task.id))];
 }
 
 function TaskState({ task }: { task: SelectedLeadTask }) {
