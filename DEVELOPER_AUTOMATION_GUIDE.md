@@ -37,6 +37,7 @@ Inside n8n, operators should see one compact router:
 - Normalize nodes
 - `Validate Event`
 - `Provider Config Check`
+- `Backend Logic Modules`
 - `Dispatch Automation`
 - Started/succeeded log calls
 
@@ -49,6 +50,17 @@ The normal configuration points live on the n8n service environment or n8n crede
 - OpenRouter automation: `OPENROUTER_API_KEY`, `OPENROUTER_BASE_URL`, `OPENROUTER_FAST_MODEL`, `OPENROUTER_RESEARCH_MODEL`, `OPENROUTER_DOSSIER_MODEL`, `OPENROUTER_SENTIMENT_MODEL`
 
 Leadsy observes whether the n8n router has provider configuration available, but secret values stay in n8n.
+
+The mutable backend workflow decisions live in the `Backend Logic Modules` node. This is where a founder/operator can change rules such as:
+
+- When to refresh lead intelligence.
+- When to run research.
+- Which qualification thresholds create approvals.
+- When WhatsApp replies need approval.
+- Which failures are retryable.
+- Which notifications should be sent.
+
+Leadsy still owns the APIs and database writes. n8n owns the plan; Leadsy executes/persists only through authenticated Leadsy APIs.
 
 Workflow documentation lives in:
 
@@ -99,6 +111,7 @@ Leadsy keeps:
 n8n handles:
 
 - Meta, WhatsApp, Email, and OpenRouter provider configuration for automation.
+- Mutable backend workflow logic for automation decisions.
 - Scheduled follow-up checks.
 - Research pipelines.
 - Qualification pipelines.
@@ -191,6 +204,7 @@ Current process:
 
 Edit in n8n when changing:
 
+- Backend logic module rules.
 - Schedule timing.
 - Step order.
 - Retry timing.
@@ -199,10 +213,19 @@ Edit in n8n when changing:
 
 Keep those changes inside `Leadsy - Automation Router` unless a future workflow truly needs separate ownership.
 
+When a manual n8n edit should become permanent:
+
+1. Export the workflow from n8n.
+2. Copy the changed module rules back into `packages/workflows/src/logic-modules.ts`.
+3. Run `npm run workflows:export-n8n`.
+4. Run `npm run test:n8n-workflows`.
+5. Commit and push through GitHub.
+
 Edit in Leadsy code when changing:
 
 - The source-controlled workflow catalog.
 - The generated import JSON files.
+- The backend logic module source in `packages/workflows/src/logic-modules.ts`.
 - Authentication.
 - Authorization.
 - Database writes.

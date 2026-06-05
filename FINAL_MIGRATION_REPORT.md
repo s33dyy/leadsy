@@ -18,6 +18,7 @@ Status: backend/n8n migration slice deployed; Lovable operator UI port is being 
 - Added source-controlled n8n blueprint generation.
 - Added one importable inactive n8n Automation Router workflow JSON under `packages/workflows/n8n/`.
 - Added the n8n Provider Config Hub for Meta, WhatsApp, Email, and OpenRouter automation configuration.
+- Added n8n Backend Logic Modules so mutable workflow decisions can be edited in n8n or source-controlled through GitHub/Codex.
 - Added `npm run workflows:export-n8n`.
 - Added `npm run test:n8n-workflows`.
 - Created a separate Railway service named `n8n`.
@@ -57,6 +58,15 @@ The router supports these event types through one data-driven `Dispatch Automati
 
 The router also includes one `Provider Config Check` node. It reads provider readiness from the n8n service environment and reports only non-secret status metadata to Leadsy.
 
+The router includes one `Backend Logic Modules` node. It owns the mutable automation decision layer:
+
+- Action plans
+- Approval requirements
+- Guardrails
+- Provider requirements
+- Retry/failure policy
+- What n8n owns vs what Leadsy owns
+
 n8n-owned provider config groups:
 
 - Meta
@@ -92,6 +102,7 @@ Generated files:
 
 - n8n is live and the single `Leadsy - Automation Router` workflow is imported but inactive.
 - The workflow JSON references future Leadsy automation action endpoints such as `/api/automation/events/*`; those endpoints still need implementation before activation.
+- The workflow now sends `n8nLogicPlan` to Leadsy, but the concrete Leadsy action endpoints still need implementation before the plan can mutate business state.
 - Durable execution metadata and AI cost persistence still need Postgres-backed tables/repositories.
 - Provider credentials must be added to the n8n service or n8n credentials before provider-backed automation branches are activated.
 - `N8N_PUBLIC_URL` and `N8N_HEALTH_TIMEOUT_MS` were confirmed on the web service with `--skip-deploys`; `N8N_INTERNAL_URL` timed out and should be retried later if private networking is preferred.
@@ -104,6 +115,7 @@ Generated files:
   - `N8N_INTERNAL_URL`
 - Implement service authentication for n8n-to-Leadsy calls.
 - Implement Leadsy automation action endpoints.
+- Implement Leadsy execution of `n8nLogicPlan` action queues through authenticated APIs.
 - Add Postgres-backed automation execution metadata.
 - Add Postgres-backed AI usage/cost ledger.
 - Add Meta, WhatsApp, Email, and OpenRouter provider credentials to the n8n service.

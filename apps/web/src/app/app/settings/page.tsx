@@ -57,6 +57,7 @@ function formatInr(value: number) {
 export default async function SettingsPage() {
   const [infrastructure, aiCosts] = await Promise.all([getInfrastructureStatus(), getAiCostDashboard()]);
   const automation = infrastructure.automation;
+  const backendLogic = infrastructure.backendLogic;
   const providerConfigs = infrastructure.providerConfigs;
   const dashboardUrl = automation.dashboardUrl;
   const routerUrl = dashboardUrl ? `${dashboardUrl}/workflow/urS7zJDAyavE5PSJ` : undefined;
@@ -143,6 +144,29 @@ export default async function SettingsPage() {
               </a>
             ) : null}
           </div>
+
+          <section className="mt-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-[14px] font-medium">Backend logic modules</h2>
+              <span className="caption">owned by n8n</span>
+            </div>
+            <div className="mt-3 divide-y divide-border rounded-[8px] border border-border">
+              {backendLogic.map((module) => (
+                <div key={module.key} className="grid grid-cols-12 items-center gap-3 px-3 py-2.5 text-[12px] hover:bg-surface-2">
+                  <div className="col-span-12 md:col-span-3">
+                    <div className="font-medium">{module.label}</div>
+                    <div className="mt-0.5 font-mono text-[10.5px] text-muted-foreground">{module.key}</div>
+                  </div>
+                  <div className="col-span-12 truncate text-muted-foreground md:col-span-5">{module.detail}</div>
+                  <div className="col-span-4 font-mono text-[11px] text-muted-foreground md:col-span-1">{module.actionCount} actions</div>
+                  <div className="col-span-4 font-mono text-[11px] text-muted-foreground md:col-span-1">{module.guardrailCount} rails</div>
+                  <div className="col-span-4 text-right font-mono text-[10.5px] text-primary md:col-span-2">
+                    {module.editableFrom.join(" / ")}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
 
           <section className="mt-6">
             <div className="flex items-center justify-between">

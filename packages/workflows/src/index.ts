@@ -23,6 +23,14 @@ export {
   type N8nProviderConfigKey
 } from "./provider-config";
 export {
+  logicModuleForWorkflow,
+  n8nBackendLogicByWorkflowKey,
+  n8nBackendLogicModules,
+  type N8nBackendLogicModule,
+  type N8nLogicAction,
+  type N8nLogicEditSurface
+} from "./logic-modules";
+export {
   n8nAutomationRouterBlueprint,
   n8nWorkflowBlueprints,
   type N8nWorkflowBlueprint

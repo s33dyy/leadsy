@@ -157,6 +157,15 @@ OpenRouter automation:
 
 Use n8n credentials for any provider where the built-in credential type is more ergonomic than service variables. Do not commit literal provider secrets into workflow JSON.
 
+## Workflow Change Management
+
+The single n8n workflow is intentionally editable from two places:
+
+- Manual n8n edits for fast operational changes.
+- GitHub/Codex edits in `packages/workflows/src/logic-modules.ts`, `provider-config.ts`, and `n8n-blueprints.ts` for reviewable source-controlled changes.
+
+After manual n8n edits, export the workflow and copy durable rule changes back into the typed source files before the next GitHub-generated import. Otherwise the next Codex/GitHub export can overwrite manual canvas changes.
+
 ## Optional Web Service Variables
 
 Add only when implementing the Leadsy admin automation visibility UI:

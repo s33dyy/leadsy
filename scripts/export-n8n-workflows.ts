@@ -37,6 +37,13 @@ async function main() {
           fieldCount: provider.fields.length,
           secretFieldCount: provider.fields.filter((field) => field.secret).length
         })),
+        backendLogicModules: workflow.meta.backendLogicModules.map((module) => ({
+          key: module.key,
+          label: module.label,
+          owner: module.owner,
+          actionCount: module.actionPlan.length,
+          editableFrom: module.editableFrom
+        })),
         routes: workflow.meta.routes.map((route) => ({
           key: route.key,
           name: route.name,
