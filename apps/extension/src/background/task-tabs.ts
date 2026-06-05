@@ -7,9 +7,9 @@ export async function getOrCreateTaskTab(task: ExtensionTask) {
   }
 
   const active = await chrome.tabs.query({ active: true, currentWindow: true });
-  const activeReusable = active.find((tab) => tab.id && tab.url && samePlatformTarget(tab.url, task));
+  const activeReusable = active.find((tab) => tab.id && tab.url && sameExactTarget(tab.url, targetUrl, task));
   if (activeReusable?.id) {
-    return focusTab(activeReusable.id, targetUrl);
+    return focusTab(activeReusable.id);
   }
 
   const urls = platformQueryUrls(task, targetUrl);
@@ -20,7 +20,7 @@ export async function getOrCreateTaskTab(task: ExtensionTask) {
       return focusTab(sameTarget.id);
     }
 
-    const reusable = existing.find((tab) => tab.id);
+    const reusable = existing.find((tab) => tab.id && canNavigatePlatformTab(task));
     if (reusable?.id) {
       return focusTab(reusable.id, targetUrl);
     }
@@ -32,7 +32,7 @@ export async function getOrCreateTaskTab(task: ExtensionTask) {
     return focusTab(fallbackSameTarget.id);
   }
 
-  const fallbackReusable = allTabs.find((tab) => tab.id && tab.url && samePlatformTarget(tab.url, task));
+  const fallbackReusable = allTabs.find((tab) => tab.id && tab.url && samePlatformTarget(tab.url, task) && canNavigatePlatformTab(task));
   if (fallbackReusable?.id) {
     return focusTab(fallbackReusable.id, targetUrl);
   }
@@ -42,6 +42,10 @@ export async function getOrCreateTaskTab(task: ExtensionTask) {
     throw new Error("Could not open task tab.");
   }
   return created;
+}
+
+function canNavigatePlatformTab(task: ExtensionTask) {
+  return task.platform !== "whatsapp-web";
 }
 
 function platformQueryUrls(task: ExtensionTask, targetUrl: string) {

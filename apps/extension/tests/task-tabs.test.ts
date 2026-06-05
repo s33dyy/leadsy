@@ -18,26 +18,28 @@ const task = {
 } satisfies ExtensionTask;
 
 describe("task tab routing", () => {
-  it("reuses the currently active WhatsApp tab before looking for another tab", async () => {
+  it("opens a fresh WhatsApp target instead of reusing a different active chat", async () => {
     const query = vi
       .fn()
       .mockResolvedValueOnce([
         {
           id: 41,
           active: true,
-          url: "https://web.whatsapp.com/"
+          url: "https://web.whatsapp.com/send?phone=919831111111"
         }
-      ]);
-    const update = vi.fn(async () => ({ id: 41 }));
-    const create = vi.fn();
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    const update = vi.fn();
+    const create = vi.fn(async () => ({ id: 99 }));
     vi.stubGlobal("chrome", { tabs: { query, update, create }, windows: { update: vi.fn() } });
 
     const tab = await getOrCreateTaskTab(task);
 
-    expect(tab.id).toBe(41);
+    expect(tab.id).toBe(99);
     expect(query).toHaveBeenCalledWith({ active: true, currentWindow: true });
-    expect(update).toHaveBeenCalledWith(41, { active: true, url: task.targetUrl });
-    expect(create).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalledWith(41, expect.anything());
+    expect(create).toHaveBeenCalledWith({ url: task.targetUrl });
   });
 
   it("focuses an existing WhatsApp tab for the same task target", async () => {
@@ -63,7 +65,7 @@ describe("task tab routing", () => {
     expect(create).not.toHaveBeenCalled();
   });
 
-  it("reuses an existing WhatsApp tab by navigating it to the task target", async () => {
+  it("creates a new WhatsApp tab when existing tabs are not the same task target", async () => {
     const query = vi
       .fn()
       .mockResolvedValueOnce([])
@@ -72,19 +74,20 @@ describe("task tab routing", () => {
           id: 43,
           url: "https://web.whatsapp.com/"
         }
-      ]);
-    const update = vi.fn(async () => ({ id: 43 }));
-    const create = vi.fn();
+      ])
+      .mockResolvedValue([]);
+    const update = vi.fn();
+    const create = vi.fn(async () => ({ id: 99 }));
     vi.stubGlobal("chrome", { tabs: { query, update, create } });
 
     const tab = await getOrCreateTaskTab(task);
 
-    expect(tab.id).toBe(43);
-    expect(update).toHaveBeenCalledWith(43, { active: true, url: task.targetUrl });
-    expect(create).not.toHaveBeenCalled();
+    expect(tab.id).toBe(99);
+    expect(update).not.toHaveBeenCalledWith(43, expect.anything());
+    expect(create).toHaveBeenCalledWith({ url: task.targetUrl });
   });
 
-  it("falls back to all tabs when Chrome URL matching misses an existing platform tab", async () => {
+  it("does not fallback-reuse a different WhatsApp tab when Chrome URL matching misses", async () => {
     const query = vi.fn(async (input: chrome.tabs.QueryInfo) => {
       if (input.active) return [];
       if (input.url === "https://web.whatsapp.com/*") return [];
@@ -95,16 +98,16 @@ describe("task tab routing", () => {
         }
       ];
     });
-    const update = vi.fn(async () => ({ id: 44 }));
-    const create = vi.fn();
+    const update = vi.fn();
+    const create = vi.fn(async () => ({ id: 99 }));
     vi.stubGlobal("chrome", { tabs: { query, update, create } });
 
     const tab = await getOrCreateTaskTab(task);
 
-    expect(tab.id).toBe(44);
+    expect(tab.id).toBe(99);
     expect(query).toHaveBeenCalledWith({});
-    expect(update).toHaveBeenCalledWith(44, { active: true, url: task.targetUrl });
-    expect(create).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalledWith(44, expect.anything());
+    expect(create).toHaveBeenCalledWith({ url: task.targetUrl });
   });
 
   it("reuses existing Instagram and Facebook tabs before creating a new tab", async () => {

@@ -83,7 +83,7 @@ export function ExtensionTaskBoard({
     const response = await fetch("/api/extension/tasks/generate", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ type: "initiate_conversation" })
+      body: JSON.stringify({ type: "auto_detect" })
     });
     const payload = await response.json();
     setLoading("");

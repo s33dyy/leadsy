@@ -37,6 +37,7 @@ export async function POST(request: NextRequest) {
   const detectedTypes: GeneratedTaskType[] = [];
   for (const lead of leads) {
     const taskType = input.type === "auto_detect" ? detectExtensionTaskType(lead) : input.type;
+    if (!shouldGenerateExtensionTask(lead, taskType)) continue;
     detectedTypes.push(taskType);
     tasks.push(
       await createExtensionTask({
@@ -103,6 +104,19 @@ function detectExtensionTaskType(lead: LeadKnowledgeRecord): GeneratedTaskType {
   if (lead.contact.phone || lead.contact.email || lead.contact.handle || lead.contact.profileUrl) scores.initiate_conversation += 1;
 
   return (Object.entries(scores) as Array<[GeneratedTaskType, number]>).sort((left, right) => right[1] - left[1])[0][0];
+}
+
+function shouldGenerateExtensionTask(lead: LeadKnowledgeRecord, taskType: GeneratedTaskType) {
+  const latestMessage = lead.messages.at(-1);
+  if (taskType === "initiate_conversation" && lead.outboundCount > 0) return false;
+  if (latestMessage?.direction === "outbound" && isRecentMessage(latestMessage.sentAt)) return false;
+  return true;
+}
+
+function isRecentMessage(sentAt: string) {
+  const sentTime = Date.parse(sentAt);
+  if (!Number.isFinite(sentTime)) return false;
+  return Date.now() - sentTime < 1000 * 60 * 60 * 12;
 }
 
 function platformForLead(lead: LeadKnowledgeRecord) {

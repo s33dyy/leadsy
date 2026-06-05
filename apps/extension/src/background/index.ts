@@ -177,6 +177,8 @@ async function runSelectedTasks(taskIds: string[]) {
   if (selectedBatchBusy) throw new Error("A selected task batch is already running.");
   const orderedTaskIds = [...new Set(taskIds.map((taskId) => taskId.trim()).filter(Boolean))];
   if (!orderedTaskIds.length) throw new Error("Select at least one task to run.");
+  const queuedTasks = await fetchLeadsyJson<{ tasks: ExtensionTask[] }>("/api/extension/tasks").catch(() => undefined);
+  const runnableTaskIds = queuedTasks ? uniqueBatchTaskIds(orderedTaskIds, queuedTasks.tasks) : orderedTaskIds;
 
   selectedBatchBusy = true;
   const batchRunId = `batch_${Date.now()}`;
@@ -184,12 +186,12 @@ async function runSelectedTasks(taskIds: string[]) {
     batchRunId,
     requested: orderedTaskIds.length,
     sent: 0,
-    postponed: 0,
+    postponed: orderedTaskIds.length - runnableTaskIds.length,
     failed: 0
   };
 
   try {
-    for (const taskId of orderedTaskIds) {
+    for (const taskId of runnableTaskIds) {
       try {
         await claimAndOpenTask(taskId, { execute: true, batchRunId });
         const activeTask = await getActiveTask().catch(() => undefined);
@@ -206,6 +208,50 @@ async function runSelectedTasks(taskIds: string[]) {
   } finally {
     selectedBatchBusy = false;
   }
+}
+
+function uniqueBatchTaskIds(orderedTaskIds: string[], tasks: ExtensionTask[]) {
+  const byId = new Map(tasks.map((task) => [task.id, task]));
+  const seen = new Set<string>();
+  const uniqueIds: string[] = [];
+  for (const taskId of orderedTaskIds) {
+    const task = byId.get(taskId);
+    if (!task) continue;
+    const key = taskConversationKey(task);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    uniqueIds.push(task.id);
+  }
+  return uniqueIds;
+}
+
+function taskConversationKey(task: ExtensionTask) {
+  return (
+    normalizeTaskUrl(task.targetUrl) ||
+    [task.platform, cleanKey(task.contact?.phone), cleanKey(task.contact?.email), cleanKey(task.contact?.handle), cleanKey(task.contact?.profileUrl), cleanKey(task.contact?.displayName)]
+      .filter(Boolean)
+      .join(":") ||
+    task.id
+  );
+}
+
+function normalizeTaskUrl(value?: string) {
+  if (!value) return "";
+  try {
+    const url = new URL(value);
+    url.hash = "";
+    if (url.hostname === "web.whatsapp.com") {
+      const phone = url.searchParams.get("phone")?.replace(/[^\d]/g, "");
+      if (phone) return `whatsapp:${phone}`;
+    }
+    return url.toString().toLowerCase();
+  } catch {
+    return value.trim().toLowerCase();
+  }
+}
+
+function cleanKey(value?: string) {
+  return value?.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 async function claimAndOpenTask(taskId: string, options: { execute: boolean; batchRunId?: string }) {
