@@ -133,15 +133,25 @@ function channelReadiness(input: {
 }
 
 function connectionMatchesAssets(connection: MetaOAuthConnectionRecord, input: MetaOAuthAssetLookup) {
-  if (input.phoneNumberId) return connection.phoneNumberId === input.phoneNumberId;
-  if (input.facebookPageId) return connection.facebookPageId === input.facebookPageId;
-  if (input.instagramBusinessAccountId) return connection.instagramBusinessAccountId === input.instagramBusinessAccountId;
+  if (input.phoneNumberId) {
+    return connection.phoneNumberId === input.phoneNumberId && assetDoesNotConflict(connection.whatsappBusinessAccountId, input.whatsappBusinessAccountId);
+  }
+  if (input.facebookPageId) {
+    return connection.facebookPageId === input.facebookPageId;
+  }
+  if (input.instagramBusinessAccountId) {
+    return connection.instagramBusinessAccountId === input.instagramBusinessAccountId;
+  }
   if (input.whatsappBusinessAccountId) return connection.whatsappBusinessAccountId === input.whatsappBusinessAccountId;
   return false;
 }
 
 function hasAnyAsset(input: MetaOAuthAssetLookup) {
   return Boolean(input.whatsappBusinessAccountId || input.phoneNumberId || input.facebookPageId || input.instagramBusinessAccountId);
+}
+
+function assetDoesNotConflict(connectionValue?: string, inputValue?: string) {
+  return !connectionValue || !inputValue || connectionValue === inputValue;
 }
 
 export async function exchangeMetaOAuthCode(input: {

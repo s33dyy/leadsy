@@ -159,12 +159,38 @@ async function main() {
   assert.equal(conversations[0].events.some((event) => event.type === "monitor_started"), true);
   assert.equal(conversations[0].events.some((event) => event.type === "monitor_synced"), true);
 
+  await syncExtensionConversation({
+    tenantId: "tenant_test",
+    ownerId: "usr_owner",
+    platform: "whatsapp-web",
+    sourceUrl: "https://web.whatsapp.com/",
+    chatFingerprint: "https://web.whatsapp.com/",
+    contact: {
+      displayName: "Asha Buyer",
+      phone: "+919830000000"
+    },
+    messages: [
+      {
+        externalId: "in_shifted_fingerprint",
+        direction: "inbound",
+        body: "The route changed but this is still Asha.",
+        sentAt: "2026-06-02T06:02:00.000Z"
+      }
+    ],
+    events: []
+  });
+
+  const shiftedConversations = await listExtensionConversations("tenant_test", "usr_owner");
+  assert.equal(shiftedConversations.length, 1, "same contact target should update one extension conversation when fingerprint changes");
+  assert.equal(shiftedConversations[0].messages.length, 4);
+  assert.equal(shiftedConversations[0].conversation.lastMessagePreview, "The route changed but this is still Asha.");
+
   const monitorHealth = await listExtensionChannelMonitorHealth("tenant_test", "usr_owner");
   const whatsAppHealth = monitorHealth.find((item) => item.platform === "whatsapp-web");
   assert(whatsAppHealth, "monitor health should summarize WhatsApp Web");
   assert.equal(whatsAppHealth.captureSource, "browser-extension");
   assert.equal(whatsAppHealth.status, "active");
-  assert.equal(whatsAppHealth.lastSyncedAt, "2026-06-02T06:01:00.000Z");
+  assert.equal(whatsAppHealth.lastSyncedAt, "2026-06-02T06:02:00.000Z");
   assert.equal(whatsAppHealth.lastEventType, "monitor_synced");
   assert.equal(whatsAppHealth.captureConfidence, 0.94);
 
