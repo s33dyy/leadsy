@@ -1,3 +1,4 @@
+// Keep the web import path stable while @leadsy/workflows owns the catalog.
 export {
   automationWorkflowDefinitions,
   workflowDefinitionForKey,

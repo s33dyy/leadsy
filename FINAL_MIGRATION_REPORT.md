@@ -120,7 +120,7 @@ Local verification passed:
 
 Deployment verification:
 
-- GitHub Actions `Web CI` passed on `main` commit `dbb95933ae1a8bf6424387d0faee17ac0be97a76`.
-- Railway web deployment `21266244-a3f8-400a-9c12-abf0836d284e` succeeded for commit `dbb95933ae1a8bf6424387d0faee17ac0be97a76`.
+- GitHub Actions `Web CI` passed on `main` commit `de9f473662a33a9ac6c92e36cb5a9aa65209bbee`.
+- Railway web deployment `01a1930a-8b0b-4f7b-8a03-7fdf75b4fae0` succeeded for commit `de9f473662a33a9ac6c92e36cb5a9aa65209bbee`.
 - Railway n8n service deployment `47eb448c-a4c2-4866-b9e3-115bc21861af` succeeded.
 - n8n public health returned HTTP 200.
