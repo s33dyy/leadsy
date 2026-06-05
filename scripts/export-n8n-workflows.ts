@@ -30,6 +30,13 @@ async function main() {
         name: workflow.name,
         file: routerFileName,
         active: workflow.active,
+        providerConfigs: workflow.meta.providerConfigs.map((provider) => ({
+          key: provider.key,
+          label: provider.label,
+          owner: provider.owner,
+          fieldCount: provider.fields.length,
+          secretFieldCount: provider.fields.filter((field) => field.secret).length
+        })),
         routes: workflow.meta.routes.map((route) => ({
           key: route.key,
           name: route.name,

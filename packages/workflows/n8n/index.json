@@ -4,6 +4,36 @@
     "name": "Leadsy - Automation Router",
     "file": "leadsy-automation-router.json",
     "active": false,
+    "providerConfigs": [
+      {
+        "key": "meta",
+        "label": "Meta",
+        "owner": "n8n",
+        "fieldCount": 4,
+        "secretFieldCount": 2
+      },
+      {
+        "key": "whatsapp",
+        "label": "WhatsApp",
+        "owner": "n8n",
+        "fieldCount": 3,
+        "secretFieldCount": 1
+      },
+      {
+        "key": "email",
+        "label": "Email",
+        "owner": "n8n",
+        "fieldCount": 6,
+        "secretFieldCount": 3
+      },
+      {
+        "key": "openrouter",
+        "label": "OpenRouter",
+        "owner": "n8n",
+        "fieldCount": 6,
+        "secretFieldCount": 1
+      }
+    ],
     "routes": [
       {
         "key": "lead-added",

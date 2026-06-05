@@ -35,6 +35,7 @@ function assertRequiredNodes(workflow: N8nWorkflowBlueprint) {
     "Normalize Worker Retry",
     "Log Started",
     "Validate Event",
+    "Provider Config Check",
     "Dispatch Automation",
     "Log Succeeded"
   ]) {
@@ -67,20 +68,43 @@ function assertLeadsyBoundaries(workflow: N8nWorkflowBlueprint) {
     `${workflow.name} should not import with missing credential warnings on HTTP nodes`
   );
   assert(
-    !serialized.includes("OPENROUTER_API_KEY"),
-    `${workflow.name} should not hold OpenRouter secrets in workflow JSON`
+    serialized.includes("X-Leadsy-Config-Source"),
+    `${workflow.name} should identify n8n as the automation provider config source`
   );
   assert(
-    !serialized.includes("META_APP_SECRET"),
-    `${workflow.name} should not hold Meta secrets in workflow JSON`
+    serialized.includes("providerConfigMissing"),
+    `${workflow.name} should report missing n8n provider config to Leadsy`
   );
   assert(
-    !serialized.includes("WHATSAPP_BUSINESS_TOKEN"),
-    `${workflow.name} should not hold WhatsApp secrets in workflow JSON`
+    serialized.includes("field.secret ? undefined"),
+    `${workflow.name} should redact secret provider values before dispatching to Leadsy`
   );
   assert(
     workflow.meta.preserves.includes("Leadsy") || workflow.meta.preserves.includes("Postgres"),
     `${workflow.name} should document the Leadsy-owned boundary it preserves`
+  );
+}
+
+function assertProviderConfigHub(workflow: N8nWorkflowBlueprint) {
+  assert.deepEqual(
+    workflow.meta.providerConfigs.map((provider) => provider.key),
+    ["meta", "whatsapp", "email", "openrouter"],
+    `${workflow.name} should make Meta, WhatsApp, Email, and OpenRouter n8n-owned provider groups explicit`
+  );
+  for (const provider of workflow.meta.providerConfigs) {
+    assert.equal(provider.owner, "n8n", `${provider.label} config should be owned by n8n`);
+    assert(provider.leadsyBoundary.includes("Leadsy"), `${provider.label} should document the Leadsy boundary`);
+    assert(provider.fields.length > 0, `${provider.label} should list n8n configuration fields`);
+  }
+  assert.deepEqual(
+    workflow.meta.routeProviderRequirements["whatsapp-message-received"],
+    ["whatsapp", "openrouter"],
+    "WhatsApp message automation should require WhatsApp and OpenRouter config in n8n"
+  );
+  assert.deepEqual(
+    workflow.meta.routeProviderRequirements["meta-lead-received"],
+    ["meta", "openrouter"],
+    "Meta lead automation should require Meta and OpenRouter config in n8n"
   );
 }
 
@@ -95,7 +119,7 @@ function assertRetryPolicy(workflow: N8nWorkflowBlueprint) {
 
 function assertSimpleCanvas(workflow: N8nWorkflowBlueprint) {
   assert(
-    workflow.nodes.length <= 10,
+    workflow.nodes.length <= 11,
     `${workflow.name} should stay visually small enough to configure on one n8n screen`
   );
   const dispatchNodes = workflow.nodes.filter((node) => node.name === "Dispatch Automation");
@@ -126,6 +150,7 @@ async function main() {
   assertSimpleCanvas(workflow);
   assertRetryPolicy(workflow);
   assertLeadsyBoundaries(workflow);
+  assertProviderConfigHub(workflow);
 
   const exported = JSON.parse(
     await readFile(join(root, "packages", "workflows", "n8n", "leadsy-automation-router.json"), "utf8")
@@ -142,6 +167,11 @@ async function main() {
     index[0].routes.map((entry: { key: string }) => entry.key),
     requiredWorkflowKeys,
     "workflow export index should describe every route inside the router"
+  );
+  assert.deepEqual(
+    index[0].providerConfigs.map((entry: { key: string }) => entry.key),
+    ["meta", "whatsapp", "email", "openrouter"],
+    "workflow export index should advertise the n8n-owned provider config groups"
   );
 }
 

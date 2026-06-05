@@ -17,6 +17,7 @@ Status: backend/n8n migration slice deployed; Lovable operator UI port is being 
 - Moved the automation workflow catalog into `@leadsy/workflows`.
 - Added source-controlled n8n blueprint generation.
 - Added one importable inactive n8n Automation Router workflow JSON under `packages/workflows/n8n/`.
+- Added the n8n Provider Config Hub for Meta, WhatsApp, Email, and OpenRouter automation configuration.
 - Added `npm run workflows:export-n8n`.
 - Added `npm run test:n8n-workflows`.
 - Created a separate Railway service named `n8n`.
@@ -30,7 +31,7 @@ Status: backend/n8n migration slice deployed; Lovable operator UI port is being 
 - Existing authentication, RBAC, and tenant boundaries remain in Leadsy.
 - Existing Meta OAuth/webhook implementation remains in Leadsy.
 - Existing WhatsApp handling remains in Leadsy.
-- Existing OpenRouter env names and provider abstraction remain intact.
+- Existing OpenRouter env names remain documented and preserved for fallback/migration compatibility.
 - Existing browser extension architecture remains the capture/execution layer.
 - Existing Railway web service remains the web deployment target.
 - Existing GitHub Actions CI remains the release gate for `main`.
@@ -53,6 +54,15 @@ The router supports these event types through one data-driven `Dispatch Automati
 - Meta Lead Received
 - WhatsApp Message Received
 - Worker Retry
+
+The router also includes one `Provider Config Check` node. It reads provider readiness from the n8n service environment and reports only non-secret status metadata to Leadsy.
+
+n8n-owned provider config groups:
+
+- Meta
+- WhatsApp
+- Email
+- OpenRouter
 
 Source files:
 
@@ -83,6 +93,7 @@ Generated files:
 - n8n is live and the single `Leadsy - Automation Router` workflow is imported but inactive.
 - The workflow JSON references future Leadsy automation action endpoints such as `/api/automation/events/*`; those endpoints still need implementation before activation.
 - Durable execution metadata and AI cost persistence still need Postgres-backed tables/repositories.
+- Provider credentials must be added to the n8n service or n8n credentials before provider-backed automation branches are activated.
 - `N8N_PUBLIC_URL` and `N8N_HEALTH_TIMEOUT_MS` were confirmed on the web service with `--skip-deploys`; `N8N_INTERNAL_URL` timed out and should be retried later if private networking is preferred.
 - n8n Postgres SSL uses `DB_POSTGRESDB_SSL_REJECT_UNAUTHORIZED=false` because Railway Postgres presented a self-signed certificate chain to n8n. Prefer CA-backed validation if Railway exposes the CA.
 - The Lovable dashboard/app-shell/auth port is implemented on the current feature branch and still needs CI/Railway deployment.
@@ -95,6 +106,7 @@ Generated files:
 - Implement Leadsy automation action endpoints.
 - Add Postgres-backed automation execution metadata.
 - Add Postgres-backed AI usage/cost ledger.
+- Add Meta, WhatsApp, Email, and OpenRouter provider credentials to the n8n service.
 - Review credentials in n8n and activate the single Automation Router after Leadsy action endpoints are ready.
 - Add Redis to Railway and move n8n to queue mode if automation volume requires it.
 - Complete the full CRM/Workers/Approvals detail-page redesign after the dashboard/app-shell port lands.

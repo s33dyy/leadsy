@@ -57,6 +57,7 @@ function formatInr(value: number) {
 export default async function SettingsPage() {
   const [infrastructure, aiCosts] = await Promise.all([getInfrastructureStatus(), getAiCostDashboard()]);
   const automation = infrastructure.automation;
+  const providerConfigs = infrastructure.providerConfigs;
   const dashboardUrl = automation.dashboardUrl;
   const routerUrl = dashboardUrl ? `${dashboardUrl}/workflow/urS7zJDAyavE5PSJ` : undefined;
   const executionsUrl = dashboardUrl ? `${dashboardUrl}/executions` : undefined;
@@ -142,6 +143,42 @@ export default async function SettingsPage() {
               </a>
             ) : null}
           </div>
+
+          <section className="mt-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-[14px] font-medium">Provider config hub</h2>
+              <span className="caption">managed in n8n</span>
+            </div>
+            <div className="mt-3 grid grid-cols-1 gap-px overflow-hidden rounded-[8px] border border-border bg-border md:grid-cols-2">
+              {providerConfigs.map((provider) => (
+                <div key={provider.key} className="bg-background p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-[13px] font-medium">{provider.label}</div>
+                      <p className="mt-1 text-[11.5px] leading-5 text-muted-foreground">{provider.detail}</p>
+                    </div>
+                    <Badge tone={toneForHealth(provider.status)}>
+                      {provider.managedByN8n ? "n8n owned" : "connect n8n"}
+                    </Badge>
+                  </div>
+                  <div className="mt-3 grid grid-cols-3 gap-px overflow-hidden rounded-[6px] border border-border bg-border text-[11px]">
+                    <div className="bg-surface-2 p-2">
+                      <div className="caption">Fields</div>
+                      <div className="mt-1 font-mono">{provider.fieldCount}</div>
+                    </div>
+                    <div className="bg-surface-2 p-2">
+                      <div className="caption">Protected</div>
+                      <div className="mt-1 font-mono">{provider.secretFieldCount}</div>
+                    </div>
+                    <div className="bg-surface-2 p-2">
+                      <div className="caption">Workflows</div>
+                      <div className="mt-1 font-mono">{provider.workflowCount}</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
 
           <section className="mt-6">
             <div className="flex items-center justify-between">

@@ -19,6 +19,7 @@ The router is the only workflow operators need to configure in n8n. It contains:
 - One webhook trigger: `leadsy/automation-router`
 - Two schedule triggers: Follow-up Due and Worker Retry
 - One `Validate Event` code node that maps `workflowKey` to the matching Leadsy API path
+- One `Provider Config Check` code node that reads Meta, WhatsApp, Email, and OpenRouter readiness from the n8n service environment
 - One `Dispatch Automation` HTTP node for every supported event type
 - Shared started/succeeded execution logging through Leadsy APIs
 - Shared retry settings on the three Leadsy HTTP handoff nodes
@@ -39,15 +40,62 @@ Import posture:
 
 - Import `leadsy-automation-router.json` into n8n.
 - Keep the router inactive until Leadsy automation action endpoints and service authentication are in place.
-- Configure `LEADSY_API_BASE_URL` and `LEADSY_N8N_WEBHOOK_SECRET` as n8n environment variables.
+- Configure `LEADSY_API_BASE_URL`, `LEADSY_N8N_WEBHOOK_SECRET`, and provider credentials on the n8n service.
 - Add new routes to the typed catalog and `Validate Event` map rather than creating a new workflow or visible branch per event type.
+
+## Provider Configuration Hub
+
+n8n owns automation provider configuration. Leadsy observes configuration status and stores business results, but does not require operators to configure these provider secrets in the web app.
+
+Configure these variables on the n8n Railway service or as n8n credentials:
+
+### Meta
+
+- `META_APP_ID`
+- `META_APP_SECRET`
+- `META_GRAPH_VERSION`
+- `META_LEAD_ADS_PAGE_ACCESS_TOKEN`
+
+Leadsy still owns Meta OAuth, webhook verification, tenant routing, and stored communications.
+
+### WhatsApp
+
+- `WHATSAPP_BUSINESS_TOKEN`
+- `WHATSAPP_PHONE_NUMBER_ID`
+- `WHATSAPP_SEND_MODE`
+
+Leadsy still owns inbound WhatsApp webhook handling, message storage, qualification state, and approvals.
+
+### Email
+
+- `EMAIL_PROVIDER`
+- `SMTP_HOST`
+- `SMTP_USER`
+- `SMTP_PASSWORD`
+- `RESEND_API_KEY`
+- `POSTMARK_SERVER_TOKEN`
+
+Leadsy still owns communication records, approvals, and audit history.
+
+### OpenRouter
+
+- `OPENROUTER_API_KEY`
+- `OPENROUTER_BASE_URL`
+- `OPENROUTER_FAST_MODEL`
+- `OPENROUTER_RESEARCH_MODEL`
+- `OPENROUTER_DOSSIER_MODEL`
+- `OPENROUTER_SENTIMENT_MODEL`
+
+Leadsy still owns saved AI outputs, cost reporting, approval state, and deterministic fallback paths.
+
+The router dispatches only provider readiness metadata back to Leadsy. Secret values are never sent in the dispatch body or committed to workflow JSON.
 
 ## Global Rules
 
 - n8n is the automation engine only.
 - Leadsy Next.js APIs remain the auth, RBAC, tenant isolation, database access, and API layer.
 - Postgres remains the source of truth for business state.
-- n8n must call Leadsy APIs for reads/writes instead of writing Leadsy business tables directly.
+- n8n must call Leadsy APIs for business reads/writes instead of writing Leadsy business tables directly.
 - Every workflow must log execution, support retries, write audit events through Leadsy, and store execution metadata in Leadsy-owned automation tables/APIs once implemented.
 - Workflows should be idempotent using a Leadsy-supplied idempotency key.
 
@@ -218,8 +266,8 @@ Failure modes:
 
 Dependencies:
 
-- Leadsy research endpoint.
-- OpenRouter through Leadsy only.
+- n8n OpenRouter provider config.
+- Leadsy research persistence endpoint.
 - Leadsy audit endpoint.
 
 ### 4. Qualification Requested
@@ -242,7 +290,7 @@ Inputs:
 Steps:
 
 1. Fetch lead and qualification profile from Leadsy.
-2. Request qualification through Leadsy AI/provider abstraction.
+2. Run model-backed qualification with n8n OpenRouter config.
 3. Store qualification result through Leadsy API.
 4. If hot/urgent, trigger Approval Requested or Task Generated.
 5. Write cost and execution metadata.
@@ -261,8 +309,8 @@ Failure modes:
 
 Dependencies:
 
+- n8n OpenRouter provider config.
 - Leadsy qualification profile API.
-- Leadsy AI provider abstraction.
 
 ### 5. Task Generated
 
@@ -383,8 +431,8 @@ Failure modes:
 
 Dependencies:
 
+- n8n WhatsApp/email/OpenRouter provider config.
 - Leadsy CRM follow-up task API.
-- Leadsy AI provider abstraction.
 
 ### 8. Meta Lead Received
 
