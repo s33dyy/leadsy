@@ -9,14 +9,16 @@ import {
   whatsappConversations
 } from "@leadsy/domain";
 import { listAgencyClients } from "@/lib/agency-client-store";
+import { summarizeCrmHealth } from "@/lib/crm-store";
 import { summarizeExtensionHealth } from "@/lib/extension-store";
 import { summarizeLeadKnowledgeHealth } from "@/lib/lead-knowledge-store";
 
 export async function GET() {
-  const [agencyClients, leadKnowledge, extension] = await Promise.all([
+  const [agencyClients, leadKnowledge, extension, crm] = await Promise.all([
     listAgencyClients(),
     summarizeLeadKnowledgeHealth(),
-    summarizeExtensionHealth()
+    summarizeExtensionHealth(),
+    summarizeCrmHealth()
   ]);
   return NextResponse.json({
     ok: true,
@@ -33,9 +35,17 @@ export async function GET() {
       discoveredLeads: discoveredLeads.length,
       whatsappConversations: leadKnowledge.conversations || extension.conversations || whatsappConversations.length,
       extensionTasks: extension.visibleTasks,
-      pendingApprovals: extension.pendingApprovals
+      pendingApprovals: extension.pendingApprovals,
+      crmFollowUpTasks: crm.followUpTasks,
+      interestedLeads: leadKnowledge.interestedLeads,
+      humanReviewLeads: leadKnowledge.humanReviewLeads
     },
     leadKnowledge,
-    extension
+    extension,
+    crm: {
+      ...crm,
+      statusPipeline: leadKnowledge.statusPipeline,
+      assigneeWorkload: leadKnowledge.assigneeWorkload
+    }
   });
 }

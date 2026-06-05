@@ -60,6 +60,14 @@ async function main() {
     assert.equal(await fileExists(join(root, page)), true, `${page} should exist in the clean Leadsy surface`);
   }
 
+  for (const route of [
+    "apps/web/src/app/api/qualification/profile/route.ts",
+    "apps/web/src/app/api/crm/assignment-rules/route.ts",
+    "apps/web/src/app/api/crm/follow-up-tasks/route.ts"
+  ]) {
+    assert.equal(await fileExists(join(root, route)), true, `${route} should exist for WhatsApp CRM qualification V1`);
+  }
+
   for (const page of removedPages) {
     assert.equal(await fileExists(join(root, page)), false, `${page} should be removed from the user-facing surface`);
   }
@@ -151,9 +159,14 @@ async function main() {
   assert(leadsPage.includes("/api/leads/manual-message"), "leads page should allow manual communication logging");
   assert(leadsPage.includes("/api/leads/status"), "leads page should allow lead-level exclude and restore");
   assert(leadsPage.includes("/api/leads/conversation-status"), "leads page should allow conversation-level knowledge exclusion");
-  assert(leadsPage.includes("Lead Intelligence"), "leads page should be positioned around lead intelligence");
-  assert(leadsPage.includes("Knowledge workspace"), "leads page should make knowledge primary over CRM copy");
-  assert(!leadsPage.includes("CRM pipeline"), "leads page should not be positioned as CRM-first");
+  assert(leadsPage.includes("Lead Intelligence"), "leads page should remain positioned around lead intelligence");
+  assert(leadsPage.includes("CRM workspace"), "leads page should present the CRM workspace as the main inbox");
+  assert(leadsPage.includes("AI qualification"), "leads page should expose AI qualification state");
+  assert(leadsPage.includes("Qualification fields"), "selected lead details should expose qualification fields");
+  assert(leadsPage.includes("Lead source"), "selected lead details should expose CRM lead source");
+  assert(leadsPage.includes("Campaign ID"), "selected lead details should expose campaign/source metadata");
+  assert(leadsPage.includes("Assignee"), "selected lead details should expose assignee controls");
+  assert(leadsPage.includes("CRM status"), "selected lead details should expose CRM status controls");
   assert(leadsPage.includes("Conversation chat"), "leads page should present comms as a chat transcript");
   assert(leadsPage.includes('data-testid="lead-comms-chat"'), "comms tab should expose a stable chat transcript pane");
   assert(leadsPage.includes('data-testid="lead-chat-bubble"'), "comms tab should render messages as chat bubbles");
@@ -163,6 +176,9 @@ async function main() {
   assert(leadsPage.includes("Needs reply"), "leads page should separate conversations that need a response");
   assert(!leadsPage.includes("<LeadTaskGenerateMenu"), "selected lead header should not expose the AI task generation menu");
   assert(leadsPage.includes("SelectedLeadTasks"), "tasks tab should still expose selected lead task controls");
+  assert(leadsPage.includes("/api/crm/follow-up-tasks"), "tasks tab should create lightweight CRM follow-up tasks");
+  assert(leadsPage.includes("CRM follow-ups"), "tasks tab should label CRM follow-ups separately from browser-send tasks");
+  assert(leadsPage.includes("Follow-up task"), "tasks tab should include lightweight follow-up task controls");
   assert(leadsPage.includes("Manual reply handoff"), "selected lead comms should expose a manual reply handoff");
   assert(leadsPage.includes("Leadsy tracks this. You send it."), "manual reply workflow should make no-extension sending boundaries explicit");
   assert(leadsPage.includes("Open WhatsApp Web"), "manual reply workflow should offer a WhatsApp handoff when a phone exists");
@@ -219,6 +235,14 @@ async function main() {
   const rootLayout = await readFile(join(root, "apps/web/src/app/layout.tsx"), "utf8");
   assert(rootLayout.includes("AI Lead Intelligence & Operations Platform"), "app metadata should use the Step 2 product identity");
   assert(!rootLayout.includes("Revenue OS"), "app metadata should not position Leadsy as Revenue OS");
+
+  const dashboardPage = await readFile(join(root, "apps/web/src/app/app/page.tsx"), "utf8");
+  assert(dashboardPage.includes("Daily lead volume"), "dashboard should show daily lead volume");
+  assert(dashboardPage.includes("Lead source split"), "dashboard should show source split from lead records");
+  assert(dashboardPage.includes("Status pipeline"), "dashboard should show CRM status pipeline");
+  assert(dashboardPage.includes("Assignee workload"), "dashboard should show assignee workload");
+  assert(dashboardPage.includes("crmStatus"), "dashboard counts should use CRM status fields");
+  assert(dashboardPage.includes("leadSource"), "dashboard counts should use stored lead source fields");
 
   const workerPage = await readFile(join(root, "apps/web/src/app/app/worker/page.tsx"), "utf8");
   const extensionPairing = await readFile(join(root, "apps/web/src/components/extension-pairing.tsx"), "utf8");

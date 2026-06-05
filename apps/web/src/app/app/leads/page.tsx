@@ -14,7 +14,9 @@ import {
   RadioTower,
   Search,
   Archive,
+  CalendarDays,
   Pencil,
+  Sparkles,
   UserRound,
   Workflow
 } from "lucide-react";
@@ -24,6 +26,7 @@ import { LeadScrollKeeper } from "@/components/lead-scroll-keeper";
 import { ManualLeadIntake } from "@/components/manual-lead-intake";
 import { SelectedLeadTasks } from "@/components/selected-lead-tasks";
 import { getCurrentSession } from "@/lib/auth";
+import { listCrmFollowUpTasks, type CrmFollowUpTask } from "@/lib/crm-store";
 import { listExtensionTaskEvents, listExtensionTasks, type ExtensionTask, type ExtensionTaskEvent } from "@/lib/extension-store";
 import {
   listLeadKnowledgeRecords,
@@ -55,8 +58,8 @@ const viewFilters: Array<{ id: ViewFilter; label: string }> = [
 ];
 
 const workspaceTabs: Array<{ id: LeadWorkspaceTab; label: string }> = [
-  { id: "details", label: "Details" },
   { id: "comms", label: "Comms" },
+  { id: "details", label: "Details" },
   { id: "tasks", label: "Tasks" }
 ];
 
@@ -99,12 +102,15 @@ function latestDirection(lead: LeadKnowledgeRecord) {
 }
 
 function needsReply(lead: LeadKnowledgeRecord) {
-  return lead.leadStatus === "lead" && latestDirection(lead) === "inbound";
+  return lead.leadStatus === "lead" && (lead.crmStatus === "needs_reply" || latestDirection(lead) === "inbound");
 }
 
 function crmStage(lead: LeadKnowledgeRecord) {
   if (lead.leadStatus === "excluded") return "Not a lead";
-  if (needsReply(lead)) return "Needs reply";
+  if (lead.crmStatus === "human_review") return "Human review";
+  if (lead.crmStatus === "interested") return "Interested";
+  if (lead.crmStatus === "needs_reply" || needsReply(lead)) return "Needs reply";
+  if (lead.crmStatus === "new_lead") return "New lead";
   if (lead.outboundCount > 0) return "Working";
   if (lead.channels.some((channel) => channel === "whatsapp" || channel === "instagram" || channel === "facebook")) return "New Meta lead";
   return "New lead";
@@ -112,6 +118,8 @@ function crmStage(lead: LeadKnowledgeRecord) {
 
 function stageTone(stage: string): "teal" | "amber" | "lime" | "sky" | "neutral" {
   if (stage === "Needs reply") return "amber";
+  if (stage === "Human review") return "amber";
+  if (stage === "Interested") return "lime";
   if (stage === "Working") return "sky";
   if (stage === "New Meta lead") return "lime";
   if (stage === "Not a lead") return "neutral";
@@ -135,6 +143,7 @@ function noticeCopy(params: Record<string, string | string[] | undefined>) {
   if (notice === "manual-lead-added") return "Manual lead added. Intake answers updated the knowledge base.";
   if (notice === "manual-message-added") return "Manual communication logged.";
   if (notice === "lead-edited") return "Lead details updated.";
+  if (notice === "crm-follow-up-added") return "Follow-up task added to this lead.";
   if (notice === "lead-archived") return "Lead archived. History is preserved.";
   if (notice === "message-hidden") return "Communication hidden from the chat.";
   if (notice === "message-restored") return "Communication restored.";
@@ -155,7 +164,7 @@ function crmHref(input: {
   if (input.view && input.view !== "all") params.set("view", input.view);
   if (input.q?.trim()) params.set("q", input.q.trim());
   if (input.contact) params.set("contact", input.contact);
-  if (input.tab && input.tab !== "details") params.set("tab", input.tab);
+  if (input.tab && input.tab !== "comms") params.set("tab", input.tab);
   if (input.commChannel && input.commChannel !== "all") params.set("commChannel", input.commChannel);
   const query = params.toString();
   return query ? `/app/leads?${query}` : "/app/leads";
@@ -170,6 +179,12 @@ function matchesQuery(lead: LeadKnowledgeRecord, query: string) {
     lead.contact.email,
     lead.contact.handle,
     lead.contact.profileUrl,
+    lead.leadSource,
+    lead.campaignId,
+    lead.assigneeName,
+    lead.crmStatus,
+    lead.qualificationStage,
+    ...Object.values(lead.qualificationFields ?? {}),
     latestMessage(lead),
     crmStage(lead),
     nextAction(lead),
@@ -209,7 +224,7 @@ function openHref(lead: LeadKnowledgeRecord) {
 }
 
 function activeTabFromValue(value: string): LeadWorkspaceTab {
-  return workspaceTabs.some((tab) => tab.id === value) ? (value as LeadWorkspaceTab) : "details";
+  return workspaceTabs.some((tab) => tab.id === value) ? (value as LeadWorkspaceTab) : "comms";
 }
 
 function commChannelFromValue(value: string): CommChannelFilter {
@@ -359,6 +374,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
   const params = searchParams ? await searchParams : {};
   const session = await getCurrentSession();
   const tasks = session ? await listExtensionTasks(session.tenantId, session.id) : [];
+  const crmFollowUps = session ? await listCrmFollowUpTasks({ tenantId: session.tenantId, ownerId: session.id }) : [];
   if (session) {
     await syncLeadKnowledgeFromExtensionTasks({ tenantId: session.tenantId, ownerId: session.id }, tasks);
   }
@@ -436,6 +452,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
               activeTab={activeTab}
               commChannel={activeCommChannel}
               tasks={tasksForLead(leadTasks, selectedLead)}
+              crmFollowUps={crmFollowUps.filter((task) => task.leadId === selectedLead.id)}
               taskEvents={taskEvents}
             />
           ) : (
@@ -487,7 +504,7 @@ function LeadListPane({
       <form method="get" action="/app/leads" className="mt-4 flex min-w-0 items-center gap-2 rounded-[8px] border border-[var(--line)] bg-black/20 px-3">
         {activeView !== "all" ? <input type="hidden" name="view" value={activeView} /> : null}
         {activePanel !== "crm" ? <input type="hidden" name="panel" value={activePanel} /> : null}
-        {activeTab !== "details" ? <input type="hidden" name="tab" value={activeTab} /> : null}
+        {activeTab !== "comms" ? <input type="hidden" name="tab" value={activeTab} /> : null}
         {commChannel !== "all" ? <input type="hidden" name="commChannel" value={commChannel} /> : null}
         <Search size={15} className="shrink-0 text-[var(--muted)]" />
         <input
@@ -543,6 +560,8 @@ function LeadListPane({
                   <Badge tone={stageTone(stage)}>{stage}</Badge>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
+                  {lead.leadSource ? <Badge tone="sky">{lead.leadSource}</Badge> : null}
+                  {lead.assigneeName ? <Badge tone="teal">{lead.assigneeName}</Badge> : null}
                   {lead.channels.slice(0, 4).map((channel) => (
                     <Badge key={channel} tone={toneForChannel(channel)}>
                       {channelLabel(channel)}
@@ -580,6 +599,7 @@ function LeadRecordWorkspace({
   activeTab,
   commChannel,
   tasks,
+  crmFollowUps,
   taskEvents
 }: {
   lead: LeadKnowledgeRecord;
@@ -589,6 +609,7 @@ function LeadRecordWorkspace({
   activeTab: LeadWorkspaceTab;
   commChannel: CommChannelFilter;
   tasks: ExtensionTask[];
+  crmFollowUps: CrmFollowUpTask[];
   taskEvents: ExtensionTaskEvent[];
 }) {
   const href = openHref(lead);
@@ -627,7 +648,14 @@ function LeadRecordWorkspace({
       {activeTab === "comms" ? (
         <LeadCommsTab lead={lead} activeView={activeView} query={query} commChannel={commChannel} />
       ) : null}
-      {activeTab === "tasks" ? <LeadTasksTab lead={lead} tasks={tasks} taskEvents={eventsForTasks(taskEvents, tasks)} /> : null}
+      {activeTab === "tasks" ? (
+        <LeadTasksTab
+          lead={lead}
+          tasks={tasks}
+          crmFollowUps={crmFollowUps}
+          taskEvents={eventsForTasks(taskEvents, tasks)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -666,6 +694,56 @@ function LeadDetailsTab({ lead, href }: { lead: LeadKnowledgeRecord; href: strin
               <LeadInput name="handle" label="Handle" value={lead.contact.handle} />
             </div>
             <LeadInput name="profileUrl" label="Profile URL" value={lead.contact.profileUrl} />
+            <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                <Sparkles size={15} className="text-[var(--teal)]" />
+                AI qualification
+              </div>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <LeadInput name="leadSource" label="Lead source" value={lead.leadSource} />
+                <LeadInput name="campaignId" label="Campaign ID" value={lead.campaignId} />
+                <LeadInput name="assigneeName" label="Assignee" value={lead.assigneeName} />
+                <LeadInput name="assigneeId" label="Assignee ID" value={lead.assigneeId} />
+                <label className="grid gap-2 text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
+                  CRM status
+                  <select
+                    name="crmStatus"
+                    defaultValue={lead.crmStatus}
+                    className="h-10 rounded-[6px] border border-[var(--line)] bg-black/30 px-3 text-sm normal-case tracking-normal text-white outline-none"
+                  >
+                    <option value="new_lead">New lead</option>
+                    <option value="needs_reply">Needs reply</option>
+                    <option value="interested">Interested</option>
+                    <option value="human_review">Human review</option>
+                  </select>
+                </label>
+                <label className="grid gap-2 text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
+                  Qualification stage
+                  <select
+                    name="qualificationStage"
+                    defaultValue={lead.qualificationStage}
+                    className="h-10 rounded-[6px] border border-[var(--line)] bg-black/30 px-3 text-sm normal-case tracking-normal text-white outline-none"
+                  >
+                    <option value="new">New</option>
+                    <option value="collecting">Collecting</option>
+                    <option value="qualified">Qualified</option>
+                    <option value="human_review">Human review</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+            <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-3">
+              <div className="text-sm font-semibold text-white">Qualification fields</div>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <LeadInput name="qualificationName" label="Qualified name" value={lead.qualificationFields.name} />
+                <LeadInput name="qualificationPhone" label="Qualified phone" value={lead.qualificationFields.phone} />
+                <LeadInput name="qualificationCompany" label="Company" value={lead.qualificationFields.company} />
+                <LeadInput name="qualificationNeed" label="Need / reason" value={lead.qualificationFields.need} />
+                <LeadInput name="qualificationVolume" label="Team / query volume" value={lead.qualificationFields.teamOrQueryVolume} />
+                <LeadInput name="qualificationBudget" label="Budget" value={lead.qualificationFields.budget} />
+                <LeadInput name="qualificationTimeline" label="Timeline" value={lead.qualificationFields.timeline} />
+              </div>
+            </div>
             <label className="grid gap-2 text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
               Summary
               <textarea name="summary" defaultValue={lead.summary || ""} rows={3} className="rounded-[6px] border border-[var(--line)] bg-black/30 px-3 py-2 text-sm normal-case leading-6 tracking-normal text-white outline-none" />
@@ -811,8 +889,9 @@ function LeadCommsTab({
         ))}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[0.38fr_0.62fr]">
-        <div className="space-y-4">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="order-2 space-y-4 xl:order-2">
+          <LeadCrmSummaryCard lead={lead} />
           <ManualReplyHandoff lead={lead} />
           <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
             <div className="flex items-center justify-between gap-3">
@@ -832,7 +911,7 @@ function LeadCommsTab({
           </div>
         </div>
 
-        <div data-testid="lead-comms-chat" className="flex min-h-[620px] flex-col overflow-hidden rounded-[8px] border border-[var(--line)] bg-black/20">
+        <div data-testid="lead-comms-chat" className="order-1 flex min-h-[620px] flex-col overflow-hidden rounded-[8px] border border-[var(--line)] bg-black/20 xl:order-1">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] bg-white/[0.03] px-4 py-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-sm font-semibold text-white">
@@ -860,6 +939,54 @@ function LeadCommsTab({
             <ManualMessageForm lead={lead} commChannel={commChannel} variant="composer" />
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function LeadCrmSummaryCard({ lead }: { lead: LeadKnowledgeRecord }) {
+  const fields = [
+    ["Name", lead.qualificationFields.name],
+    ["Phone", lead.qualificationFields.phone],
+    ["Company", lead.qualificationFields.company],
+    ["Need", lead.qualificationFields.need],
+    ["Volume", lead.qualificationFields.teamOrQueryVolume],
+    ["Budget", lead.qualificationFields.budget],
+    ["Timeline", lead.qualificationFields.timeline]
+  ].filter(([, value]) => value);
+
+  return (
+    <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 text-sm font-semibold text-white">
+            <Sparkles size={16} className="text-[var(--teal)]" />
+            AI qualification
+          </div>
+          <p className="mt-2 text-xs leading-5 text-[var(--muted)]">CRM status, source, assignee, and captured facts for this conversation.</p>
+        </div>
+        <Badge tone={stageTone(crmStage(lead))}>{crmStage(lead)}</Badge>
+      </div>
+      <div className="mt-4 grid gap-2">
+        <DetailLine label="Lead source" value={lead.leadSource} />
+        <DetailLine label="Campaign ID" value={lead.campaignId} />
+        <DetailLine label="Assignee" value={lead.assigneeName} />
+        <DetailLine label="Qualification stage" value={lead.qualificationStage.replace(/_/g, " ")} />
+      </div>
+      <div className="mt-4">
+        <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Qualification fields</div>
+        {fields.length ? (
+          <div className="mt-2 grid gap-2">
+            {fields.map(([label, value]) => (
+              <div key={label} className="rounded-[6px] border border-[var(--line)] bg-white/[0.03] px-3 py-2">
+                <div className="mono text-[10px] uppercase text-[var(--muted)]">{label}</div>
+                <div className="mt-1 break-words text-sm text-white">{value}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-2 text-sm leading-6 text-[var(--muted-2)]">No qualification answers captured yet.</p>
+        )}
       </div>
     </div>
   );
@@ -940,22 +1067,95 @@ function ManualReplyHandoff({ lead }: { lead: LeadKnowledgeRecord }) {
 function LeadTasksTab({
   lead,
   tasks,
+  crmFollowUps,
   taskEvents
 }: {
   lead: LeadKnowledgeRecord;
   tasks: ExtensionTask[];
+  crmFollowUps: CrmFollowUpTask[];
   taskEvents: ExtensionTaskEvent[];
 }) {
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-sm font-semibold text-white">
-          <Workflow size={16} className="text-[var(--teal)]" />
-          Selected lead tasks
+      <div className="grid gap-4 xl:grid-cols-[0.46fr_0.54fr]">
+        <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-white">
+              <ListChecks size={16} className="text-[var(--teal)]" />
+              CRM follow-ups
+            </div>
+            <Badge tone="neutral">{crmFollowUps.length} open</Badge>
+          </div>
+          <form action="/api/crm/follow-up-tasks" method="post" className="mt-4 grid gap-3">
+            <input type="hidden" name="leadId" value={lead.id} />
+            <input type="hidden" name="assigneeName" value={lead.assigneeName || ""} />
+            <input type="hidden" name="assigneeId" value={lead.assigneeId || ""} />
+            <LeadInput name="topic" label="Follow-up task" />
+            <label className="grid gap-2 text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
+              Description
+              <textarea
+                name="description"
+                rows={3}
+                className="rounded-[6px] border border-[var(--line)] bg-black/30 px-3 py-2 text-sm normal-case leading-6 tracking-normal text-white outline-none"
+                placeholder="Call back tomorrow, send proposal, verify budget..."
+              />
+            </label>
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="grid gap-2 text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
+                Priority
+                <select name="priority" defaultValue="normal" className="h-10 rounded-[6px] border border-[var(--line)] bg-black/30 px-3 text-sm normal-case tracking-normal text-white outline-none">
+                  <option value="low">Low</option>
+                  <option value="normal">Normal</option>
+                  <option value="high">High</option>
+                  <option value="urgent">Urgent</option>
+                </select>
+              </label>
+              <label className="grid gap-2 text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
+                Due date
+                <input name="dueAt" type="datetime-local" className="h-10 rounded-[6px] border border-[var(--line)] bg-black/30 px-3 text-sm normal-case tracking-normal text-white outline-none" />
+              </label>
+            </div>
+            <button type="submit" className="inline-flex h-10 items-center justify-center gap-2 rounded-[6px] border border-teal-300/30 bg-teal-300/[0.12] px-3 text-sm font-medium text-teal-100 hover:bg-teal-300/[0.18]">
+              <CalendarDays size={15} />
+              Add follow-up
+            </button>
+          </form>
+
+          {crmFollowUps.length ? (
+            <div className="mt-4 grid gap-2">
+              {crmFollowUps.map((task) => (
+                <div key={task.id} className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold text-white">{task.topic}</div>
+                      <div className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--muted-2)]">{task.description || "No description"}</div>
+                    </div>
+                    <Badge tone={task.priority === "urgent" || task.priority === "high" ? "amber" : "teal"}>{task.priority}</Badge>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Badge tone="neutral">{task.status.replace(/_/g, " ")}</Badge>
+                    {task.assigneeName ? <Badge tone="sky">{task.assigneeName}</Badge> : null}
+                    {task.dueAt ? <Badge tone="lime">{shortDate(task.dueAt)}</Badge> : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-4 text-sm leading-6 text-[var(--muted-2)]">No CRM follow-up tasks yet.</p>
+          )}
         </div>
-        <Badge tone="neutral">{tasks.length} tasks</Badge>
+
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-white">
+              <Workflow size={16} className="text-[var(--teal)]" />
+              Selected lead tasks
+            </div>
+            <Badge tone="neutral">{tasks.length} browser-send tasks</Badge>
+          </div>
+          <SelectedLeadTasks leadId={lead.id} initialTasks={tasks} initialEvents={taskEvents} />
+        </div>
       </div>
-      <SelectedLeadTasks leadId={lead.id} initialTasks={tasks} initialEvents={taskEvents} />
     </div>
   );
 }
