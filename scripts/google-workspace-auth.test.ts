@@ -37,6 +37,25 @@ async function main() {
     const stateAfterResolve = await readFile(authFile, "utf8");
     assert.equal(resolvedSession?.user.id, first.user.id, "created session should resolve for the Google user");
     assert.equal(stateAfterResolve, stateBeforeResolve, "resolving a session should not write auth.json or risk a lost update");
+
+    const [third, fourth] = await Promise.all([
+      findOrCreateGoogleWorkspaceUser({ name: "Charlie Owner", email: "charlie@example.com" }),
+      findOrCreateGoogleWorkspaceUser({ name: "Diya Owner", email: "diya@example.com" })
+    ]);
+    assert.equal(third.ok, true);
+    assert.equal(fourth.ok, true);
+
+    const [thirdSession, fourthSession] = await Promise.all([
+      createAuthSession(third.user),
+      createAuthSession(fourth.user)
+    ]);
+    const usersAfterConcurrentWrites = await listAuthUsers();
+    const resolvedThirdSession = await resolveAuthSession(thirdSession.token);
+    const resolvedFourthSession = await resolveAuthSession(fourthSession.token);
+
+    assert.equal(usersAfterConcurrentWrites.length, 4, "concurrent Google user writes must preserve both users");
+    assert.equal(resolvedThirdSession?.user.id, third.user.id, "first concurrent session should survive later writes");
+    assert.equal(resolvedFourthSession?.user.id, fourth.user.id, "second concurrent session should survive later writes");
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

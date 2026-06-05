@@ -36,6 +36,7 @@ type TaskComposerControls = {
   composer: HTMLElement;
   sendButton: HTMLElement;
 };
+const outboundEchoWindowMs = 1000 * 60 * 2;
 
 export interface AutomationModelClient {
   detectProfile(snapshot: DomSnapshot, messages: ChatMessage[]): Promise<ChatSiteProfile>;
@@ -157,7 +158,9 @@ export class ChatAutomationController {
       return;
     }
 
-    await this.sendReply(this.pendingDecision.replyText, this.profile);
+    const replyText = this.pendingDecision.replyText;
+    await this.sendReply(replyText, this.profile);
+    this.recordLeadsyOutbound(replyText);
     this.log.approvalState = "approved";
     this.pendingDecision = undefined;
     await this.store.saveLog(this.log);
@@ -185,19 +188,10 @@ export class ChatAutomationController {
 
     if (this.profile && this.log) {
       await this.sendReply(task.draftMessage, this.profile);
-      const sentAt = new Date().toISOString();
-      const externalId = `task:${task.id}:${Date.now()}`;
-      this.log.messages = [
-        ...this.log.messages,
-        {
-          id: externalId,
-          direction: "outgoing",
-          text: task.draftMessage,
-          timestamp: Date.parse(sentAt),
-          sourceUrl: window.location.href
-        }
-      ];
-      this.log.updatedAt = Date.now();
+      const sentTime = Date.now();
+      const sentAt = new Date(sentTime).toISOString();
+      const externalId = `task:${task.id}:${sentTime}`;
+      this.recordLeadsyOutbound(task.draftMessage, externalId, sentTime);
       await this.store.saveLog(this.log);
       await this.syncToLeadsy("reply-sent", `Worker sent task ${task.id}.`);
       this.setState({ mode: "auto_active", statusText: "Task sent. Watching for replies." });
@@ -280,19 +274,10 @@ export class ChatAutomationController {
   async sendPreparedTask(task: ExtensionTask): Promise<{ externalId: string; sentAt: string }> {
     if (this.profile && this.log) {
       await this.sendReply(task.draftMessage, this.profile);
-      const sentAt = new Date().toISOString();
-      const externalId = `task:${task.id}:${Date.now()}`;
-      this.log.messages = [
-        ...this.log.messages,
-        {
-          id: externalId,
-          direction: "outgoing",
-          text: task.draftMessage,
-          timestamp: Date.parse(sentAt),
-          sourceUrl: window.location.href
-        }
-      ];
-      this.log.updatedAt = Date.now();
+      const sentTime = Date.now();
+      const sentAt = new Date(sentTime).toISOString();
+      const externalId = `task:${task.id}:${sentTime}`;
+      this.recordLeadsyOutbound(task.draftMessage, externalId, sentTime);
       await this.store.saveLog(this.log);
       await this.syncToLeadsy("reply-sent", `Worker sent approved task ${task.id}.`);
       this.setState({ mode: "auto_active", statusText: "Approved task sent. Watching for replies." });
@@ -401,26 +386,27 @@ export class ChatAutomationController {
 
     const visibleMessages = extractMessagesFromDocument(this.profile);
     const merged = mergeNewMessages(this.log.messages, visibleMessages);
-    this.log.messages = merged;
+    const messages = merged.filter((message) => !this.isLeadsyOutboundEcho(message));
+    this.log.messages = messages;
     this.log.updatedAt = Date.now();
     await this.store.saveLog(this.log);
     await this.syncToLeadsy("monitor_synced", "Visible chat messages synced to Leadsy.");
 
-    const unansweredIncoming = getUnansweredIncomingTurn(merged);
+    const unansweredIncoming = getUnansweredIncomingTurn(messages);
     const latestIncoming = unansweredIncoming.at(-1);
     if (!latestIncoming || latestIncoming.id === this.log.lastHandledIncomingId || this.pendingDecision) {
       if (this.mode === "detecting") {
-        const incomingCount = merged.filter((message) => message.direction === "incoming").length;
+        const incomingCount = messages.filter((message) => message.direction === "incoming").length;
         this.setState({
           mode: "auto_active",
-          statusText: `Armed. Read ${merged.length} messages and recognized ${incomingCount} incoming. Waiting for the next unanswered incoming message.`
+          statusText: `Armed. Read ${messages.length} messages and recognized ${incomingCount} incoming. Waiting for the next unanswered incoming message.`
         });
       }
       return;
     }
 
-    const knowledge = await this.knowledgeProvider.getContext(this.log, merged);
-    const rawDecision = await this.openRouter.decideReply(this.log, merged, knowledge, this.settings);
+    const knowledge = await this.knowledgeProvider.getContext(this.log, messages);
+    const rawDecision = await this.openRouter.decideReply(this.log, messages, knowledge, this.settings);
     const decision = applySafetyPolicy(
       rawDecision,
       unansweredIncoming.map((message) => message.text)
@@ -448,7 +434,10 @@ export class ChatAutomationController {
       return;
     }
 
+    const sentTime = Date.now();
     await this.sendReply(decision.replyText, this.profile);
+    this.recordLeadsyOutbound(decision.replyText, `leadsy-reply:${sentTime}`, sentTime);
+    await this.store.saveLog(this.log);
     await this.syncToLeadsy("reply-sent", decision.reason);
     this.setState({ mode: "auto_active", statusText: "Auto-replied. Watching for the next message." });
   }
@@ -471,6 +460,30 @@ export class ChatAutomationController {
   private setState(state: OverlayState): void {
     this.mode = state.mode;
     this.emit(state);
+  }
+
+  private recordLeadsyOutbound(text: string, externalId = `leadsy-out:${Date.now()}`, sentAt = Date.now()): void {
+    if (!this.log) return;
+    const outgoing = {
+      id: externalId,
+      direction: "outgoing" as const,
+      text,
+      timestamp: sentAt,
+      sourceUrl: window.location.href
+    };
+    this.log.messages = mergeNewMessages(this.log.messages, [outgoing]);
+    this.log.lastLeadsyOutbound = {
+      normalizedText: normalizeMessageText(text),
+      sentAt,
+      externalId
+    };
+    this.log.updatedAt = sentAt;
+  }
+
+  private isLeadsyOutboundEcho(message: ChatMessage): boolean {
+    if (message.direction !== "incoming" || !this.log?.lastLeadsyOutbound) return false;
+    if (normalizeMessageText(message.text) !== this.log.lastLeadsyOutbound.normalizedText) return false;
+    return Math.abs(message.timestamp - this.log.lastLeadsyOutbound.sentAt) <= outboundEchoWindowMs;
   }
 
   private async syncToLeadsy(type: ConversationSyncEventType, summary: string) {
@@ -577,6 +590,10 @@ function taskSendButtonSelectors(task: ExtensionTask, profile?: ChatSiteProfile)
 
 function uniqueSelectors(selectors: string[]) {
   return [...new Set(selectors.map((selector) => selector.trim()).filter(Boolean))];
+}
+
+function normalizeMessageText(value: string) {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
 function clickSendControl(element: HTMLElement): void {

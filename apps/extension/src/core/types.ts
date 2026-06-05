@@ -36,6 +36,11 @@ export interface ConversationLog {
   approvalState: ApprovalState;
   messages: ChatMessage[];
   lastHandledIncomingId?: string;
+  lastLeadsyOutbound?: {
+    normalizedText: string;
+    sentAt: number;
+    externalId?: string;
+  };
   createdAt: number;
   updatedAt: number;
 }

@@ -305,8 +305,60 @@ function scopeKey(tenantId: string, ownerId: string) {
   return `${tenantId}:${ownerId}`;
 }
 
-function conversationKey(input: Pick<ExtensionConversation, "tenantId" | "ownerId" | "platform" | "chatFingerprint">) {
-  return `${scopeKey(input.tenantId, input.ownerId)}:${input.platform}:${input.chatFingerprint}`;
+function conversationKey(input: {
+  tenantId: string;
+  ownerId: string;
+  platform: ExtensionPlatform;
+  chatFingerprint: string;
+  sourceUrl: string;
+  contact?: ExtensionConversationContact;
+}) {
+  return `${scopeKey(input.tenantId, input.ownerId)}:${input.platform}:${conversationTargetKey(input)}`;
+}
+
+function conversationTargetKey(input: {
+  platform: ExtensionPlatform;
+  chatFingerprint: string;
+  sourceUrl: string;
+  contact?: ExtensionConversationContact;
+}) {
+  const phone = normalizedPhone(input.contact?.phone) || whatsappPhoneFromUrl(input.sourceUrl) || whatsappPhoneFromUrl(input.chatFingerprint);
+  if (input.platform === "whatsapp-web" && phone) return `phone:${phone}`;
+  const email = input.contact?.email?.trim().toLowerCase();
+  if (email) return `email:${email}`;
+  const handle = input.contact?.handle?.trim().replace(/^@/, "").toLowerCase();
+  if (handle) return `handle:${handle}`;
+  const profile = normalizedProfileUrl(input.contact?.profileUrl || input.sourceUrl);
+  if (profile) return `profile:${profile}`;
+  return `fingerprint:${input.chatFingerprint}`;
+}
+
+function normalizedPhone(value?: string) {
+  const digits = value?.replace(/\D/g, "") ?? "";
+  return digits.length >= 7 ? digits : "";
+}
+
+function whatsappPhoneFromUrl(value?: string) {
+  if (!value) return "";
+  try {
+    const url = new URL(value);
+    if (url.hostname !== "web.whatsapp.com") return "";
+    return normalizedPhone(url.searchParams.get("phone") ?? undefined);
+  } catch {
+    return "";
+  }
+}
+
+function normalizedProfileUrl(value?: string) {
+  if (!value) return "";
+  try {
+    const url = new URL(value);
+    if (url.hostname === "web.whatsapp.com" && !url.searchParams.get("phone")) return "";
+    url.hash = "";
+    return `${url.hostname.toLowerCase()}${url.pathname.replace(/\/$/, "").toLowerCase()}`;
+  } catch {
+    return value.trim().toLowerCase();
+  }
 }
 
 function taskIdentity(input: {

@@ -42,6 +42,17 @@ type AuthState = {
   sessions: StoredAuthSession[];
 };
 
+type CreateOwnerUserResult =
+  | { ok: true; user: AuthUser }
+  | { ok: false; reason: "owner_exists" | "login_exists" };
+type GoogleOwnerUserResult =
+  | { ok: true; user: AuthUser }
+  | { ok: false; reason: "owner_exists" };
+type GoogleWorkspaceUserResult = { ok: true; user: AuthUser };
+type CreateClientUserResult =
+  | { ok: true; user: AuthUser }
+  | { ok: false; reason: "login_exists" };
+
 function emptyState(): AuthState {
   return {
     users: [],
@@ -102,6 +113,26 @@ async function writeAuthState(state: AuthState) {
   await rename(tempFile, authFile);
 }
 
+let authMutationQueue = Promise.resolve();
+
+async function mutateAuthState<T>(
+  updater: (state: AuthState) => Promise<{ result: T; state?: AuthState }> | { result: T; state?: AuthState }
+): Promise<T> {
+  const operation = authMutationQueue.then(async () => {
+    const state = await readAuthState();
+    const next = await updater(state);
+    if (next.state) {
+      await writeAuthState(next.state);
+    }
+    return next.result;
+  });
+  authMutationQueue = operation.then(
+    () => undefined,
+    () => undefined
+  );
+  return operation;
+}
+
 export async function hashPassword(password: string) {
   const salt = randomBytes(16).toString("base64url");
   const derived = await derivePasswordKey(password, salt, 64, scryptOptions);
@@ -151,57 +182,57 @@ export async function getAuthUserByLogin(emailOrPhone: string) {
 }
 
 export async function createOwnerUser(input: { name: string; emailOrPhone: string; password: string }) {
-  const state = await readAuthState();
-  if (state.users.some((user) => user.role === "owner")) {
-    return { ok: false as const, reason: "owner_exists" as const };
-  }
+  return mutateAuthState<CreateOwnerUserResult>(async (state) => {
+    if (state.users.some((user) => user.role === "owner")) {
+      return { result: { ok: false as const, reason: "owner_exists" as const } };
+    }
 
-  const normalizedLogin = normalizeLogin(input.emailOrPhone);
-  if (state.users.some((user) => user.normalizedLogin === normalizedLogin)) {
-    return { ok: false as const, reason: "login_exists" as const };
-  }
+    const normalizedLogin = normalizeLogin(input.emailOrPhone);
+    if (state.users.some((user) => user.normalizedLogin === normalizedLogin)) {
+      return { result: { ok: false as const, reason: "login_exists" as const } };
+    }
 
-  const user: AuthUser = {
-    id: `usr_${crypto.randomUUID().slice(0, 12)}`,
-    tenantId,
-    name: input.name.trim(),
-    emailOrPhone: input.emailOrPhone.trim(),
-    normalizedLogin,
-    passwordHash: await hashPassword(input.password),
-    role: "owner",
-    createdAt: new Date().toISOString()
-  };
+    const user: AuthUser = {
+      id: `usr_${crypto.randomUUID().slice(0, 12)}`,
+      tenantId,
+      name: input.name.trim(),
+      emailOrPhone: input.emailOrPhone.trim(),
+      normalizedLogin,
+      passwordHash: await hashPassword(input.password),
+      role: "owner",
+      createdAt: new Date().toISOString()
+    };
 
-  await writeAuthState({ ...state, users: [...state.users, user] });
-  return { ok: true as const, user };
+    return { state: { ...state, users: [...state.users, user] }, result: { ok: true as const, user } };
+  });
 }
 
 export async function findOrCreateGoogleOwnerUser(input: { name?: string; email: string }) {
-  const state = await readAuthState();
-  const normalizedLogin = normalizeLogin(input.email);
-  const existing = state.users.find((user) => user.normalizedLogin === normalizedLogin);
-  if (existing) {
-    return { ok: true as const, user: existing };
-  }
+  return mutateAuthState<GoogleOwnerUserResult>(async (state) => {
+    const normalizedLogin = normalizeLogin(input.email);
+    const existing = state.users.find((user) => user.normalizedLogin === normalizedLogin);
+    if (existing) {
+      return { result: { ok: true as const, user: existing } };
+    }
 
-  if (state.users.some((user) => user.role === "owner")) {
-    return { ok: false as const, reason: "owner_exists" as const };
-  }
+    if (state.users.some((user) => user.role === "owner")) {
+      return { result: { ok: false as const, reason: "owner_exists" as const } };
+    }
 
-  const displayName = input.name?.trim() || input.email.split("@")[0] || "Leadsy Owner";
-  const user: AuthUser = {
-    id: `usr_${crypto.randomUUID().slice(0, 12)}`,
-    tenantId,
-    name: displayName,
-    emailOrPhone: input.email.trim(),
-    normalizedLogin,
-    passwordHash: await hashPassword(randomBytes(32).toString("base64url")),
-    role: "owner",
-    createdAt: new Date().toISOString()
-  };
+    const displayName = input.name?.trim() || input.email.split("@")[0] || "Leadsy Owner";
+    const user: AuthUser = {
+      id: `usr_${crypto.randomUUID().slice(0, 12)}`,
+      tenantId,
+      name: displayName,
+      emailOrPhone: input.email.trim(),
+      normalizedLogin,
+      passwordHash: await hashPassword(randomBytes(32).toString("base64url")),
+      role: "owner",
+      createdAt: new Date().toISOString()
+    };
 
-  await writeAuthState({ ...state, users: [...state.users, user] });
-  return { ok: true as const, user };
+    return { state: { ...state, users: [...state.users, user] }, result: { ok: true as const, user } };
+  });
 }
 
 function googleWorkspaceTenantId(email: string) {
@@ -209,27 +240,27 @@ function googleWorkspaceTenantId(email: string) {
 }
 
 export async function findOrCreateGoogleWorkspaceUser(input: { name?: string; email: string }) {
-  const state = await readAuthState();
-  const normalizedLogin = normalizeLogin(input.email);
-  const existing = state.users.find((user) => user.normalizedLogin === normalizedLogin);
-  if (existing) {
-    return { ok: true as const, user: existing };
-  }
+  return mutateAuthState<GoogleWorkspaceUserResult>(async (state) => {
+    const normalizedLogin = normalizeLogin(input.email);
+    const existing = state.users.find((user) => user.normalizedLogin === normalizedLogin);
+    if (existing) {
+      return { result: { ok: true as const, user: existing } };
+    }
 
-  const displayName = input.name?.trim() || input.email.split("@")[0] || "Leadsy user";
-  const user: AuthUser = {
-    id: `usr_${crypto.randomUUID().slice(0, 12)}`,
-    tenantId: googleWorkspaceTenantId(input.email),
-    name: displayName,
-    emailOrPhone: input.email.trim(),
-    normalizedLogin,
-    passwordHash: await hashPassword(randomBytes(32).toString("base64url")),
-    role: "owner",
-    createdAt: new Date().toISOString()
-  };
+    const displayName = input.name?.trim() || input.email.split("@")[0] || "Leadsy user";
+    const user: AuthUser = {
+      id: `usr_${crypto.randomUUID().slice(0, 12)}`,
+      tenantId: googleWorkspaceTenantId(input.email),
+      name: displayName,
+      emailOrPhone: input.email.trim(),
+      normalizedLogin,
+      passwordHash: await hashPassword(randomBytes(32).toString("base64url")),
+      role: "owner",
+      createdAt: new Date().toISOString()
+    };
 
-  await writeAuthState({ ...state, users: [...state.users, user] });
-  return { ok: true as const, user };
+    return { state: { ...state, users: [...state.users, user] }, result: { ok: true as const, user } };
+  });
 }
 
 export async function createClientUser(input: {
@@ -238,115 +269,126 @@ export async function createClientUser(input: {
   emailOrPhone: string;
   password: string;
 }) {
-  const state = await readAuthState();
-  const normalizedLogin = normalizeLogin(input.emailOrPhone);
-  if (state.users.some((user) => user.normalizedLogin === normalizedLogin)) {
-    return { ok: false as const, reason: "login_exists" as const };
-  }
+  return mutateAuthState<CreateClientUserResult>(async (state) => {
+    const normalizedLogin = normalizeLogin(input.emailOrPhone);
+    if (state.users.some((user) => user.normalizedLogin === normalizedLogin)) {
+      return { result: { ok: false as const, reason: "login_exists" as const } };
+    }
 
-  const user: AuthUser = {
-    id: `usr_${crypto.randomUUID().slice(0, 12)}`,
-    tenantId,
-    clientId: input.clientId,
-    name: input.name.trim(),
-    emailOrPhone: input.emailOrPhone.trim(),
-    normalizedLogin,
-    passwordHash: await hashPassword(input.password),
-    role: "client",
-    createdAt: new Date().toISOString()
-  };
+    const user: AuthUser = {
+      id: `usr_${crypto.randomUUID().slice(0, 12)}`,
+      tenantId,
+      clientId: input.clientId,
+      name: input.name.trim(),
+      emailOrPhone: input.emailOrPhone.trim(),
+      normalizedLogin,
+      passwordHash: await hashPassword(input.password),
+      role: "client",
+      createdAt: new Date().toISOString()
+    };
 
-  await writeAuthState({ ...state, users: [...state.users, user] });
-  return { ok: true as const, user };
+    return { state: { ...state, users: [...state.users, user] }, result: { ok: true as const, user } };
+  });
 }
 
 export async function deleteAuthUser(userId: string) {
-  const state = await readAuthState();
-  await writeAuthState({
-    users: state.users.filter((user) => user.id !== userId),
-    sessions: state.sessions.filter((session) => session.userId !== userId)
-  });
+  await mutateAuthState((state) => ({
+    state: {
+      users: state.users.filter((user) => user.id !== userId),
+      sessions: state.sessions.filter((session) => session.userId !== userId)
+    },
+    result: undefined
+  }));
 }
 
 export async function saveUserOnboarding(input: { userId: string; profile: Record<string, unknown> }) {
-  const state = await readAuthState();
-  const user = state.users.find((candidate) => candidate.id === input.userId);
-  if (!user) return null;
+  return mutateAuthState((state) => {
+    const user = state.users.find((candidate) => candidate.id === input.userId);
+    if (!user) return { result: null };
 
-  const updatedUser: AuthUser = {
-    ...user,
-    onboardingProfile: {
-      ...(user.onboardingProfile ?? {}),
-      ...input.profile
-    }
-  };
+    const updatedUser: AuthUser = {
+      ...user,
+      onboardingProfile: {
+        ...(user.onboardingProfile ?? {}),
+        ...input.profile
+      }
+    };
 
-  await writeAuthState({
-    ...state,
-    users: state.users.map((candidate) => (candidate.id === user.id ? updatedUser : candidate))
+    return {
+      state: {
+        ...state,
+        users: state.users.map((candidate) => (candidate.id === user.id ? updatedUser : candidate))
+      },
+      result: updatedUser
+    };
   });
-  return updatedUser;
 }
 
 export async function completeUserOnboarding(input: { userId: string; profile?: Record<string, unknown> }) {
-  const state = await readAuthState();
-  const user = state.users.find((candidate) => candidate.id === input.userId);
-  if (!user) return null;
+  return mutateAuthState((state) => {
+    const user = state.users.find((candidate) => candidate.id === input.userId);
+    if (!user) return { result: null };
 
-  const updatedUser: AuthUser = {
-    ...user,
-    onboardingCompletedAt: new Date().toISOString(),
-    onboardingProfile: {
-      ...(user.onboardingProfile ?? {}),
-      ...(input.profile ?? {})
-    }
-  };
+    const updatedUser: AuthUser = {
+      ...user,
+      onboardingCompletedAt: new Date().toISOString(),
+      onboardingProfile: {
+        ...(user.onboardingProfile ?? {}),
+        ...(input.profile ?? {})
+      }
+    };
 
-  await writeAuthState({
-    ...state,
-    users: state.users.map((candidate) => (candidate.id === user.id ? updatedUser : candidate))
+    return {
+      state: {
+        ...state,
+        users: state.users.map((candidate) => (candidate.id === user.id ? updatedUser : candidate))
+      },
+      result: updatedUser
+    };
   });
-  return updatedUser;
 }
 
 export async function authenticateUser(emailOrPhone: string, password: string) {
-  const state = await readAuthState();
-  const normalizedLogin = normalizeLogin(emailOrPhone);
-  const user = state.users.find((candidate) => candidate.normalizedLogin === normalizedLogin);
-  if (!user || !(await verifyPassword(password, user.passwordHash))) {
-    return null;
-  }
+  return mutateAuthState(async (state) => {
+    const normalizedLogin = normalizeLogin(emailOrPhone);
+    const user = state.users.find((candidate) => candidate.normalizedLogin === normalizedLogin);
+    if (!user || !(await verifyPassword(password, user.passwordHash))) {
+      return { result: null };
+    }
 
-  const updatedUser = { ...user, lastLoginAt: new Date().toISOString() };
-  await writeAuthState({
-    ...state,
-    users: state.users.map((candidate) => (candidate.id === user.id ? updatedUser : candidate))
+    const updatedUser = { ...user, lastLoginAt: new Date().toISOString() };
+    return {
+      state: {
+        ...state,
+        users: state.users.map((candidate) => (candidate.id === user.id ? updatedUser : candidate))
+      },
+      result: updatedUser
+    };
   });
-  return updatedUser;
 }
 
 export async function createAuthSession(user: AuthUser) {
-  const state = await readAuthState();
-  const id = `ses_${crypto.randomUUID().slice(0, 18)}`;
-  const secret = randomBytes(32).toString("base64url");
-  const token = `${id}.${secret}`;
-  const now = new Date();
-  const expiresAt = new Date(now.getTime() + sessionTtlMs);
+  return mutateAuthState((state) => {
+    const id = `ses_${crypto.randomUUID().slice(0, 18)}`;
+    const secret = randomBytes(32).toString("base64url");
+    const token = `${id}.${secret}`;
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + sessionTtlMs);
 
-  const session: StoredAuthSession = {
-    id,
-    tenantId: user.tenantId,
-    userId: user.id,
-    tokenHash: sha256(token),
-    createdAt: now.toISOString(),
-    expiresAt: expiresAt.toISOString(),
-    lastSeenAt: now.toISOString()
-  };
+    const session: StoredAuthSession = {
+      id,
+      tenantId: user.tenantId,
+      userId: user.id,
+      tokenHash: sha256(token),
+      createdAt: now.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+      lastSeenAt: now.toISOString()
+    };
 
-  const sessions = state.sessions.filter((candidate) => Date.parse(candidate.expiresAt) > now.getTime());
-  sessions.push(session);
-  await writeAuthState({ ...state, sessions });
-  return { token, expiresAt };
+    const sessions = state.sessions.filter((candidate) => Date.parse(candidate.expiresAt) > now.getTime());
+    sessions.push(session);
+    return { state: { ...state, sessions }, result: { token, expiresAt } };
+  });
 }
 
 export async function resolveAuthSession(token: string) {
@@ -367,10 +409,14 @@ export async function resolveAuthSession(token: string) {
 }
 
 export async function deleteAuthSession(token: string) {
-  const state = await readAuthState();
-  const [sessionId] = token.split(".");
-  await writeAuthState({
-    ...state,
-    sessions: state.sessions.filter((candidate) => candidate.id !== sessionId)
+  await mutateAuthState((state) => {
+    const [sessionId] = token.split(".");
+    return {
+      state: {
+        ...state,
+        sessions: state.sessions.filter((candidate) => candidate.id !== sessionId)
+      },
+      result: undefined
+    };
   });
 }

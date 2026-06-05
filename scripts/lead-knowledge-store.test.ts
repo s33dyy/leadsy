@@ -181,6 +181,40 @@ async function main() {
     assert.equal(extensionSync.lead.contact.displayName, "Asha Buyer");
     assert.equal(extensionSync.lead.messageCount, 2, "extension WhatsApp sync should merge with the webhook lead by phone");
 
+    const shiftedFingerprintSync = await syncLeadsyExtensionConversation({
+      ...scope,
+      platform: "whatsapp-web",
+      sourceUrl: "https://web.whatsapp.com/",
+      chatFingerprint: "https://web.whatsapp.com/",
+      contact: {
+        displayName: "Asha Buyer",
+        phone: "+91 98300 00000"
+      },
+      messages: [
+        {
+          externalId: "ext-in-shifted-fingerprint",
+          direction: "inbound",
+          body: "Same buyer after WhatsApp changed the page URL",
+          sentAt: "2026-06-02T08:04:30.000Z"
+        }
+      ],
+      events: [
+        {
+          type: "monitor_synced",
+          summary: "Visible chat messages synced after the route changed.",
+          occurredAt: "2026-06-02T08:04:31.000Z"
+        }
+      ]
+    });
+    const shiftedExtensionConversations = shiftedFingerprintSync.lead.conversations.filter(
+      (conversation) => conversation.source === "extension" && conversation.channel === "whatsapp-web"
+    );
+    assert.equal(
+      shiftedExtensionConversations.length,
+      1,
+      "same extension contact target should keep one conversation even when the chat fingerprint changes"
+    );
+
     await appendManualLeadMessage({
       ...scope,
       leadId: extensionSync.lead.id,
@@ -233,7 +267,7 @@ async function main() {
     assert.equal(leads.length, 4, "WhatsApp, Instagram, Facebook, and manual contacts should be tracked as lead records");
     const asha = leads.find((lead) => lead.contact.displayName === "Asha Buyer");
     assert(asha, "Asha lead should exist");
-    assert.equal(asha.messageCount, 5);
+    assert.equal(asha.messageCount, 6);
     assert.equal(asha.channels.includes("whatsapp"), true);
     assert.equal(asha.channels.includes("whatsapp-web"), true);
     assert.equal(asha.channels.includes("email"), true);

@@ -708,6 +708,60 @@ function profileIdentityForExtensionTaskTarget(task: ExtensionTask, targetPhone?
   return profileKey(task.platform, task.targetUrl);
 }
 
+function extensionConversationTargetKey(input: {
+  platform: ExtensionPlatform | string;
+  chatFingerprint: string;
+  sourceUrl?: string;
+  contact?: LeadKnowledgeContact;
+}) {
+  const contact = cleanContact(input.contact);
+  const phone = phoneKey(contact.phone) || phoneKey(phoneFromTaskTargetUrl(input.sourceUrl)) || phoneKey(phoneFromTaskTargetUrl(input.chatFingerprint));
+  if (input.platform === "whatsapp-web" && phone) return phone;
+  const email = emailKey(contact.email);
+  if (email) return email;
+  const handle = handleKey(input.platform, contact.handle);
+  if (handle) return handle;
+  const profile = profileKey(input.platform, contact.profileUrl || input.sourceUrl);
+  if (profile) return profile;
+  return `fingerprint:${input.chatFingerprint}`;
+}
+
+function extensionConversationExternalKey(input: {
+  platform: ExtensionPlatform | string;
+  chatFingerprint: string;
+  sourceUrl?: string;
+  contact?: LeadKnowledgeContact;
+}) {
+  return `extension:${input.platform}:${extensionConversationTargetKey(input)}`;
+}
+
+function extensionConversationLegacyExternalKey(input: { platform: ExtensionPlatform | string; chatFingerprint: string }) {
+  return `extension:${input.platform}:${input.chatFingerprint}`;
+}
+
+function migrateLegacyExtensionConversationKey(
+  state: LeadKnowledgeState,
+  scope: Scope,
+  input: {
+    platform: ExtensionPlatform | string;
+    chatFingerprint: string;
+    sourceUrl?: string;
+    contact?: LeadKnowledgeContact;
+  },
+  externalKey: string
+) {
+  const legacyKey = extensionConversationLegacyExternalKey(input);
+  const existing = state.conversations.find(
+    (conversation) =>
+      scopeMatches(scope, conversation) &&
+      conversation.source === "extension" &&
+      (conversation.externalKey === externalKey || conversation.externalKey === legacyKey)
+  );
+  if (existing) {
+    existing.externalKey = externalKey;
+  }
+}
+
 function nextActionForExtensionTask(task: ExtensionTask) {
   if (task.status === "sent" || task.status === "monitoring") return "Monitor for reply or log the next outcome.";
   if (task.status === "postponed") return task.postponedReason || "Task postponed. Review when it becomes due.";
@@ -882,11 +936,23 @@ export async function syncLeadsyExtensionConversation(input: Scope & {
     nextAction: input.insight?.nextAction,
     facts: [input.insight?.qualification, input.insight?.summary].filter(Boolean) as string[]
   });
+  const externalKey = extensionConversationExternalKey({
+    platform: input.platform,
+    chatFingerprint: input.chatFingerprint,
+    sourceUrl: input.sourceUrl,
+    contact
+  });
+  migrateLegacyExtensionConversationKey(state, input, {
+    platform: input.platform,
+    chatFingerprint: input.chatFingerprint,
+    sourceUrl: input.sourceUrl,
+    contact
+  }, externalKey);
   const conversation = upsertConversation(state, input, {
     leadId: lead.id,
     channel,
     source: "extension",
-    externalKey: `extension:${input.platform}:${input.chatFingerprint}`,
+    externalKey,
     sourceUrl: input.sourceUrl,
     contact,
     summary: input.insight?.summary,
@@ -1121,11 +1187,22 @@ function leadMatchForContext(state: LeadKnowledgeState, scope: Scope, input: {
   contact?: LeadKnowledgeContact;
 }) {
   if (input.platform && input.chatFingerprint) {
+    const externalKeys = new Set([
+      extensionConversationExternalKey({
+        platform: input.platform,
+        chatFingerprint: input.chatFingerprint,
+        contact: input.contact
+      }),
+      extensionConversationLegacyExternalKey({
+        platform: input.platform,
+        chatFingerprint: input.chatFingerprint
+      })
+    ]);
     const conversation = state.conversations.find(
       (candidate) =>
         scopeMatches(scope, candidate) &&
         candidate.source === "extension" &&
-        candidate.externalKey === `extension:${input.platform}:${input.chatFingerprint}`
+        externalKeys.has(candidate.externalKey)
     );
     if (conversation) return findLeadById(state, scope, conversation.leadId);
   }

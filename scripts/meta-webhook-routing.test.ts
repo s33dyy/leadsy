@@ -172,6 +172,62 @@ async function main() {
     assert.equal(sharedALeads[0].contact.displayName, "Shared A Lead");
     assert.equal(sharedALeads[0].lastMessagePreview, "Shared WABA should route by phone");
     assert.equal(sharedBLeads.length, 0, "shared WABA owner B must not see owner A phone messages");
+
+    const conflictingPayload = {
+      object: "whatsapp_business_account",
+      entry: [
+        {
+          id: "waba_shared",
+          changes: [
+            {
+              field: "messages",
+              value: {
+                messaging_product: "whatsapp",
+                metadata: {
+                  display_phone_number: "16505553333",
+                  phone_number_id: "phone_owner_y"
+                },
+                contacts: [
+                  {
+                    profile: { name: "Conflicting Asset Lead" },
+                    wa_id: "16315553333"
+                  }
+                ],
+                messages: [
+                  {
+                    from: "16315553333",
+                    id: "wamid.conflict-1",
+                    timestamp: "1780391320",
+                    type: "text",
+                    text: { body: "Mismatched asset ids must not route" }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    };
+    const conflictingRawBody = JSON.stringify(conflictingPayload);
+    const conflictingSignature = `sha256=${createHmac("sha256", process.env.META_APP_SECRET).update(conflictingRawBody).digest("hex")}`;
+
+    const conflictingResponse = await POST(
+      new Request("https://leadsy.test/api/meta/whatsapp/webhook", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-hub-signature-256": conflictingSignature
+        },
+        body: conflictingRawBody
+      }) as never
+    );
+    assert.equal(conflictingResponse.status, 200);
+    const conflictingBody = await conflictingResponse.json();
+    assert.equal(conflictingBody.saved, 0, "conflicting WABA and phone assets must not save messages");
+    assert.equal(conflictingBody.unmatched, 1);
+    assert.equal(conflictingBody.ambiguous, 0);
+    const ownerYLeadsAfterConflict = await listLeadKnowledgeRecords({ tenantId: "tenant_owner_y", ownerId: "owner_y" });
+    assert.equal(ownerYLeadsAfterConflict.length, 0, "conflicting WABA must not route by phone alone");
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
