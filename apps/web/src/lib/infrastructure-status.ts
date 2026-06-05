@@ -28,6 +28,8 @@ export type AutomationStatus = {
   publicUrl?: string;
   internalUrl?: string;
   dashboardUrl?: string;
+  backendAgentWorkflowId?: string;
+  backendAgentWorkflowUrl?: string;
   health: HealthTone;
   workflowCount: number;
   lastExecution?: string;
@@ -82,6 +84,10 @@ function timeoutMs() {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 2500;
 }
 
+function backendAgentWorkflowId() {
+  return process.env.N8N_BACKEND_AGENT_WORKFLOW_ID?.trim() || "urS7zJDAyavE5PSJ";
+}
+
 async function probeN8nHealth(baseUrl?: string): Promise<{ health: HealthTone; latencyMs?: number; detail: string }> {
   if (!baseUrl) {
     return { health: "unknown", detail: "n8n URL is not configured." };
@@ -112,19 +118,22 @@ export async function getAutomationStatus(): Promise<AutomationStatus> {
   const internalUrl = cleanUrl(process.env.N8N_INTERNAL_URL) ?? publicUrl;
   const configured = Boolean(internalUrl || publicUrl);
   const probe = await probeN8nHealth(internalUrl);
+  const workflowId = backendAgentWorkflowId();
 
   return {
     configured,
     publicUrl,
     internalUrl,
     dashboardUrl: publicUrl,
+    backendAgentWorkflowId: workflowId,
+    backendAgentWorkflowUrl: publicUrl ? `${publicUrl}/workflow/${workflowId}` : undefined,
     health: configured ? probe.health : "unknown",
     workflowCount: configured ? 1 : 0,
     failedExecutions: 0,
     queueStatus: configured ? (probe.health === "healthy" ? "healthy" : "unknown") : "not_configured",
     checkedAt: new Date().toISOString(),
     detail: configured
-      ? `${probe.detail} One router workflow handles ${automationWorkflowDefinitions.length} Leadsy event types.`
+      ? `${probe.detail} One backend-agent workflow handles ${automationWorkflowDefinitions.length} Leadsy event types.`
       : "Add n8n as a separate Railway service to enable automation orchestration."
   };
 }

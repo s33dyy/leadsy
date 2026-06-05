@@ -201,7 +201,7 @@ export default async function ApprovalsPage() {
               <ul className="mt-2 space-y-1.5 font-mono text-[10.5px] text-muted-foreground">
                 <li>queued - {active.worker}</li>
                 <li>pending - human approval required</li>
-                <li>route - Next.js API to n8n automation router after approval</li>
+                <li>route - Next.js API to the n8n backend agent after approval</li>
               </ul>
             </div>
           </>

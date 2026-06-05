@@ -34,12 +34,19 @@ export type TaskPreparationResult =
   | { status: "blocked"; reason: "composer_missing" | "send_button_missing"; summary: string };
 type TaskStoppedResult = Extract<TaskPreparationResult, { status: "blocked" | "postponed" }>;
 export type TaskExecutionResult = { status: "sent"; externalId: string; sentAt: string } | TaskStoppedResult;
-type TaskComposerControls = {
-  composer: HTMLElement;
-  sendButton: HTMLElement;
+type TaskUiTimeouts = {
+  composerReadyMs?: number;
+  sendButtonReadyMs?: number;
+  pollMs?: number;
 };
+type ResolvedTaskUiTimeouts = Required<TaskUiTimeouts>;
 const outboundEchoWindowMs = 1000 * 60 * 2;
 const outboundHistoryLimit = 25;
+const defaultTaskUiTimeouts: ResolvedTaskUiTimeouts = {
+  composerReadyMs: 60000,
+  sendButtonReadyMs: 15000,
+  pollMs: 50
+};
 
 export interface AutomationModelClient {
   detectProfile(snapshot: DomSnapshot, messages: ChatMessage[]): Promise<ChatSiteProfile>;
@@ -64,6 +71,7 @@ export interface ChatAutomationOptions {
   settings?: AssistantSettings;
   openRouter?: AutomationModelClient;
   knowledgeProvider?: KnowledgeProvider;
+  taskUiTimeouts?: TaskUiTimeouts;
 }
 
 export class ChatAutomationController {
@@ -71,6 +79,7 @@ export class ChatAutomationController {
   private readonly settings: AssistantSettings;
   private readonly openRouter: AutomationModelClient;
   private readonly knowledgeProvider: KnowledgeProvider;
+  private readonly taskUiTimeouts: ResolvedTaskUiTimeouts;
   private observer?: MutationObserver;
   private profile?: ChatSiteProfile;
   private log?: ConversationLog;
@@ -95,6 +104,10 @@ export class ChatAutomationController {
       });
     this.knowledgeProvider =
       options.knowledgeProvider || new FallbackKnowledgeProvider(this.settings.fallbackBusinessPrompt);
+    this.taskUiTimeouts = {
+      ...defaultTaskUiTimeouts,
+      ...(options.taskUiTimeouts || {})
+    };
   }
 
   async arm(): Promise<void> {
@@ -190,44 +203,21 @@ export class ChatAutomationController {
       throw new Error("Task is not ready for worker execution.");
     }
 
-    if (this.profile && this.log) {
-      await this.sendReply(task.draftMessage, this.profile);
-      const sentTime = Date.now();
-      const sentAt = new Date(sentTime).toISOString();
-      const externalId = `task:${task.id}:${sentTime}`;
-      this.recordLeadsyOutbound(task.draftMessage, externalId, sentTime);
+    const controls = await this.prepareTaskDraft(task);
+    if (controls.status !== "ready") {
+      return controls.result;
+    }
+
+    this.setState({ mode: this.mode, statusText: "Sending" });
+    clickSendControl(controls.sendButton);
+    const sentTime = Date.now();
+    const sentAt = new Date(sentTime).toISOString();
+    const externalId = `task:${task.id}:${sentTime}`;
+    this.recordLeadsyOutbound(task.draftMessage, externalId, sentTime);
+    if (this.log) {
       await this.store.saveLog(this.log);
       await this.syncToLeadsy("reply-sent", `Worker sent task ${task.id}.`);
-      this.setState({ mode: "auto_active", statusText: "Task sent. Watching for replies." });
-      return { status: "sent", externalId, sentAt };
     }
-
-    const controls = await findTaskComposerControls(task, this.profile, 30000);
-    if (!controls.composer) {
-      const result: TaskExecutionResult = {
-        status: "blocked",
-        reason: "composer_missing",
-        summary: "Composer is not available on this chat page."
-      };
-      this.setState({ mode: "paused", statusText: "Task paused.", lastReason: result.summary });
-      return result;
-    }
-
-    focusAndInsertText(controls.composer, task.draftMessage);
-    const sendButton = controls.sendButton || (await findTaskSendButton(task, this.profile, 8000));
-    if (!sendButton) {
-      const result: TaskExecutionResult = {
-        status: "blocked",
-        reason: "send_button_missing",
-        summary: "Send button is not available after preparing the task draft."
-      };
-      this.setState({ mode: "paused", statusText: "Task paused.", lastReason: result.summary });
-      return result;
-    }
-
-    clickSendControl(sendButton);
-    const sentAt = new Date().toISOString();
-    const externalId = `task:${task.id}:${Date.now()}`;
     this.setState({ mode: "auto_active", statusText: "Task sent. Monitoring this chat page." });
     return { status: "sent", externalId, sentAt };
   }
@@ -243,63 +233,37 @@ export class ChatAutomationController {
       throw new Error("Task is not ready for worker preparation.");
     }
 
-    const controls = await findTaskComposerControls(task, this.profile, 30000);
-    if (!controls.composer) {
-      const result: TaskPreparationResult = {
-        status: "blocked",
-        reason: "composer_missing",
-        summary: "Composer is not available on this chat page."
-      };
-      this.setState({ mode: "paused", statusText: "Task paused.", lastReason: result.summary });
-      return result;
+    const controls = await this.prepareTaskDraft(task);
+    if (controls.status !== "ready") {
+      return controls.result;
     }
 
-    focusAndInsertText(controls.composer, task.draftMessage);
-    const sendButton = controls.sendButton || (await findTaskSendButton(task, this.profile, 8000));
-    if (!sendButton) {
-      const result: TaskPreparationResult = {
-        status: "blocked",
-        reason: "send_button_missing",
-        summary: "Send button is not available after preparing the task draft."
-      };
-      this.setState({ mode: "paused", statusText: "Task paused.", lastReason: result.summary });
-      return result;
-    }
-
-	    this.setState({
-	      mode: "needs_approval",
-	      statusText: "Draft prepared. Waiting for Leadsy app approval.",
-	      pendingReply: task.draftMessage,
-	      lastReason: `Task ${task.id} is ready to send.`
-	    });
+    this.setState({
+      mode: "needs_approval",
+      statusText: "Draft prepared. Waiting for Leadsy app approval.",
+      pendingReply: task.draftMessage,
+      lastReason: `Task ${task.id} is ready to send.`
+    });
     return { status: "prepared", draftMessage: task.draftMessage };
   }
 
   async sendPreparedTask(task: ExtensionTask): Promise<{ externalId: string; sentAt: string }> {
-    if (this.profile && this.log) {
-      await this.sendReply(task.draftMessage, this.profile);
-      const sentTime = Date.now();
-      const sentAt = new Date(sentTime).toISOString();
-      const externalId = `task:${task.id}:${sentTime}`;
-      this.recordLeadsyOutbound(task.draftMessage, externalId, sentTime);
-      await this.store.saveLog(this.log);
-      await this.syncToLeadsy("reply-sent", `Worker sent approved task ${task.id}.`);
-      this.setState({ mode: "auto_active", statusText: "Approved task sent. Watching for replies." });
-      return { externalId, sentAt };
+    const controls = await this.prepareTaskDraft(task);
+    if (controls.status !== "ready") {
+      this.setState({ mode: "paused", statusText: "Needs attention", lastReason: controls.result.summary });
+      throw new Error(controls.result.summary);
     }
 
-    const controls = await findTaskComposerControls(task, this.profile, 12000);
-    if (!controls.composer) {
-      throw new Error("Composer is not available on this chat page.");
+    this.setState({ mode: this.mode, statusText: "Sending" });
+    clickSendControl(controls.sendButton);
+    const sentTime = Date.now();
+    const sentAt = new Date(sentTime).toISOString();
+    const externalId = `task:${task.id}:${sentTime}`;
+    this.recordLeadsyOutbound(task.draftMessage, externalId, sentTime);
+    if (this.log) {
+      await this.store.saveLog(this.log);
+      await this.syncToLeadsy("reply-sent", `Worker sent approved task ${task.id}.`);
     }
-    focusAndInsertText(controls.composer, task.draftMessage);
-    const sendButton = controls.sendButton || (await findTaskSendButton(task, this.profile, 5000));
-    if (!sendButton) {
-      throw new Error("Send button is not available after inserting task draft.");
-    }
-    clickSendControl(sendButton);
-    const sentAt = new Date().toISOString();
-    const externalId = `task:${task.id}:${Date.now()}`;
     this.setState({ mode: "auto_active", statusText: "Approved task sent. Monitoring this chat page." });
     return { externalId, sentAt };
   }
@@ -455,18 +419,66 @@ export class ChatAutomationController {
   }
 
   private async sendReply(replyText: string, profile: ChatSiteProfile): Promise<void> {
-    const composer = document.querySelector<HTMLElement>(profile.composerSelector);
-
+    this.setState({ mode: this.mode, statusText: "Waiting for composer" });
+    const composer = await findFirstElementWithRetry(
+      [profile.composerSelector],
+      this.taskUiTimeouts.composerReadyMs,
+      this.taskUiTimeouts.pollMs
+    );
     if (!composer) {
-      throw new Error("Composer is not available.");
+      throw new Error("Composer is not available on this chat page.");
     }
 
     focusAndInsertText(composer, replyText);
-    const sendButton = await findElementWithRetry(profile.sendButtonSelector, 1200);
+    this.setState({ mode: this.mode, statusText: "Draft ready" });
+    const sendButton = await findFirstElementWithRetry(
+      [profile.sendButtonSelector],
+      this.taskUiTimeouts.sendButtonReadyMs,
+      this.taskUiTimeouts.pollMs
+    );
     if (!sendButton) {
       throw new Error("Send button is not available after inserting reply text.");
     }
+    this.setState({ mode: this.mode, statusText: "Sending" });
     clickSendControl(sendButton);
+  }
+
+  private async prepareTaskDraft(
+    task: ExtensionTask
+  ): Promise<{ status: "ready"; composer: HTMLElement; sendButton: HTMLElement } | { status: "blocked"; result: TaskStoppedResult }> {
+    this.setState({ mode: this.mode, statusText: "Opening WhatsApp chat" });
+    this.setState({ mode: this.mode, statusText: "Waiting for composer" });
+
+    const composer = await findFirstElementWithRetry(
+      taskComposerSelectors(task, this.profile),
+      this.taskUiTimeouts.composerReadyMs,
+      this.taskUiTimeouts.pollMs
+    );
+    if (!composer) {
+      const result: TaskStoppedResult = {
+        status: "blocked",
+        reason: "composer_missing",
+        summary: "WhatsApp chat did not finish loading the message composer."
+      };
+      this.setState({ mode: "paused", statusText: "Needs attention", lastReason: result.summary });
+      return { status: "blocked", result };
+    }
+
+    focusAndInsertText(composer, task.draftMessage);
+    this.setState({ mode: this.mode, statusText: "Draft ready" });
+
+    const sendButton = await findTaskSendButton(task, this.profile, this.taskUiTimeouts.sendButtonReadyMs, this.taskUiTimeouts.pollMs);
+    if (!sendButton) {
+      const result: TaskStoppedResult = {
+        status: "blocked",
+        reason: "send_button_missing",
+        summary: "WhatsApp chat did not finish loading the send button after the draft was inserted."
+      };
+      this.setState({ mode: "paused", statusText: "Needs attention", lastReason: result.summary });
+      return { status: "blocked", result };
+    }
+
+    return { status: "ready", composer, sendButton };
   }
 
   private setState(state: OverlayState): void {
@@ -578,48 +590,33 @@ function normalizeMessageText(value: string) {
   return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
-async function findElementWithRetry(selector: string, timeoutMs: number): Promise<HTMLElement | undefined> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() <= deadline) {
-    const element = document.querySelector<HTMLElement>(selector);
-    if (element) {
-      return element;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  return undefined;
-}
-
-async function findTaskComposerControls(
-  task: ExtensionTask,
-  profile: ChatSiteProfile | undefined,
-  timeoutMs: number
-): Promise<Partial<TaskComposerControls>> {
-  const composerSelectors = taskComposerSelectors(task, profile);
-  const composer = await findFirstElementWithRetry(composerSelectors, timeoutMs);
-  if (!composer) return {};
-  const sendButton = await findTaskSendButton(task, profile, 1200);
-  return { composer, sendButton };
-}
-
 async function findTaskSendButton(
   task: ExtensionTask,
   profile: ChatSiteProfile | undefined,
-  timeoutMs: number
+  timeoutMs: number,
+  pollMs = 50
 ): Promise<HTMLElement | undefined> {
-  return findFirstElementWithRetry(taskSendButtonSelectors(task, profile), timeoutMs);
+  return findFirstElementWithRetry(taskSendButtonSelectors(task, profile), timeoutMs, pollMs);
 }
 
-async function findFirstElementWithRetry(selectors: string[], timeoutMs: number): Promise<HTMLElement | undefined> {
+async function findFirstElementWithRetry(selectors: string[], timeoutMs: number, pollMs = 50): Promise<HTMLElement | undefined> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() <= deadline) {
     for (const selector of selectors) {
       const element = safeQuerySelector(selector);
-      if (element) return element;
+      if (element && isElementReady(element)) return element;
     }
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
   }
   return undefined;
+}
+
+function isElementReady(element: HTMLElement) {
+  if (!element.isConnected) return false;
+  if (element.hasAttribute("hidden")) return false;
+  if (element.getAttribute("aria-disabled") === "true") return false;
+  if ("disabled" in element && Boolean((element as HTMLButtonElement).disabled)) return false;
+  return true;
 }
 
 function safeQuerySelector(selector: string): HTMLElement | undefined {

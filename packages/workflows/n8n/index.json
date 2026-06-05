@@ -1,8 +1,8 @@
 [
   {
-    "key": "automation-router",
-    "name": "Leadsy - Automation Router",
-    "file": "leadsy-automation-router.json",
+    "key": "backend-agent",
+    "name": "Leadsy - Backend Agent",
+    "file": "leadsy-backend-agent.json",
     "active": false,
     "providerConfigs": [
       {

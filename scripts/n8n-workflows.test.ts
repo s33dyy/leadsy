@@ -27,17 +27,27 @@ function nodeNames(workflow: N8nWorkflowBlueprint) {
 function assertRequiredNodes(workflow: N8nWorkflowBlueprint) {
   const names = nodeNames(workflow);
   for (const name of [
-    "Leadsy Event Webhook",
+    "Leadsy Frontend Webhook",
+    "Meta / WhatsApp Event Webhook",
     "Follow-up Due Schedule",
     "Worker Retry Schedule",
-    "Normalize Webhook Event",
+    "Edit Fields / Normalize Event",
     "Normalize Follow-up Due",
     "Normalize Worker Retry",
     "Log Started",
     "Validate Event",
     "Provider Config Check",
-    "Backend Logic Modules",
-    "Dispatch Automation",
+    "Leadsy Context Loader",
+    "Leadsy Backend AI Agent",
+    "OpenRouter Chat Model",
+    "WhatsApp Business Cloud",
+    "Meta Graph API",
+    "Email Send",
+    "Task + Approval Writer",
+    "Research + Qualification Writer",
+    "Audit Event Writer",
+    "Failure / Retry Handler",
+    "Leadsy Result Writer",
     "Log Succeeded"
   ]) {
     assert(names.has(name), `${workflow.name} should include ${name}`);
@@ -113,7 +123,7 @@ function assertBackendLogicModules(workflow: N8nWorkflowBlueprint) {
   assert.deepEqual(
     workflow.meta.backendLogicModules.map((module) => module.key),
     requiredWorkflowKeys,
-    `${workflow.name} should carry n8n-owned backend logic modules for every router event`
+    `${workflow.name} should carry n8n-owned backend logic modules for every backend-agent event`
   );
   for (const module of workflow.meta.backendLogicModules) {
     assert.equal(module.owner, "n8n", `${module.label} should be owned by n8n`);
@@ -138,20 +148,53 @@ function assertBackendLogicModules(workflow: N8nWorkflowBlueprint) {
 
 function assertRetryPolicy(workflow: N8nWorkflowBlueprint) {
   const retryingNodes = workflow.nodes.filter((node) => node.retryOnFail);
-  assert.equal(retryingNodes.length, 3, `${workflow.name} should retry the three Leadsy HTTP handoff steps`);
+  assert(
+    retryingNodes.length >= 4,
+    `${workflow.name} should retry Leadsy gateway handoffs and external provider handoffs`
+  );
   for (const node of retryingNodes) {
     assert.equal(node.maxTries, 3, `${workflow.name} ${node.name} should retry three times`);
     assert.equal(node.waitBetweenTries, 60000, `${workflow.name} ${node.name} should back off before retry`);
   }
 }
 
-function assertSimpleCanvas(workflow: N8nWorkflowBlueprint) {
+function assertBackendAgentCanvas(workflow: N8nWorkflowBlueprint) {
   assert(
-    workflow.nodes.length <= 12,
-    `${workflow.name} should stay visually small enough to configure on one n8n screen`
+    workflow.nodes.length <= 24,
+    `${workflow.name} should stay readable on one n8n backend-agent canvas`
   );
-  const dispatchNodes = workflow.nodes.filter((node) => node.name === "Dispatch Automation");
-  assert.equal(dispatchNodes.length, 1, `${workflow.name} should have exactly one configurable action node`);
+  const agentNodes = workflow.nodes.filter((node) => node.name === "Leadsy Backend AI Agent");
+  assert.equal(agentNodes.length, 1, `${workflow.name} should have exactly one central backend-agent node`);
+  const writerNodes = workflow.nodes.filter((node) => node.name === "Leadsy Result Writer");
+  assert.equal(writerNodes.length, 1, `${workflow.name} should have one Leadsy state-boundary writer`);
+  const providerToolNodes = [
+    "OpenRouter Chat Model",
+    "WhatsApp Business Cloud",
+    "Meta Graph API",
+    "Email Send",
+    "Failure / Retry Handler"
+  ];
+  for (const name of providerToolNodes) {
+    const node = workflow.nodes.find((item) => item.name === name);
+    assert(node, `${workflow.name} should expose ${name} as a visible n8n tool/provider node`);
+    assert(
+      node.position[1] >= 240,
+      `${workflow.name} should place ${name} in the lower provider/tool lane like the reference canvas`
+    );
+  }
+  const agentConnections = workflow.connections["Leadsy Backend AI Agent"]?.main?.flat().map((target) => target.node) ?? [];
+  for (const target of [
+    "OpenRouter Chat Model",
+    "WhatsApp Business Cloud",
+    "Meta Graph API",
+    "Email Send",
+    "Task + Approval Writer",
+    "Research + Qualification Writer",
+    "Audit Event Writer",
+    "Leadsy Result Writer"
+  ]) {
+    assert(agentConnections.includes(target), `${workflow.name} should visibly connect the backend agent to ${target}`);
+  }
 }
 
 async function main() {
@@ -162,40 +205,40 @@ async function main() {
     "automation catalog should cover the requested workflow set in order"
   );
 
-  assert.equal(n8nWorkflowBlueprints.length, 1, "n8n should export one easy-to-configure router workflow");
+  assert.equal(n8nWorkflowBlueprints.length, 1, "n8n should export one easy-to-configure backend-agent workflow");
   const workflow = n8nWorkflowBlueprints[0];
-  assert(workflow, "router workflow should exist");
-  assert.equal(workflow.name, "Leadsy - Automation Router", "single n8n workflow should use the router naming");
-  assert.equal(workflow.active, false, "router should import disabled until manually reviewed");
-  assert.equal(workflow.settings.executionOrder, "v1", "router should use v1 execution order");
-  assert.equal(workflow.settings.saveExecutionProgress, true, "router should save execution progress");
+  assert(workflow, "backend-agent workflow should exist");
+  assert.equal(workflow.name, "Leadsy - Backend Agent", "single n8n workflow should use backend-agent naming");
+  assert.equal(workflow.active, false, "backend agent should import disabled until manually reviewed");
+  assert.equal(workflow.settings.executionOrder, "v1", "backend agent should use v1 execution order");
+  assert.equal(workflow.settings.saveExecutionProgress, true, "backend agent should save execution progress");
   assert.deepEqual(
     workflow.meta.routes.map((route) => route.key),
     requiredWorkflowKeys,
-    "router metadata should list every supported route"
+    "backend-agent metadata should list every supported route"
   );
   assertRequiredNodes(workflow);
-  assertSimpleCanvas(workflow);
+  assertBackendAgentCanvas(workflow);
   assertRetryPolicy(workflow);
   assertLeadsyBoundaries(workflow);
   assertProviderConfigHub(workflow);
   assertBackendLogicModules(workflow);
 
   const exported = JSON.parse(
-    await readFile(join(root, "packages", "workflows", "n8n", "leadsy-automation-router.json"), "utf8")
+    await readFile(join(root, "packages", "workflows", "n8n", "leadsy-backend-agent.json"), "utf8")
   );
-  assert.deepEqual(exported, workflow, "exported router JSON should match the typed blueprint");
+  assert.deepEqual(exported, workflow, "exported backend-agent JSON should match the typed blueprint");
 
   const index = JSON.parse(await readFile(join(root, "packages", "workflows", "n8n", "index.json"), "utf8"));
   assert.deepEqual(
     index.map((entry: { key: string }) => entry.key),
-    ["automation-router"],
-    "workflow export index should list only the easy-to-configure router"
+    ["backend-agent"],
+    "workflow export index should list only the easy-to-configure backend agent"
   );
   assert.deepEqual(
     index[0].routes.map((entry: { key: string }) => entry.key),
     requiredWorkflowKeys,
-    "workflow export index should describe every route inside the router"
+    "workflow export index should describe every route inside the backend agent"
   );
   assert.deepEqual(
     index[0].providerConfigs.map((entry: { key: string }) => entry.key),

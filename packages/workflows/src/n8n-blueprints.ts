@@ -44,7 +44,7 @@ export type N8nWorkflowBlueprint = {
   };
   pinData: Record<string, never>;
   meta: {
-    leadsyWorkflowKey: "automation-router";
+    leadsyWorkflowKey: "backend-agent";
     providerConfigs: N8nProviderConfigGroup[];
     routeProviderRequirements: Record<AutomationWorkflowDefinition["key"], N8nProviderConfigKey[]>;
     backendLogicModules: N8nBackendLogicModule[];
@@ -61,20 +61,20 @@ export type N8nWorkflowBlueprint = {
 };
 
 const workflowActionPath: Record<AutomationWorkflowDefinition["key"], string> = {
-  "lead-added": "/api/automation/events/lead-added",
-  "lead-updated": "/api/automation/events/lead-updated",
-  "research-requested": "/api/automation/events/research-requested",
-  "qualification-requested": "/api/automation/events/qualification-requested",
-  "task-generated": "/api/automation/events/task-generated",
-  "approval-requested": "/api/automation/events/approval-requested",
-  "follow-up-due": "/api/automation/events/follow-up-due",
-  "meta-lead-received": "/api/automation/events/meta-lead-received",
-  "whatsapp-message-received": "/api/automation/events/whatsapp-message-received",
-  "worker-retry": "/api/automation/events/worker-retry"
+  "lead-added": "/api/automation/agent",
+  "lead-updated": "/api/automation/agent",
+  "research-requested": "/api/automation/agent",
+  "qualification-requested": "/api/automation/agent",
+  "task-generated": "/api/automation/agent",
+  "approval-requested": "/api/automation/agent",
+  "follow-up-due": "/api/automation/agent",
+  "meta-lead-received": "/api/automation/agent",
+  "whatsapp-message-received": "/api/automation/agent",
+  "worker-retry": "/api/automation/agent"
 };
 
 function nodeId(suffix: string) {
-  return `leadsy-router-${suffix}`;
+  return `leadsy-backend-agent-${suffix}`;
 }
 
 function connection(to: string): N8nConnectionTarget {
@@ -132,20 +132,41 @@ function httpNode(
 function webhookTrigger(): N8nNode {
   return {
     id: nodeId("webhook-trigger"),
-    name: "Leadsy Event Webhook",
+    name: "Leadsy Frontend Webhook",
     type: "n8n-nodes-base.webhook",
     typeVersion: 2,
     position: [0, 0],
     parameters: {
       httpMethod: "POST",
-      path: "leadsy/automation-router",
+      path: "leadsy/backend-agent",
       responseMode: "onReceived",
       options: {
         responseCode: 202,
         responseData: "firstEntryJson"
       }
     },
-    notes: "Single Leadsy entrypoint. Send { workflowKey, tenantId, ownerId, idempotencyKey, payload } to route automation events.",
+    notes: "Leadsy frontend/API entrypoint. Send { workflowKey, tenantId, ownerId, idempotencyKey, payload } to the n8n backend agent.",
+    notesInFlow: true
+  };
+}
+
+function providerWebhookTrigger(): N8nNode {
+  return {
+    id: nodeId("provider-webhook-trigger"),
+    name: "Meta / WhatsApp Event Webhook",
+    type: "n8n-nodes-base.webhook",
+    typeVersion: 2,
+    position: [0, 220],
+    parameters: {
+      httpMethod: "POST",
+      path: "leadsy/provider-events",
+      responseMode: "onReceived",
+      options: {
+        responseCode: 202,
+        responseData: "firstEntryJson"
+      }
+    },
+    notes: "Optional internal relay for stored Meta/WhatsApp events. Public provider verification and raw intake still stay in Leadsy.",
     notesInFlow: true
   };
 }
@@ -162,7 +183,7 @@ function scheduleTrigger(name: string, suffix: string, minutesInterval: number, 
         interval: [{ field: "minutes", minutesInterval }]
       }
     },
-    notes: `${name} feeds the same router canvas as external Leadsy events.`,
+    notes: `${name} feeds the same backend-agent canvas as external Leadsy events.`,
     notesInFlow: true
   };
 }
@@ -170,10 +191,10 @@ function scheduleTrigger(name: string, suffix: string, minutesInterval: number, 
 function normalizeWebhook(): N8nNode {
   return {
     id: nodeId("normalize-webhook"),
-    name: "Normalize Webhook Event",
+    name: "Edit Fields / Normalize Event",
     type: "n8n-nodes-base.code",
     typeVersion: 2,
-    position: [300, 0],
+    position: [300, 110],
     parameters: {
       jsCode: [
         "const body = $json.body ?? $json;",
@@ -195,7 +216,7 @@ function normalizeWebhook(): N8nNode {
         "}];"
       ].join("\n")
     },
-    notes: "Normalizes event payloads emitted by Leadsy APIs.",
+    notes: "Edit this node when Leadsy, Meta, WhatsApp, or extension payloads need field mapping before the backend agent runs.",
     notesInFlow: true
   };
 }
@@ -309,10 +330,10 @@ function providerConfigStatusNode(): N8nNode {
 function backendLogicModulesNode(): N8nNode {
   return {
     id: nodeId("backend-logic-modules"),
-    name: "Backend Logic Modules",
+    name: "Leadsy Backend AI Agent",
     type: "n8n-nodes-base.code",
     typeVersion: 2,
-    position: [1040, 0],
+    position: [1460, 160],
     parameters: {
       jsCode: [
         `const modules = ${JSON.stringify(n8nBackendLogicByWorkflowKey, null, 2)};`,
@@ -351,7 +372,7 @@ function backendLogicModulesNode(): N8nNode {
         "}];"
       ].join("\n")
     },
-    notes: "This is where mutable backend workflow logic lives for automation: decision inputs, action plans, guardrails, approval requirements, and failure policy. Edit it in n8n, or edit the typed source and re-export from GitHub/Codex.",
+    notes: "Central backend-agent node. Mutable automation decisions, action plans, guardrails, approval requirements, and failure policy live here.",
     notesInFlow: true
   };
 }
@@ -366,7 +387,7 @@ function validateEventNode(): N8nNode {
     name: "Validate Event",
     type: "n8n-nodes-base.code",
     typeVersion: 2,
-    position: [660, 0],
+    position: [620, 160],
     parameters: {
       jsCode: [
         `const routePaths = ${JSON.stringify(workflowActionPath, null, 2)};`,
@@ -386,7 +407,131 @@ function validateEventNode(): N8nNode {
         "}];"
       ].join("\n")
     },
-    notes: "Validates the workflowKey and computes the Leadsy API path. No visual branch per event type.",
+    notes: "Validates the workflowKey and pins all durable writes to the single Leadsy backend-agent gateway.",
+    notesInFlow: true
+  };
+}
+
+function contextLoaderNode(): N8nNode {
+  return {
+    id: nodeId("context-loader"),
+    name: "Leadsy Context Loader",
+    type: "n8n-nodes-base.code",
+    typeVersion: 2,
+    position: [1180, 160],
+    parameters: {
+      jsCode: [
+        "return [{",
+        "  json: {",
+        "    ...$json,",
+        "    contextSource: 'leadsy-api',",
+        "    contextRequest: {",
+        "      workflowKey: $json.workflowKey,",
+        "      tenantId: $json.tenantId,",
+        "      ownerId: $json.ownerId,",
+        "      leadId: $json.leadId,",
+        "      taskId: $json.taskId,",
+        "      conversationId: $json.conversationId,",
+        "      source: 'n8n-backend-agent'",
+        "    }",
+        "  }",
+        "}];"
+      ].join("\n")
+    },
+    notes: "Prepares the context request shape. Leadsy remains the source of truth; n8n receives only the event context Leadsy exposes.",
+    notesInFlow: true
+  };
+}
+
+function providerToolNode(
+  suffix: string,
+  name: string,
+  toolKey: string,
+  position: [number, number],
+  notes: string
+): N8nNode {
+  return {
+    id: nodeId(suffix),
+    name,
+    type: "n8n-nodes-base.code",
+    typeVersion: 2,
+    position,
+    retryOnFail: true,
+    maxTries: 3,
+    waitBetweenTries: 60000,
+    continueOnFail: true,
+    parameters: {
+      jsCode: [
+        "const commands = Array.isArray($json.providerCommands) ? $json.providerCommands : [];",
+        "return [{",
+        "  json: {",
+        "    ...$json,",
+        "    providerCommand: {",
+        `      toolKey: ${JSON.stringify(toolKey)},`,
+        `      label: ${JSON.stringify(name)},`,
+        "      source: 'n8n',",
+        "      status: ($json.providerConfigMissing || []).length ? 'blocked_provider_config' : 'ready_for_manual_wiring',",
+        "      workflowKey: $json.workflowKey,",
+        "      guardrail: 'No durable business state is written outside the Leadsy gateway.'",
+        "    },",
+        "    providerCommands: [",
+        "      ...commands,",
+        "      {",
+        `        toolKey: ${JSON.stringify(toolKey)},`,
+        `        label: ${JSON.stringify(name)},`,
+        "        source: 'n8n',",
+        "        status: ($json.providerConfigMissing || []).length ? 'blocked_provider_config' : 'ready_for_manual_wiring'",
+        "      }",
+        "    ]",
+        "  }",
+        "}];"
+      ].join("\n")
+    },
+    notes,
+    notesInFlow: true
+  };
+}
+
+function leadsyWriterNode(
+  suffix: string,
+  name: string,
+  writerKey: string,
+  position: [number, number],
+  notes: string
+): N8nNode {
+  return {
+    id: nodeId(suffix),
+    name,
+    type: "n8n-nodes-base.code",
+    typeVersion: 2,
+    position,
+    parameters: {
+      jsCode: [
+        "const writeCommands = Array.isArray($json.leadsyWriteCommands) ? $json.leadsyWriteCommands : [];",
+        "return [{",
+        "  json: {",
+        "    ...$json,",
+        "    leadsyWriteCommand: {",
+        `      writerKey: ${JSON.stringify(writerKey)},`,
+        `      label: ${JSON.stringify(name)},`,
+        "      source: 'n8n',",
+        "      status: 'ready_for_leadsy_gateway',",
+        "      workflowKey: $json.workflowKey",
+        "    },",
+        "    leadsyWriteCommands: [",
+        "      ...writeCommands,",
+        "      {",
+        `        writerKey: ${JSON.stringify(writerKey)},`,
+        `        label: ${JSON.stringify(name)},`,
+        "        source: 'n8n',",
+        "        status: 'ready_for_leadsy_gateway'",
+        "      }",
+        "    ]",
+        "  }",
+        "}];"
+      ].join("\n")
+    },
+    notes,
     notesInFlow: true
   };
 }
@@ -394,7 +539,7 @@ function validateEventNode(): N8nNode {
 function dispatchAutomationNode(): N8nNode {
   return httpNode(
     "dispatch-automation",
-    "Dispatch Automation",
+    "Leadsy Result Writer",
     "={{$env.LEADSY_API_BASE_URL + $json.actionPath}}",
     {
       workflowKey: "={{$json.workflowKey}}",
@@ -412,14 +557,18 @@ function dispatchAutomationNode(): N8nNode {
       providerConfig: "={{$json.providerConfig}}",
       backendLogicSource: "={{$json.backendLogicSource}}",
       n8nLogicPlan: "={{$json.n8nLogicPlan}}",
+      providerCommand: "={{$json.providerCommand}}",
+      providerCommands: "={{$json.providerCommands}}",
+      leadsyWriteCommand: "={{$json.leadsyWriteCommand}}",
+      leadsyWriteCommands: "={{$json.leadsyWriteCommands}}",
       payload: "={{$json.payload}}"
     },
-    [1360, 0],
+    [2220, 160],
     { retryOnFail: true }
   );
 }
 
-export function n8nAutomationRouterBlueprint(): N8nWorkflowBlueprint {
+export function n8nBackendAgentBlueprint(): N8nWorkflowBlueprint {
   const followUpWorkflow = automationWorkflowDefinitions.find((workflow) => workflow.key === "follow-up-due")!;
   const workerRetryWorkflow = automationWorkflowDefinitions.find((workflow) => workflow.key === "worker-retry")!;
   const startedPath = "={{$env.LEADSY_API_BASE_URL + '/api/automation/executions'}}";
@@ -434,7 +583,7 @@ export function n8nAutomationRouterBlueprint(): N8nWorkflowBlueprint {
       status: "started",
       metadata: "={{$json}}"
     },
-    [660, -260],
+    [620, -130],
     { continueOnFail: true, retryOnFail: true }
   );
 
@@ -451,43 +600,134 @@ export function n8nAutomationRouterBlueprint(): N8nWorkflowBlueprint {
         dispatchResponse: "={{$json}}"
       }
     },
-    [1680, 0],
+    [2500, 160],
     { continueOnFail: true, retryOnFail: true }
   );
 
   const validateEvent = validateEventNode();
   const providerConfig = providerConfigStatusNode();
+  const contextLoader = contextLoaderNode();
   const backendLogicModules = backendLogicModulesNode();
+  const openRouterTool = providerToolNode(
+    "openrouter-chat-model",
+    "OpenRouter Chat Model",
+    "openrouter",
+    [1460, 460],
+    "Model-routing tool node. Configure OPENROUTER_* env vars in n8n; Leadsy stores outputs and cost metadata."
+  );
+  const whatsappTool = providerToolNode(
+    "whatsapp-business-cloud",
+    "WhatsApp Business Cloud",
+    "whatsapp",
+    [1700, 460],
+    "WhatsApp provider tool node. It may send only after Leadsy approval state is present in the event payload."
+  );
+  const metaTool = providerToolNode(
+    "meta-graph-api",
+    "Meta Graph API",
+    "meta",
+    [1700, 620],
+    "Meta provider tool node. OAuth, webhooks, and raw Lead Ads intake stay in Leadsy."
+  );
+  const emailTool = providerToolNode(
+    "email-send",
+    "Email Send",
+    "email",
+    [1700, 780],
+    "Email provider tool node for notifications and approved outreach. Configure SMTP, Resend, or Postmark in n8n env vars."
+  );
+  const taskWriter = leadsyWriterNode(
+    "task-approval-writer",
+    "Task + Approval Writer",
+    "tasks-approvals",
+    [1940, 300],
+    "Writes task and approval commands back through the Leadsy gateway; no direct Postgres writes from n8n."
+  );
+  const researchWriter = leadsyWriterNode(
+    "research-qualification-writer",
+    "Research + Qualification Writer",
+    "research-qualification",
+    [1940, 460],
+    "Writes research and qualification outputs through Leadsy APIs so Postgres remains the source of truth."
+  );
+  const auditWriter = leadsyWriterNode(
+    "audit-event-writer",
+    "Audit Event Writer",
+    "audit-events",
+    [1940, 620],
+    "Writes audit-event metadata through the Leadsy gateway."
+  );
+  const retryHandler = providerToolNode(
+    "failure-retry-handler",
+    "Failure / Retry Handler",
+    "failure-retry",
+    [1940, 780],
+    "Central retry/escalation lane. Edit retry policy in n8n while Leadsy stores durable execution metadata."
+  );
   const dispatchAutomation = dispatchAutomationNode();
 
   return {
-    name: "Leadsy - Automation Router",
+    name: "Leadsy - Backend Agent",
     active: false,
     nodes: [
       webhookTrigger(),
-      scheduleTrigger("Follow-up Due Schedule", "follow-up-schedule", 15, [0, 220]),
-      scheduleTrigger("Worker Retry Schedule", "worker-retry-schedule", 5, [0, 440]),
+      providerWebhookTrigger(),
+      scheduleTrigger("Follow-up Due Schedule", "follow-up-schedule", 15, [0, 440]),
+      scheduleTrigger("Worker Retry Schedule", "worker-retry-schedule", 5, [0, 660]),
       normalizeWebhook(),
-      normalizeSchedule("Normalize Follow-up Due", "normalize-follow-up-due", followUpWorkflow, [300, 220], 15),
-      normalizeSchedule("Normalize Worker Retry", "normalize-worker-retry", workerRetryWorkflow, [300, 440], 5),
+      normalizeSchedule("Normalize Follow-up Due", "normalize-follow-up-due", followUpWorkflow, [300, 440], 15),
+      normalizeSchedule("Normalize Worker Retry", "normalize-worker-retry", workerRetryWorkflow, [300, 660], 5),
       logStarted,
       validateEvent,
       providerConfig,
+      contextLoader,
       backendLogicModules,
+      openRouterTool,
+      whatsappTool,
+      metaTool,
+      emailTool,
+      taskWriter,
+      researchWriter,
+      auditWriter,
+      retryHandler,
       dispatchAutomation,
       logSucceeded
     ],
     connections: {
-      "Leadsy Event Webhook": { main: [[connection("Normalize Webhook Event")]] },
+      "Leadsy Frontend Webhook": { main: [[connection("Edit Fields / Normalize Event")]] },
+      "Meta / WhatsApp Event Webhook": { main: [[connection("Edit Fields / Normalize Event")]] },
       "Follow-up Due Schedule": { main: [[connection("Normalize Follow-up Due")]] },
       "Worker Retry Schedule": { main: [[connection("Normalize Worker Retry")]] },
-      "Normalize Webhook Event": { main: [[connection("Log Started"), connection("Validate Event")]] },
+      "Edit Fields / Normalize Event": { main: [[connection("Log Started"), connection("Validate Event")]] },
       "Normalize Follow-up Due": { main: [[connection("Log Started"), connection("Validate Event")]] },
       "Normalize Worker Retry": { main: [[connection("Log Started"), connection("Validate Event")]] },
       "Validate Event": { main: [[connection("Provider Config Check")]] },
-      "Provider Config Check": { main: [[connection("Backend Logic Modules")]] },
-      "Backend Logic Modules": { main: [[connection("Dispatch Automation")]] },
-      "Dispatch Automation": { main: [[connection("Log Succeeded")]] }
+      "Provider Config Check": { main: [[connection("Leadsy Context Loader")]] },
+      "Leadsy Context Loader": { main: [[connection("Leadsy Backend AI Agent")]] },
+      "Leadsy Backend AI Agent": {
+        main: [
+          [
+            connection("OpenRouter Chat Model"),
+            connection("WhatsApp Business Cloud"),
+            connection("Meta Graph API"),
+            connection("Email Send"),
+            connection("Task + Approval Writer"),
+            connection("Research + Qualification Writer"),
+            connection("Audit Event Writer"),
+            connection("Failure / Retry Handler"),
+            connection("Leadsy Result Writer")
+          ]
+        ]
+      },
+      "OpenRouter Chat Model": { main: [[connection("Leadsy Result Writer")]] },
+      "WhatsApp Business Cloud": { main: [[connection("Leadsy Result Writer")]] },
+      "Meta Graph API": { main: [[connection("Leadsy Result Writer")]] },
+      "Email Send": { main: [[connection("Leadsy Result Writer")]] },
+      "Task + Approval Writer": { main: [[connection("Leadsy Result Writer")]] },
+      "Research + Qualification Writer": { main: [[connection("Leadsy Result Writer")]] },
+      "Audit Event Writer": { main: [[connection("Leadsy Result Writer")]] },
+      "Failure / Retry Handler": { main: [[connection("Leadsy Result Writer")]] },
+      "Leadsy Result Writer": { main: [[connection("Log Succeeded")]] }
     },
     settings: {
       executionOrder: "v1",
@@ -499,11 +739,11 @@ export function n8nAutomationRouterBlueprint(): N8nWorkflowBlueprint {
     },
     pinData: {},
     meta: {
-      leadsyWorkflowKey: "automation-router",
+      leadsyWorkflowKey: "backend-agent",
       providerConfigs: n8nProviderConfigGroups,
       routeProviderRequirements: n8nProviderConfigByWorkflowKey,
       backendLogicModules: n8nBackendLogicModules,
-      purpose: "Route every Leadsy automation event through one configurable n8n workflow.",
+      purpose: "Run every Leadsy operational automation through one configurable n8n backend-agent canvas.",
       preserves: "n8n owns mutable automation logic and provider config; Leadsy remains the auth/RBAC boundary, API gateway, and Postgres source of truth.",
       routes: automationWorkflowDefinitions.map((workflow) => ({
         key: workflow.key,
@@ -516,4 +756,6 @@ export function n8nAutomationRouterBlueprint(): N8nWorkflowBlueprint {
   };
 }
 
-export const n8nWorkflowBlueprints = [n8nAutomationRouterBlueprint()];
+export const n8nAutomationRouterBlueprint = n8nBackendAgentBlueprint;
+
+export const n8nWorkflowBlueprints = [n8nBackendAgentBlueprint()];

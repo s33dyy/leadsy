@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     workflows: automationWorkflowDefinitions.map((workflow) => ({
       ...workflow,
-      n8nUrl: automation.publicUrl ? `${automation.publicUrl}/workflow/${workflow.key}` : undefined
+      n8nUrl: automation.backendAgentWorkflowUrl
     }))
   });
 }

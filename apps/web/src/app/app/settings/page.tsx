@@ -60,7 +60,7 @@ export default async function SettingsPage() {
   const backendLogic = infrastructure.backendLogic;
   const providerConfigs = infrastructure.providerConfigs;
   const dashboardUrl = automation.dashboardUrl;
-  const routerUrl = dashboardUrl ? `${dashboardUrl}/workflow/urS7zJDAyavE5PSJ` : undefined;
+  const backendAgentUrl = automation.backendAgentWorkflowUrl;
   const executionsUrl = dashboardUrl ? `${dashboardUrl}/executions` : undefined;
 
   return (
@@ -133,9 +133,9 @@ export default async function SettingsPage() {
                 Open n8n dashboard <ExternalLink className="h-3 w-3" />
               </a>
             ) : null}
-            {routerUrl ? (
-              <a href={routerUrl} className="inline-flex h-7 items-center gap-1.5 rounded-[5px] border border-border bg-surface-2 px-2.5 text-[12px] hover:bg-surface-3">
-                Open router workflow <ExternalLink className="h-3 w-3" />
+            {backendAgentUrl ? (
+              <a href={backendAgentUrl} className="inline-flex h-7 items-center gap-1.5 rounded-[5px] border border-border bg-surface-2 px-2.5 text-[12px] hover:bg-surface-3">
+                Open backend agent <ExternalLink className="h-3 w-3" />
               </a>
             ) : null}
             {executionsUrl ? (
@@ -206,8 +206,8 @@ export default async function SettingsPage() {
 
           <section className="mt-6">
             <div className="flex items-center justify-between">
-              <h2 className="text-[14px] font-medium">Router event map</h2>
-              <span className="caption">single n8n workflow</span>
+              <h2 className="text-[14px] font-medium">Backend agent event map</h2>
+              <span className="caption">single n8n backend agent</span>
             </div>
             <ul className="mt-3 min-w-0 divide-y divide-border overflow-hidden rounded-[6px] border border-border">
               {automationWorkflowDefinitions.map((workflow) => (
@@ -215,8 +215,8 @@ export default async function SettingsPage() {
                   <span className="col-span-12 min-w-0 truncate font-mono md:col-span-3">{workflow.key}</span>
                   <span className="col-span-12 min-w-0 truncate md:col-span-3">{workflow.name}</span>
                   <span className="col-span-10 truncate text-muted-foreground md:col-span-5">{workflow.purpose}</span>
-                  {routerUrl ? (
-                    <a href={routerUrl} className="col-span-2 justify-self-end text-muted-foreground hover:text-foreground md:col-span-1">
+                  {backendAgentUrl ? (
+                    <a href={backendAgentUrl} className="col-span-2 justify-self-end text-muted-foreground hover:text-foreground md:col-span-1">
                       <ExternalLink className="h-3 w-3" />
                     </a>
                   ) : (
@@ -246,7 +246,7 @@ export default async function SettingsPage() {
               <span>{automation.detail}</span>
             </div>
             <p className="mt-1 text-[11.5px] text-muted-foreground">
-              Edit the router in n8n, keep payload storage and decisions in Leadsy, and use the Next.js APIs as the only state boundary.
+              Edit the backend agent in n8n, keep payload storage and decisions in Leadsy, and use the Next.js APIs as the only state boundary.
             </p>
           </section>
         </div>

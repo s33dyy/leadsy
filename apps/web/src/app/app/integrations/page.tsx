@@ -85,7 +85,7 @@ export default async function IntegrationsPage() {
     },
     {
       name: "n8n Automation",
-      desc: "One router workflow for scheduled jobs, approvals, research, qualification, and retries.",
+      desc: "One backend-agent workflow for scheduled jobs, approvals, research, qualification, and retries.",
       status: n8n?.status === "healthy" ? "Connected" : n8n?.status === "critical" ? "Warning" : "Needs config",
       scope: `${infrastructure.automation.workflowCount} workflow - ${infrastructure.automation.detail}`,
       href: "/app/settings"

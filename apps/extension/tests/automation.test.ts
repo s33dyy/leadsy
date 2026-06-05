@@ -207,6 +207,103 @@ describe("ChatAutomationController", () => {
     controller.pause("test cleanup");
   });
 
+  it("waits for a slow WhatsApp composer before sending through a cached profile", async () => {
+    document.body.innerHTML = `
+      <main>
+        <section data-message-list></section>
+        <footer>
+          <div data-composer contenteditable="true" role="textbox"></div>
+          <button data-send>Send</button>
+        </footer>
+      </main>
+    `;
+
+    const states: string[] = [];
+    const controller = new ChatAutomationController((state) => states.push(state.statusText), {
+      store: new ConversationStore("leadsy-delayed-whatsapp-composer-test"),
+      openRouter: {
+        detectProfile: vi.fn(async () => profile),
+        decideReply: vi.fn()
+      },
+      taskUiTimeouts: {
+        composerReadyMs: 600,
+        sendButtonReadyMs: 600,
+        pollMs: 10
+      }
+    } as any);
+
+    try {
+      await controller.arm();
+      document.querySelector("[data-composer]")?.remove();
+      document.querySelector("[data-send]")?.remove();
+
+      let sendClicks = 0;
+      const sendPromise = controller.sendPreparedTask(task);
+      setTimeout(() => {
+        document.querySelector("footer")?.insertAdjacentHTML(
+          "beforeend",
+          `<div data-composer contenteditable="true" role="textbox"></div><button data-send>Send</button>`
+        );
+        document.querySelector("[data-send]")?.addEventListener("click", () => {
+          sendClicks += 1;
+        });
+      }, 80);
+
+      const sent = await sendPromise;
+
+      expect(sent.externalId).toContain(task.id);
+      expect(document.querySelector<HTMLElement>("[data-composer]")?.textContent).toBe(task.draftMessage);
+      expect(sendClicks).toBe(1);
+      expect(states).toContain("Waiting for composer");
+      expect(states).toContain("Sending");
+    } finally {
+      controller.pause("test cleanup");
+    }
+  });
+
+  it("blocks a worker task gracefully when WhatsApp never exposes the composer", async () => {
+    document.body.innerHTML = `
+      <main>
+        <section data-message-list></section>
+        <footer>
+          <div data-composer contenteditable="true" role="textbox"></div>
+          <button data-send>Send</button>
+        </footer>
+      </main>
+    `;
+
+    const states: string[] = [];
+    const controller = new ChatAutomationController((state) => states.push(state.statusText), {
+      store: new ConversationStore("leadsy-missing-whatsapp-composer-test"),
+      openRouter: {
+        detectProfile: vi.fn(async () => profile),
+        decideReply: vi.fn()
+      },
+      taskUiTimeouts: {
+        composerReadyMs: 60,
+        sendButtonReadyMs: 40,
+        pollMs: 10
+      }
+    } as any);
+
+    try {
+      await controller.arm();
+      document.querySelector("[data-composer]")?.remove();
+      document.querySelector("[data-send]")?.remove();
+
+      const result = await controller.executeTask(task);
+
+      expect(result).toMatchObject({
+        status: "blocked",
+        reason: "composer_missing"
+      });
+      expect(states).toContain("Waiting for composer");
+      expect(states).toContain("Needs attention");
+    } finally {
+      controller.pause("test cleanup");
+    }
+  });
+
   it("postpones WhatsApp tasks when the page says the number is not on WhatsApp", async () => {
     document.body.innerHTML = `
       <div role="dialog">

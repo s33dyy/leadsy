@@ -31,6 +31,7 @@ export {
   type N8nLogicEditSurface
 } from "./logic-modules";
 export {
+  n8nBackendAgentBlueprint,
   n8nAutomationRouterBlueprint,
   n8nWorkflowBlueprints,
   type N8nWorkflowBlueprint
