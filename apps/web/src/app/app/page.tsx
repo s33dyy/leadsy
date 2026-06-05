@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Clock, Inbox, ListChecks, MessageCircle, RadioTower, UsersRound, Workflow, type LucideIcon } from "lucide-react";
 import { Badge, EmptyState, Panel, ProgressBar, SectionTitle } from "@/components/ui";
 import { getCurrentSession } from "@/lib/auth";
-import { listExtensionTasks, type ExtensionTask } from "@/lib/extension-store";
+import { awaitingApprovalTaskStatuses, listExtensionTasks, type ExtensionTask } from "@/lib/extension-store";
 import {
   listLeadKnowledgeRecords,
   syncLeadKnowledgeFromExtensionTasks,
@@ -47,6 +47,10 @@ function activeTask(task: ExtensionTask) {
   return !["sent", "cancelled", "blocked", "failed"].includes(task.status);
 }
 
+function awaitingApprovalTask(task: ExtensionTask) {
+  return (awaitingApprovalTaskStatuses as readonly string[]).includes(task.status);
+}
+
 function formatDate(value?: string) {
   if (!value) return "No activity yet";
   return new Date(value).toLocaleString("en-IN", {
@@ -78,7 +82,7 @@ export default async function WorkspaceIndexPage() {
   const replyQueue = leads.filter(needsReply);
   const excludedLeads = leads.filter((lead) => lead.leadStatus === "excluded");
   const activeTasks = tasks.filter(activeTask);
-  const awaitingApprovalTasks = tasks.filter((task) => task.status === "awaiting_send_approval" || task.status === "awaiting_approval");
+  const awaitingApprovalTasks = tasks.filter(awaitingApprovalTask);
 
   const metrics: DashboardMetric[] = [
     {

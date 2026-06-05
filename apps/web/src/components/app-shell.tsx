@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Bell,
   BookOpen,
@@ -44,6 +44,8 @@ const pageTitles: Array<{ path: string; title: string; eyebrow: string }> = [
   { path: "/app", title: "Dashboard", eyebrow: "Operations" }
 ];
 
+type SearchParamsLike = Pick<URLSearchParams, "get">;
+
 function initials(name: string) {
   return name
     .split(/\s+/)
@@ -53,36 +55,60 @@ function initials(name: string) {
     .join("") || "L";
 }
 
-function pageTitleForPath(pathname: string) {
+function pageTitleForPath(pathname: string, searchParams: SearchParamsLike) {
+  if ((pathname === "/app/worker" || pathname === "/workers") && searchParams.get("tab") === "pending") {
+    return { path: "/app/worker", title: "Approvals", eyebrow: "Human review" };
+  }
+  if ((pathname === "/app/leads" || pathname === "/crm") && searchParams.get("panel") === "knowledge") {
+    return { path: "/app/leads", title: "Knowledge", eyebrow: "Lead intelligence" };
+  }
+  if ((pathname === "/app/connect" || pathname === "/settings") && searchParams.get("panel") === "settings") {
+    return { path: "/app/connect", title: "Settings", eyebrow: "Configuration" };
+  }
   return pageTitles.find((item) => pathname === item.path || pathname.startsWith(`${item.path}/`)) ?? pageTitles.at(-1)!;
 }
 
-function isNavItemActive(pathname: string, label: string, activePaths: string[]) {
+function searchParamsMatch(searchParams: SearchParamsLike, href: string) {
+  const [, query = ""] = href.split("?");
+  if (!query) return true;
+  const hrefParams = new URLSearchParams(query);
+  return [...hrefParams.entries()].every(([key, value]) => searchParams.get(key) === value);
+}
+
+function isNavItemActive(pathname: string, searchParams: SearchParamsLike, label: string, href: string, activePaths: string[]) {
   if (label === "Dashboard") return pathname === "/app" || pathname === "/dashboard";
-  if (label === "Approvals" || label === "Knowledge" || label === "Settings") return false;
-  return activePaths.some((path) => pathname === path || pathname.startsWith(`${path}/`));
+  const activePath = activePaths.some((path) => pathname === path || pathname.startsWith(`${path}/`));
+  if (!activePath) return false;
+  if (href.includes("?")) return searchParamsMatch(searchParams, href);
+  if (label === "CRM") return searchParams.get("panel") !== "knowledge";
+  if (label === "Workers") return searchParams.get("tab") !== "pending";
+  if (label === "Integrations") return searchParams.get("panel") !== "settings";
+  return true;
 }
 
 export function AppShell({
   children,
   session,
-  hasMetaConnection = false
+  hasMetaConnection = false,
+  pendingApprovalCount = 0
 }: {
   children: ReactNode;
   session: SessionUser;
   hasMetaConnection?: boolean;
+  pendingApprovalCount?: number;
 }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [logoutPending, setLogoutPending] = useState(false);
-  const page = pageTitleForPath(pathname);
+  const page = pageTitleForPath(pathname, searchParams);
   const setupIssues = hasMetaConnection ? 0 : 1;
   const onboardingReminder = session.onboardingCompletedAt ? 0 : 1;
-  const pendingApprovals = 0;
+  const pendingApprovals = pendingApprovalCount;
   const notificationCount = setupIssues + pendingApprovals + onboardingReminder;
 
   const notificationItems = useMemo(
@@ -139,7 +165,7 @@ export function AppShell({
     <nav className="flex flex-1 flex-col gap-2" aria-label="Primary">
       {navItems.map((item) => {
         const Icon = item.icon;
-        const active = isNavItemActive(pathname, item.label, item.activePaths);
+        const active = isNavItemActive(pathname, searchParams, item.label, item.href, item.activePaths);
         return (
           <Link
             key={`${item.label}-${item.href}`}

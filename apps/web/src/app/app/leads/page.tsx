@@ -43,6 +43,7 @@ type LeadsPageProps = {
 type ViewFilter = "all" | "needs-reply" | "active" | "meta" | "extension" | "excluded";
 type LeadWorkspaceTab = "details" | "comms" | "tasks";
 type CommChannelFilter = "all" | "whatsapp" | "instagram" | "facebook" | "email" | "call" | "browser" | "manual";
+type LeadPanel = "crm" | "knowledge";
 
 const viewFilters: Array<{ id: ViewFilter; label: string }> = [
   { id: "all", label: "All" },
@@ -150,6 +151,7 @@ function noticeCopy(params: Record<string, string | string[] | undefined>) {
 }
 
 function crmHref(input: {
+  panel?: LeadPanel;
   view?: ViewFilter;
   q?: string;
   contact?: string;
@@ -157,6 +159,7 @@ function crmHref(input: {
   commChannel?: CommChannelFilter;
 }) {
   const params = new URLSearchParams();
+  if (input.panel && input.panel !== "crm") params.set("panel", input.panel);
   if (input.view && input.view !== "all") params.set("view", input.view);
   if (input.q?.trim()) params.set("q", input.q.trim());
   if (input.contact) params.set("contact", input.contact);
@@ -226,6 +229,10 @@ function activeTabFromValue(value: string): LeadWorkspaceTab {
 
 function commChannelFromValue(value: string): CommChannelFilter {
   return commFilters.some((filter) => filter.id === value) ? (value as CommChannelFilter) : "all";
+}
+
+function panelFromValue(value: string): LeadPanel {
+  return value === "knowledge" ? "knowledge" : "crm";
 }
 
 function messagesForCommChannel(lead: LeadKnowledgeRecord, commChannel: CommChannelFilter) {
@@ -365,15 +372,11 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
   const activeView = viewFilters.some((filter) => filter.id === requestedView) ? requestedView : "all";
   const activeTab = activeTabFromValue(paramValue(params, "tab"));
   const activeCommChannel = commChannelFromValue(paramValue(params, "commChannel"));
+  const activePanel = panelFromValue(paramValue(params, "panel"));
   const query = paramValue(params, "q");
   const filteredLeads = filterLeads(leads, activeView, query);
   const selectedLeadId = paramValue(params, "contact");
-  const selectedLead =
-    filteredLeads.find((lead) => lead.id === selectedLeadId) ??
-    leads.find((lead) => lead.id === selectedLeadId) ??
-    filteredLeads[0] ??
-    leads[0] ??
-    null;
+  const selectedLead = filteredLeads.find((lead) => lead.id === selectedLeadId) ?? filteredLeads[0] ?? null;
   const activeLeads = leads.filter((lead) => lead.leadStatus === "lead");
   const replyQueue = leads.filter(needsReply);
   const excludedLeads = leads.filter((lead) => lead.leadStatus === "excluded");
@@ -390,7 +393,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
       <LeadScrollKeeper />
       <Panel className="p-5 md:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <SectionTitle eyebrow="Lead Intelligence" title="Knowledge workspace" />
+          <SectionTitle eyebrow="Lead Intelligence" title={activePanel === "knowledge" ? "Knowledge workspace" : "CRM workspace"} />
           <div className="flex flex-wrap gap-2">
             <Badge tone="teal">All Meta and browser conversations</Badge>
             <Badge tone="amber">{replyQueue.length} Needs reply</Badge>
@@ -419,6 +422,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
             selectedLead={selectedLead}
             relatedLeads={relatedLeadOptions}
             activeView={activeView}
+            activePanel={activePanel}
             query={query}
             activeTab={activeTab}
             commChannel={activeCommChannel}
@@ -430,6 +434,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
             <LeadRecordWorkspace
               lead={selectedLead}
               activeView={activeView}
+              activePanel={activePanel}
               query={query}
               activeTab={activeTab}
               commChannel={activeCommChannel}
@@ -455,6 +460,7 @@ function LeadListPane({
   selectedLead,
   relatedLeads,
   activeView,
+  activePanel,
   query,
   activeTab,
   commChannel
@@ -463,6 +469,7 @@ function LeadListPane({
   selectedLead: LeadKnowledgeRecord | null;
   relatedLeads: Array<{ id: string; label: string; detail?: string }>;
   activeView: ViewFilter;
+  activePanel: LeadPanel;
   query: string;
   activeTab: LeadWorkspaceTab;
   commChannel: CommChannelFilter;
@@ -482,7 +489,7 @@ function LeadListPane({
 
       <form method="get" action="/app/leads" className="mt-4 flex min-w-0 items-center gap-2 rounded-[8px] border border-[var(--line)] bg-black/20 px-3">
         {activeView !== "all" ? <input type="hidden" name="view" value={activeView} /> : null}
-        {selectedLead ? <input type="hidden" name="contact" value={selectedLead.id} /> : null}
+        {activePanel !== "crm" ? <input type="hidden" name="panel" value={activePanel} /> : null}
         {activeTab !== "details" ? <input type="hidden" name="tab" value={activeTab} /> : null}
         {commChannel !== "all" ? <input type="hidden" name="commChannel" value={commChannel} /> : null}
         <Search size={15} className="shrink-0 text-[var(--muted)]" />
@@ -499,7 +506,7 @@ function LeadListPane({
         {viewFilters.map((filter) => (
           <Link
             key={filter.id}
-            href={crmHref({ view: filter.id, q: query, contact: selectedLead?.id, tab: activeTab, commChannel })}
+            href={crmHref({ panel: activePanel, view: filter.id, q: query, tab: activeTab, commChannel })}
             scroll={false}
             className={`inline-flex h-9 shrink-0 items-center rounded-[6px] border px-3 text-xs font-medium ${
               activeView === filter.id
@@ -520,7 +527,7 @@ function LeadListPane({
             return (
               <Link
                 key={lead.id}
-                href={crmHref({ view: activeView, q: query, contact: lead.id, tab: activeTab, commChannel })}
+                href={crmHref({ panel: activePanel, view: activeView, q: query, contact: lead.id, tab: activeTab, commChannel })}
                 scroll={false}
                 className={`block rounded-[8px] border p-3 ${
                   selected
@@ -571,6 +578,7 @@ function LeadListPane({
 function LeadRecordWorkspace({
   lead,
   activeView,
+  activePanel,
   query,
   activeTab,
   commChannel,
@@ -579,6 +587,7 @@ function LeadRecordWorkspace({
 }: {
   lead: LeadKnowledgeRecord;
   activeView: ViewFilter;
+  activePanel: LeadPanel;
   query: string;
   activeTab: LeadWorkspaceTab;
   commChannel: CommChannelFilter;
@@ -604,7 +613,7 @@ function LeadRecordWorkspace({
         {workspaceTabs.map((tab) => (
           <Link
             key={tab.id}
-            href={crmHref({ view: activeView, q: query, contact: lead.id, tab: tab.id, commChannel })}
+            href={crmHref({ panel: activePanel, view: activeView, q: query, contact: lead.id, tab: tab.id, commChannel })}
             scroll={false}
             className={`inline-flex h-10 min-w-[118px] shrink-0 items-center justify-center rounded-[6px] border px-3 text-sm font-medium ${
               activeTab === tab.id

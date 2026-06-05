@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import type { NextRequest, NextResponse } from "next/server";
 import type { SessionUser } from "@leadsy/security";
@@ -12,6 +12,7 @@ import {
   resolveAuthSession,
   type AuthUser
 } from "./auth-store";
+import { currentPathHeaderName, loginUrlForNextPath } from "./request-path";
 
 export const sessionCookieName = process.env.SESSION_COOKIE_NAME ?? "leadsy_session";
 
@@ -121,15 +122,20 @@ export function redirectForSession(session: SessionUser) {
   return session.role === "client" ? "/app/leads" : "/app/leads";
 }
 
+export async function loginRedirectForCurrentRequest(fallbackNext = "/app/leads") {
+  const headerStore = await headers();
+  return loginUrlForNextPath(headerStore.get(currentPathHeaderName), fallbackNext);
+}
+
 export async function requireAgencySession() {
   const ownerExists = await hasOwnerUser();
   if (!ownerExists) {
-    redirect("/login?next=/app/leads");
+    redirect(await loginRedirectForCurrentRequest("/app/leads"));
   }
 
   const session = await getCurrentSession();
   if (!session) {
-    redirect("/login?next=/app/leads");
+    redirect(await loginRedirectForCurrentRequest("/app/leads"));
   }
 
   if (session.role === "client") {
@@ -142,12 +148,12 @@ export async function requireAgencySession() {
 export async function requireClientSession() {
   const ownerExists = await hasOwnerUser();
   if (!ownerExists) {
-    redirect("/login?next=/app/leads");
+    redirect(await loginRedirectForCurrentRequest("/app/leads"));
   }
 
   const session = await getCurrentSession();
   if (!session) {
-    redirect("/login?next=/app/leads");
+    redirect(await loginRedirectForCurrentRequest("/app/leads"));
   }
 
   if (session.role !== "client" || !session.clientId) {

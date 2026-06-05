@@ -1011,6 +1011,25 @@ export async function listLeadKnowledgeRecords(scope: Scope) {
     .sort((left, right) => (right.lastMessageAt ?? right.updatedAt).localeCompare(left.lastMessageAt ?? left.updatedAt));
 }
 
+export async function summarizeLeadKnowledgeHealth() {
+  const state = await readState();
+  const records = state.leads
+    .filter((lead) => !lead.deletedAt)
+    .map((lead) => recordForLead(state, { tenantId: lead.tenantId, ownerId: lead.ownerId }, lead.id));
+  const needsReply = records.filter((lead) => lead.leadStatus === "lead" && lead.messages.at(-1)?.direction === "inbound").length;
+  return {
+    records: records.length,
+    activeLeads: records.filter((lead) => lead.leadStatus === "lead").length,
+    excludedLeads: records.filter((lead) => lead.leadStatus === "excluded").length,
+    needsReply,
+    conversations: records.reduce((total, lead) => total + lead.conversations.length, 0),
+    messages: records.reduce((total, lead) => total + lead.messages.length, 0),
+    metaSourced: records.filter((lead) => lead.channels.some((channel) => channel === "whatsapp" || channel === "instagram" || channel === "facebook")).length,
+    extensionSourced: records.filter((lead) => lead.channels.some((channel) => channel.endsWith("-web") || channel === "generic-web-chat")).length,
+    manualSourced: records.filter((lead) => lead.channels.includes("manual") || lead.channels.includes("email") || lead.channels.includes("call")).length
+  };
+}
+
 export async function editLeadKnowledgeRecord(input: Scope & {
   leadId: string;
   contact?: LeadKnowledgeContact;
