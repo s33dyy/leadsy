@@ -222,7 +222,7 @@ Do not bypass Leadsy for business mutations.
 8. Add Leadsy infrastructure/admin APIs.
 9. Add Settings -> Infrastructure -> Automation UI.
 10. Import the single inactive `Leadsy - Automation Router` workflow from `N8N_WORKFLOWS.md`.
-11. Test router branches against staging/local-like data.
+11. Test the router dispatch path against staging/local-like data for each supported `workflowKey`.
 12. Push through feature branch, CI on `main`, and Railway production deploy.
 13. Confirm Railway production deployment hash matches successful `main` commit hash.
 

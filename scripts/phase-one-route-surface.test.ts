@@ -23,7 +23,7 @@ async function main() {
     { page: "apps/web/src/app/dashboard/page.tsx", target: "/app" },
     { page: "apps/web/src/app/crm/page.tsx", target: "/app/leads" },
     { page: "apps/web/src/app/workers/page.tsx", target: "/app/worker" },
-    { page: "apps/web/src/app/settings/page.tsx", target: "/app/connect?panel=settings" }
+    { page: "apps/web/src/app/settings/page.tsx", target: "/app/settings" }
   ];
 
   for (const route of routeAliases) {
@@ -34,13 +34,13 @@ async function main() {
   }
 
   const appShell = await read("apps/web/src/components/app-shell.tsx");
-  for (const href of ['href: "/app"', 'href: "/app/leads"', 'href: "/app/worker"', 'href: "/app/connect?panel=settings"']) {
+  for (const href of ['href: "/app"', 'href: "/app/leads"', 'href: "/app/worker"', 'href: "/app/approvals"', 'href: "/app/communications"', 'href: "/app/tasks"', 'href: "/app/integrations"', 'href: "/app/settings"']) {
     assert(appShell.includes(href), `global sidebar should keep tab navigation inside the authenticated shell with ${href}`);
   }
-  for (const legacyPath of ["/app", "/app/leads", "/app/worker", "/app/connect"]) {
+  for (const legacyPath of ["/app", "/app/leads", "/app/worker", "/app/connect", "/app/settings"]) {
     assert(appShell.includes(legacyPath), `app shell should keep ${legacyPath} as a legacy active/preserved route`);
   }
-  assert(appShell.includes("activePaths"), "app shell should preserve active path mapping for existing workspace routes");
+  assert(appShell.includes("isActiveLink"), "app shell should preserve active path matching for existing workspace routes");
   assert(!appShell.includes('href: "/crm", label: "CRM"'), "CRM tab clicks should not leave the authenticated shell first");
   assert(!appShell.includes('href: "/workers", label: "Workers"'), "Worker tab clicks should not leave the authenticated shell first");
   assert(appShell.includes("Quick search"), "app shell should include the Lovable-style quick search control");

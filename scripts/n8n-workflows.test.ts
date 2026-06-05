@@ -34,15 +34,22 @@ function assertRequiredNodes(workflow: N8nWorkflowBlueprint) {
     "Normalize Follow-up Due",
     "Normalize Worker Retry",
     "Log Started",
-    "Route Event",
-    "Unsupported Event",
+    "Validate Event",
+    "Dispatch Automation",
     "Log Succeeded"
   ]) {
     assert(names.has(name), `${workflow.name} should include ${name}`);
   }
-  for (const route of automationWorkflowDefinitions) {
-    assert(names.has(`Run ${route.name}`), `${workflow.name} should include the ${route.name} route branch`);
-  }
+  assert.equal(
+    workflow.nodes.some((node) => node.name.startsWith("Run ")),
+    false,
+    `${workflow.name} should not fan out into one visible node per event type`
+  );
+  assert.equal(
+    workflow.nodes.some((node) => node.type === "n8n-nodes-base.switch"),
+    false,
+    `${workflow.name} should route with event data instead of a visual switch branch explosion`
+  );
 }
 
 function assertLeadsyBoundaries(workflow: N8nWorkflowBlueprint) {
@@ -50,6 +57,14 @@ function assertLeadsyBoundaries(workflow: N8nWorkflowBlueprint) {
   assert(
     serialized.includes("$env.LEADSY_API_BASE_URL"),
     `${workflow.name} should call Leadsy APIs instead of direct business table access`
+  );
+  assert(
+    serialized.includes("$env.LEADSY_N8N_WEBHOOK_SECRET"),
+    `${workflow.name} should use a shared env-backed header instead of per-node n8n credential setup`
+  );
+  assert(
+    !serialized.includes("genericCredentialType"),
+    `${workflow.name} should not import with missing credential warnings on HTTP nodes`
   );
   assert(
     !serialized.includes("OPENROUTER_API_KEY"),
@@ -71,11 +86,20 @@ function assertLeadsyBoundaries(workflow: N8nWorkflowBlueprint) {
 
 function assertRetryPolicy(workflow: N8nWorkflowBlueprint) {
   const retryingNodes = workflow.nodes.filter((node) => node.retryOnFail);
-  assert(retryingNodes.length >= 10, `${workflow.name} should retry transient HTTP route steps`);
+  assert.equal(retryingNodes.length, 3, `${workflow.name} should retry the three Leadsy HTTP handoff steps`);
   for (const node of retryingNodes) {
     assert.equal(node.maxTries, 3, `${workflow.name} ${node.name} should retry three times`);
     assert.equal(node.waitBetweenTries, 60000, `${workflow.name} ${node.name} should back off before retry`);
   }
+}
+
+function assertSimpleCanvas(workflow: N8nWorkflowBlueprint) {
+  assert(
+    workflow.nodes.length <= 10,
+    `${workflow.name} should stay visually small enough to configure on one n8n screen`
+  );
+  const dispatchNodes = workflow.nodes.filter((node) => node.name === "Dispatch Automation");
+  assert.equal(dispatchNodes.length, 1, `${workflow.name} should have exactly one configurable action node`);
 }
 
 async function main() {
@@ -99,6 +123,7 @@ async function main() {
     "router metadata should list every supported route"
   );
   assertRequiredNodes(workflow);
+  assertSimpleCanvas(workflow);
   assertRetryPolicy(workflow);
   assertLeadsyBoundaries(workflow);
 

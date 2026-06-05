@@ -18,9 +18,10 @@ The router is the only workflow operators need to configure in n8n. It contains:
 
 - One webhook trigger: `leadsy/automation-router`
 - Two schedule triggers: Follow-up Due and Worker Retry
-- One `Route Event` switch with branches for all ten Leadsy automation event types
+- One `Validate Event` code node that maps `workflowKey` to the matching Leadsy API path
+- One `Dispatch Automation` HTTP node for every supported event type
 - Shared started/succeeded execution logging through Leadsy APIs
-- Shared retry settings on the Leadsy HTTP action nodes
+- Shared retry settings on the three Leadsy HTTP handoff nodes
 
 Generation command:
 
@@ -38,8 +39,8 @@ Import posture:
 
 - Import `leadsy-automation-router.json` into n8n.
 - Keep the router inactive until Leadsy automation action endpoints and service authentication are in place.
-- Reconnect the single Leadsy API credential in n8n instead of storing secrets in workflow JSON.
-- Add new routes inside the router rather than creating a new workflow per event type.
+- Configure `LEADSY_API_BASE_URL` and `LEADSY_N8N_WEBHOOK_SECRET` as n8n environment variables.
+- Add new routes to the typed catalog and `Validate Event` map rather than creating a new workflow or visible branch per event type.
 
 ## Global Rules
 

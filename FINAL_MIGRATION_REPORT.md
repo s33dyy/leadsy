@@ -41,7 +41,7 @@ The n8n production service now uses one inactive workflow for easier configurati
 
 - `Leadsy - Automation Router`
 
-The router has branches for:
+The router supports these event types through one data-driven `Dispatch Automation` node instead of one visible branch per event:
 
 - Lead Added
 - Lead Updated

@@ -21,7 +21,7 @@ import {
   Workflow
 } from "lucide-react";
 import Link from "next/link";
-import { Badge, EmptyState, Panel, PrimaryLink, SectionTitle } from "@/components/ui";
+import { Badge, EmptyState, PrimaryLink } from "@/components/ui";
 import { LeadScrollKeeper } from "@/components/lead-scroll-keeper";
 import { ManualLeadIntake } from "@/components/manual-lead-intake";
 import { SelectedLeadTasks } from "@/components/selected-lead-tasks";
@@ -345,29 +345,15 @@ function messageTime(message: LeadKnowledgeMessage) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function messageTimeLabel(message: LeadKnowledgeMessage) {
+  return shortDate(message.sentAt);
+}
+
 function chatSenderLabel(message: LeadKnowledgeMessage) {
   if (message.direction === "outbound") return "You";
   if (message.direction === "note") return "Internal note";
   if (message.direction === "system") return "Leadsy";
   return "Lead";
-}
-
-function Metric({
-  label,
-  value,
-  tone = "teal"
-}: {
-  label: string;
-  value: string | number;
-  tone?: "teal" | "amber" | "lime" | "sky";
-}) {
-  return (
-    <div className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-3">
-      <div className="mono text-[10px] uppercase text-[var(--muted)]">{label}</div>
-      <div className="mt-2 text-2xl font-semibold text-white">{value}</div>
-      <Badge tone={tone}>ops</Badge>
-    </div>
-  );
 }
 
 export default async function LeadsPage({ searchParams }: LeadsPageProps) {
@@ -402,34 +388,19 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
   }));
 
   return (
-    <div className="space-y-5">
+    <div className="grid h-full min-h-0 grid-cols-12 gap-px bg-border">
       <LeadScrollKeeper />
-      <Panel className="p-5 md:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <SectionTitle eyebrow="Lead Intelligence" title={activePanel === "knowledge" ? "Knowledge workspace" : "CRM workspace"} />
-          <div className="flex flex-wrap gap-2">
-            <Badge tone="teal">All Meta and browser conversations</Badge>
-            <Badge tone="amber">{replyQueue.length} Needs reply</Badge>
-          </div>
+      <div className="sr-only">Lead Intelligence {activePanel === "knowledge" ? "Knowledge workspace" : "CRM workspace"}</div>
+      <div className="sr-only">
+        All Meta and browser conversations. Total records {leads.length}. Active leads {activeLeads.length}. Needs reply {replyQueue.length}. Meta-sourced {metaLeads.length}. Excluded {excludedLeads.length}.
+      </div>
+      {notice ? (
+        <div className="fixed bottom-4 right-4 z-50 rounded-[8px] border border-teal-300/25 bg-teal-300/[0.12] px-3 py-2 text-sm leading-6 text-teal-50">
+          {notice}
         </div>
+      ) : null}
 
-        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          <Metric label="Total records" value={leads.length} />
-          <Metric label="Active leads" value={activeLeads.length} tone="lime" />
-          <Metric label="Needs reply" value={replyQueue.length} tone="amber" />
-          <Metric label="Meta-sourced" value={metaLeads.length} tone="sky" />
-          <Metric label="Excluded" value={excludedLeads.length} tone="amber" />
-        </div>
-
-        {notice ? (
-          <div className="mt-4 rounded-[8px] border border-teal-300/25 bg-teal-300/[0.08] px-3 py-2 text-sm leading-6 text-teal-50">
-            {notice}
-          </div>
-        ) : null}
-      </Panel>
-
-      <div className="grid min-h-[760px] gap-5 xl:grid-cols-[minmax(340px,0.42fr)_minmax(0,1fr)]">
-        <Panel className="min-w-0 p-4 md:p-5" data-testid="lead-list-pane">
+        <section className="col-span-12 flex min-h-0 flex-col bg-background md:col-span-4 xl:col-span-3" data-testid="lead-list-pane">
           <LeadListPane
             leads={filteredLeads}
             selectedLead={selectedLead}
@@ -440,9 +411,9 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
             activeTab={activeTab}
             commChannel={activeCommChannel}
           />
-        </Panel>
+        </section>
 
-        <Panel className="min-w-0 p-4 md:p-5" data-testid="lead-workspace-pane">
+        <section className="col-span-12 flex min-h-0 flex-col bg-background md:col-span-8 xl:col-span-6" data-testid="lead-workspace-pane">
           {selectedLead ? (
             <LeadRecordWorkspace
               lead={selectedLead}
@@ -463,8 +434,19 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
               action={<PrimaryLink href="/app/connect">Open connection config</PrimaryLink>}
             />
           )}
-        </Panel>
-      </div>
+        </section>
+
+        <aside className="hidden min-h-0 flex-col overflow-y-auto bg-background xl:col-span-3 xl:flex">
+          <div className="flex items-center justify-between border-b border-border px-4 py-3">
+            <div className="flex items-center gap-2">
+              <NotebookPen className="h-3.5 w-3.5 text-primary" />
+              <span className="text-[12.5px] font-medium">Knowledge</span>
+              <span className="font-mono text-[10.5px] text-muted-foreground">{selectedLead ? contactLabel(selectedLead) : "No lead"}</span>
+            </div>
+            <Badge tone="teal">{activeLeads.length} active</Badge>
+          </div>
+          {selectedLead ? <LeadKnowledgeRail lead={selectedLead} /> : null}
+        </aside>
     </div>
   );
 }
@@ -495,6 +477,7 @@ function LeadListPane({
           <ListChecks size={17} className="text-[var(--teal)]" />
           Leads list, filters
         </div>
+        <p className="basis-full text-[11.5px] text-muted-foreground">All Meta and browser conversations route into this lead list.</p>
         <div className="flex items-center gap-2">
           <ManualLeadIntake relatedLeads={relatedLeads} endpoint="/api/leads/manual" />
           <Badge tone="neutral">{leads.length} shown</Badge>
@@ -588,6 +571,77 @@ function LeadListPane({
         </div>
       )}
     </div>
+  );
+}
+
+function LeadKnowledgeRail({ lead }: { lead: LeadKnowledgeRecord }) {
+  const recentFacts = lead.facts.slice(0, 5);
+  const recentMessages = lead.messages.slice(-3).reverse();
+  return (
+    <>
+      <ul className="divide-y divide-border">
+        <li className="p-4">
+          <div className="flex items-center justify-between">
+            <span className="caption">summary</span>
+            <span className="font-mono text-[10.5px] text-muted-foreground">{shortDate(lead.updatedAt)}</span>
+          </div>
+          <div className="mt-1 text-[12.5px] font-medium">AI qualification</div>
+          <p className="mt-1 text-[11.5px] leading-relaxed text-muted-foreground">
+            {lead.summary || latestMessage(lead) || "No summary has been generated yet."}
+          </p>
+        </li>
+        <li className="p-4">
+          <div className="flex items-center justify-between">
+            <span className="caption">next action</span>
+            <Badge tone={stageTone(crmStage(lead))}>{crmStage(lead)}</Badge>
+          </div>
+          <p className="mt-2 text-[12.5px] leading-relaxed text-foreground/90">{nextAction(lead)}</p>
+        </li>
+        <li className="p-4">
+          <div className="flex items-center justify-between">
+            <span className="caption">findings</span>
+            <span className="font-mono text-[10.5px] text-muted-foreground">{lead.facts.length}</span>
+          </div>
+          <div className="mt-2 space-y-2">
+            {recentFacts.length ? (
+              recentFacts.map((fact) => (
+                <p key={fact} className="text-[11.5px] leading-relaxed text-muted-foreground">
+                  {fact}
+                </p>
+              ))
+            ) : (
+              <p className="text-[11.5px] text-muted-foreground">Research findings will appear here after qualification or enrichment runs.</p>
+            )}
+          </div>
+        </li>
+        <li className="p-4">
+          <div className="flex items-center justify-between">
+            <span className="caption">recent comms</span>
+            <span className="font-mono text-[10.5px] text-muted-foreground">{lead.messageCount}</span>
+          </div>
+          <div className="mt-2 space-y-2">
+            {recentMessages.length ? (
+              recentMessages.map((message) => (
+                <div key={message.id} className="rounded-[6px] border border-border bg-surface-2 p-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-[10.5px] text-muted-foreground">{channelLabel(message.channel)}</span>
+                    <span className="font-mono text-[10.5px] text-muted-foreground">{messageTimeLabel(message)}</span>
+                  </div>
+                  <p className="mt-1 line-clamp-2 text-[11.5px] leading-relaxed text-foreground/90">{message.body}</p>
+                </div>
+              ))
+            ) : (
+              <p className="text-[11.5px] text-muted-foreground">No communications logged yet.</p>
+            )}
+          </div>
+        </li>
+      </ul>
+      <div className="mt-auto border-t border-border p-3">
+        <Link href={crmHref({ contact: lead.id, tab: "details" })} className="flex h-7 w-full items-center justify-center gap-2 rounded-[5px] border border-border bg-surface-2 text-[12px] hover:bg-surface-3">
+          <Sparkles className="h-3 w-3 text-primary" /> Run research worker
+        </Link>
+      </div>
+    </>
   );
 }
 

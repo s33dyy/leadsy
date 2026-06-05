@@ -44,7 +44,7 @@ async function main() {
   assert(appShell.includes("data-testid=\"global-sidebar\""), "app shell should expose the desktop sidebar");
   assert(appShell.includes('data-layout="lovable-operator"'), "app shell should mark the Lovable operator layout");
   assert(appShell.includes("data-testid=\"sidebar-toggle\""), "app shell should expose a sidebar collapse toggle");
-  assert(appShell.includes("aria-expanded={sidebarExpanded}"), "sidebar toggle should expose expanded state");
+  assert(appShell.includes("aria-expanded={!collapsed}"), "sidebar toggle should expose expanded state");
   assert(appShell.includes("data-testid=\"mobile-nav-drawer\""), "app shell should include a mobile drawer");
   assert(appShell.includes("data-testid=\"notification-bell\""), "top bar should include a notification bell");
   assert(appShell.includes("data-testid=\"notification-center\""), "notification bell should open a notification center");
