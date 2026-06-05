@@ -594,6 +594,118 @@ export async function summarizeExtensionHealth() {
   };
 }
 
+function normalizedKeepTerm(value: string) {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function recordTextMatches(value: unknown, keepTerms: string[]) {
+  if (!keepTerms.length) return false;
+  const text = JSON.stringify(value ?? "")
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+  return keepTerms.some((term) => text.includes(term));
+}
+
+function parentConversationId(id: string) {
+  const [conversationId] = id.split(":");
+  return conversationId || "";
+}
+
+export async function pruneExtensionDataToTargets(input: {
+  tenantId: string;
+  ownerId: string;
+  keepTerms: string[];
+  tenantWide?: boolean;
+  dryRun?: boolean;
+}) {
+  const state = await readState();
+  const keepTerms = input.keepTerms.map(normalizedKeepTerm).filter(Boolean);
+  if (!keepTerms.length) throw new Error("At least one keep term is required.");
+  const inScope = (item: { tenantId: string; ownerId: string }) =>
+    item.tenantId === input.tenantId && (input.tenantWide || item.ownerId === input.ownerId);
+
+  const keptLeadIds = new Set<string>();
+  const keptConversationIds = new Set<string>();
+  const keptTaskIds = new Set<string>();
+
+  for (const conversation of state.conversations) {
+    if (inScope(conversation) && recordTextMatches(conversation, keepTerms)) {
+      keptConversationIds.add(conversation.id);
+      if (conversation.leadId) keptLeadIds.add(conversation.leadId);
+    }
+  }
+  for (const message of state.messages) {
+    const conversation = state.conversations.find((candidate) => candidate.id === parentConversationId(message.id));
+    if (conversation && inScope(conversation) && recordTextMatches(message, keepTerms)) {
+      keptConversationIds.add(conversation.id);
+      if (conversation.leadId) keptLeadIds.add(conversation.leadId);
+    }
+  }
+  for (const task of state.tasks) {
+    if (inScope(task) && recordTextMatches(task, keepTerms)) {
+      keptTaskIds.add(task.id);
+      if (task.leadId) keptLeadIds.add(task.leadId);
+      if (task.conversationId) keptConversationIds.add(task.conversationId);
+    }
+  }
+
+  const nextConversations = state.conversations.filter(
+    (conversation) => !inScope(conversation) || keptConversationIds.has(conversation.id) || (conversation.leadId ? keptLeadIds.has(conversation.leadId) : false)
+  );
+  const nextConversationIds = new Set(nextConversations.map((conversation) => conversation.id));
+  const scopedConversationIds = new Set(state.conversations.filter(inScope).map((conversation) => conversation.id));
+  const nextMessages = state.messages.filter((message) => {
+    const conversationId = parentConversationId(message.id);
+    return !scopedConversationIds.has(conversationId) || nextConversationIds.has(conversationId);
+  });
+  const nextEvents = state.events.filter((event) => {
+    const conversationId = parentConversationId(event.id);
+    return !scopedConversationIds.has(conversationId) || nextConversationIds.has(conversationId);
+  });
+  const nextTasks = state.tasks.filter(
+    (task) =>
+      !inScope(task) ||
+      keptTaskIds.has(task.id) ||
+      (task.leadId ? keptLeadIds.has(task.leadId) : false) ||
+      (task.conversationId ? nextConversationIds.has(task.conversationId) : false)
+  );
+  const nextTaskIds = new Set(nextTasks.map((task) => task.id));
+  const nextTaskEvents = state.taskEvents.filter((event) => !inScope(event) || nextTaskIds.has(event.taskId));
+
+  const result = {
+    dryRun: Boolean(input.dryRun),
+    kept: {
+      conversations: nextConversations.filter(inScope).length,
+      messages: nextMessages.length,
+      events: nextEvents.length,
+      tasks: nextTasks.filter(inScope).length,
+      taskEvents: nextTaskEvents.filter(inScope).length,
+      tokens: state.tokens.filter(inScope).length
+    },
+    removed: {
+      conversations: state.conversations.length - nextConversations.length,
+      messages: state.messages.length - nextMessages.length,
+      events: state.events.length - nextEvents.length,
+      tasks: state.tasks.length - nextTasks.length,
+      taskEvents: state.taskEvents.length - nextTaskEvents.length,
+      tokens: 0
+    }
+  };
+
+  if (!input.dryRun && (result.removed.conversations || result.removed.messages || result.removed.events || result.removed.tasks || result.removed.taskEvents)) {
+    await writeState({
+      tokens: state.tokens,
+      conversations: nextConversations,
+      messages: nextMessages,
+      events: nextEvents,
+      tasks: nextTasks,
+      taskEvents: nextTaskEvents
+    });
+  }
+
+  return result;
+}
+
 async function updateTask(
   tenantId: string,
   ownerId: string,

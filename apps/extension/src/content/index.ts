@@ -123,7 +123,7 @@ async function sendPreparedTask(controller: ChatAutomationController, task?: Ext
       sentAt: result.sentAt
     }
   });
-  void controller.arm().catch(() => undefined);
+  controller.pause("Leadsy-approved task sent. Waiting for a real inbound reply before continuing.");
 }
 
 function taskCanBeHandled(task: ExtensionTask) {
