@@ -64,6 +64,17 @@ async function main() {
   assert(!loginForm.includes("window.alert"), "auth form should not use browser alerts");
   assert(!loginForm.includes("window.confirm"), "auth form should not use browser confirms");
   assert(!loginForm.includes("window.prompt"), "auth form should not use browser prompts");
+
+  const authLib = await read(root, "apps/web/src/lib/auth.ts");
+  assert(authLib.includes("loginRedirectForCurrentRequest"), "protected auth helpers should preserve the current route in login next");
+  assert(authLib.includes("currentPathHeaderName"), "auth helpers should read the request path captured by middleware");
+  assert(!authLib.includes('redirect("/login?next=/app/leads")'), "protected auth redirects should not hardcode every route to /app/leads");
+  assert(authLib.includes('loginRedirectForCurrentRequest("/app/leads")'), "missing sessions should redirect through the route-aware login helper");
+
+  const proxy = await read(root, "apps/web/src/proxy.ts");
+  assert(proxy.includes("currentPathHeaderName"), "proxy should share the auth header name for route-aware redirects");
+  assert(proxy.includes("request.nextUrl.pathname"), "proxy should capture the requested pathname");
+  assert(proxy.includes("request.nextUrl.search"), "proxy should preserve requested query parameters");
 }
 
 main().catch((error) => {

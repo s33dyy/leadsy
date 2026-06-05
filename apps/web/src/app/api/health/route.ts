@@ -5,14 +5,19 @@ import {
   deals,
   discoveredLeads,
   leadMagnetSources,
-  leads,
   metaLeads,
   whatsappConversations
 } from "@leadsy/domain";
 import { listAgencyClients } from "@/lib/agency-client-store";
+import { summarizeExtensionHealth } from "@/lib/extension-store";
+import { summarizeLeadKnowledgeHealth } from "@/lib/lead-knowledge-store";
 
 export async function GET() {
-  const agencyClients = await listAgencyClients();
+  const [agencyClients, leadKnowledge, extension] = await Promise.all([
+    listAgencyClients(),
+    summarizeLeadKnowledgeHealth(),
+    summarizeExtensionHealth()
+  ]);
   return NextResponse.json({
     ok: true,
     service: "leadsy-web",
@@ -20,13 +25,17 @@ export async function GET() {
     modules: {
       accounts: accounts.length,
       deals: deals.length,
-      leads: leads.length,
+      leads: leadKnowledge.records,
       campaigns: campaigns.length,
       agencyClients: agencyClients.length,
-      metaLeads: metaLeads.length,
+      metaLeads: leadKnowledge.metaSourced || metaLeads.length,
       leadMagnetSources: leadMagnetSources.length,
       discoveredLeads: discoveredLeads.length,
-      whatsappConversations: whatsappConversations.length
-    }
+      whatsappConversations: leadKnowledge.conversations || extension.conversations || whatsappConversations.length,
+      extensionTasks: extension.visibleTasks,
+      pendingApprovals: extension.pendingApprovals
+    },
+    leadKnowledge,
+    extension
   });
 }

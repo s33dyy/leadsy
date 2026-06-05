@@ -51,22 +51,31 @@ const columns = [
   { key: "completed", title: "Done", statuses: ["sent", "monitoring", "cancelled"] }
 ] as const;
 
+type TaskColumnKey = (typeof columns)[number]["key"];
+
 export function ExtensionTaskBoard({
   initialTasks,
-  initialEvents = []
+  initialEvents = [],
+  focusColumn
 }: {
   initialTasks: ExtensionTask[];
   initialEvents?: ExtensionTaskEvent[];
+  focusColumn?: TaskColumnKey;
 }) {
   const [tasks, setTasks] = useState(initialTasks);
   const [loading, setLoading] = useState("");
+  const orderedColumns = useMemo(() => {
+    if (!focusColumn) return columns;
+    const focused = columns.find((column) => column.key === focusColumn);
+    return focused ? [focused, ...columns.filter((column) => column.key !== focusColumn)] : columns;
+  }, [focusColumn]);
   const counts = useMemo(
     () =>
-      columns.map((column) => ({
+      orderedColumns.map((column) => ({
         ...column,
         count: tasks.filter((task) => (column.statuses as readonly string[]).includes(task.status)).length
       })),
-    [tasks]
+    [orderedColumns, tasks]
   );
 
   async function generateTasks() {
@@ -146,13 +155,17 @@ export function ExtensionTaskBoard({
       </div>
 
       <div className="grid min-w-0 items-start gap-3 lg:grid-cols-2 2xl:grid-cols-5">
-        {columns.map((column) => {
+        {orderedColumns.map((column) => {
           const columnTasks = tasks.filter((task) => (column.statuses as readonly string[]).includes(task.status));
+          const focused = column.key === focusColumn;
           return (
             <section
               key={column.key}
               data-task-column={column.key}
-              className="min-w-0 overflow-hidden rounded-[8px] border border-[var(--line)] bg-black/20 p-3"
+              data-focused={focused ? "true" : undefined}
+              className={`min-w-0 overflow-hidden rounded-[8px] border bg-black/20 p-3 ${
+                focused ? "border-amber-300/35 ring-1 ring-amber-300/20" : "border-[var(--line)]"
+              }`}
             >
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div className="min-w-0 truncate text-sm font-semibold text-white">{column.title}</div>

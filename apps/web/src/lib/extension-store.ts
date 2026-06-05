@@ -120,6 +120,12 @@ export type ExtensionTaskStatus =
   | "awaiting_approval"
   | "approved";
 
+export const awaitingApprovalTaskStatuses = ["awaiting_send_approval", "awaiting_approval", "draft"] as const satisfies readonly ExtensionTaskStatus[];
+
+export function taskNeedsApproval(task: Pick<ExtensionTask, "status" | "deletedAt">) {
+  return !task.deletedAt && (awaitingApprovalTaskStatuses as readonly string[]).includes(task.status);
+}
+
 export type ExtensionTaskPriority = "low" | "normal" | "high" | "urgent";
 
 export type ExtensionTask = {
@@ -515,6 +521,25 @@ export async function listExtensionTasks(tenantId: string, ownerId: string, opti
       const priorityRank: Record<ExtensionTaskPriority, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
       return priorityRank[left.priority] - priorityRank[right.priority] || right.updatedAt.localeCompare(left.updatedAt);
     });
+}
+
+export async function summarizeExtensionHealth() {
+  const state = await readState();
+  const activeTokens = state.tokens.filter((token) => !token.revokedAt && Date.parse(token.expiresAt) > Date.now());
+  const visibleTasks = state.tasks.filter((task) => !task.deletedAt);
+  const activeTasks = visibleTasks.filter((task) => !taskIsTerminal(task.status));
+  return {
+    tokens: activeTokens.length,
+    conversations: state.conversations.length,
+    messages: state.messages.length,
+    events: state.events.length,
+    tasks: state.tasks.length,
+    visibleTasks: visibleTasks.length,
+    activeTasks: activeTasks.length,
+    pendingApprovals: visibleTasks.filter(taskNeedsApproval).length,
+    taskEvents: state.taskEvents.length,
+    monitorPlatforms: new Set(state.conversations.map((conversation) => conversation.platform)).size
+  };
 }
 
 async function updateTask(

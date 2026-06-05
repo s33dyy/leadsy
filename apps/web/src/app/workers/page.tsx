@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
+import { requireAgencySession } from "@/lib/auth";
 
-export default function WorkersRouteAliasPage() {
+export default async function WorkersRouteAliasPage() {
+  await requireAgencySession();
   redirect("/app/worker");
 }

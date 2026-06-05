@@ -15,6 +15,7 @@ async function main() {
       saveUnifiedMetaWebhookMessages,
       setLeadConversationKnowledgeStatus,
       setLeadKnowledgeStatus,
+      summarizeLeadKnowledgeHealth,
       syncLeadKnowledgeFromExtensionTasks,
       syncLeadsyExtensionConversation
     } = await import("../apps/web/src/lib/lead-knowledge-store");
@@ -352,6 +353,14 @@ async function main() {
     assert(splitB, "task B should create its own CRM lead");
     assert.equal(splitA.messages.some((message) => message.body.includes("Worker task B")), false);
     assert.equal(splitB.messages.some((message) => message.body.includes("Worker task A")), false);
+
+    const health = await summarizeLeadKnowledgeHealth();
+    assert.equal(health.records, 7, "lead health should count all non-deleted lead knowledge records");
+    assert.equal(health.activeLeads, 6, "lead health should count active lead knowledge records");
+    assert.equal(health.excludedLeads, 1, "lead health should count excluded lead knowledge records");
+    assert.equal(health.metaSourced, 3, "lead health should count official Meta-sourced records");
+    assert.equal(health.extensionSourced, 4, "lead health should count extension and worker-task sourced records");
+    assert(health.messages >= 10, "lead health should expose real message volume");
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

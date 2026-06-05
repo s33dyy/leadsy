@@ -25,6 +25,7 @@ async function main() {
     softDeleteExtensionTask,
     prepareExtensionTask,
     resolveExtensionBearerToken,
+    summarizeExtensionHealth,
     syncExtensionConversation
   } = await import("../apps/web/src/lib/extension-store");
 
@@ -324,6 +325,27 @@ async function main() {
   );
   const allTasks = await listExtensionTasks("tenant_test", "usr_owner", { includeDeleted: true });
   assert.equal(allTasks.length, 2, "deleted tasks should remain recoverable when explicitly requested");
+
+  await createExtensionTask({
+    tenantId: "tenant_test",
+    ownerId: "usr_owner",
+    type: "reply_to_inbound",
+    status: "awaiting_send_approval",
+    priority: "urgent",
+    platform: "whatsapp-web",
+    contact: {
+      displayName: "Approval Lead",
+      phone: "+919830000001"
+    },
+    draftMessage: "Hi Approval Lead, can I send this now?",
+    contextSummary: "Prepared draft needs owner approval."
+  });
+
+  const health = await summarizeExtensionHealth();
+  assert.equal(health.tasks, 3, "extension health should count all stored worker tasks");
+  assert.equal(health.activeTasks, 1, "extension health should count non-terminal, non-deleted tasks");
+  assert.equal(health.pendingApprovals, 1, "extension health should expose send approvals for badges and health checks");
+  assert.equal(health.conversations, 1, "extension health should count synced browser conversations");
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

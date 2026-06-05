@@ -22,6 +22,18 @@ type ConnectPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
+type ConnectPanel = "meta" | "settings" | "profile";
+
+function paramValue(params: Record<string, string | string[] | undefined>, key: string) {
+  const value = params[key];
+  return Array.isArray(value) ? value[0] ?? "" : value ?? "";
+}
+
+function panelFromValue(value: string): ConnectPanel {
+  if (value === "settings" || value === "profile") return value;
+  return "meta";
+}
+
 function cleanOrigin(value?: string) {
   return value?.trim().replace(/\/$/, "");
 }
@@ -71,6 +83,8 @@ function channelAssetsForConnection(connection?: MetaOAuthConnectionSummary) {
 }
 
 export default async function ConnectPage({ searchParams }: ConnectPageProps) {
+  const params = searchParams ? await searchParams : {};
+  const activePanel = panelFromValue(paramValue(params, "panel"));
   const session = await getCurrentSession();
   const tokens = session ? await listExtensionTokens(session.tenantId, session.id) : [];
   const metaConnections = session ? await listMetaOAuthConnections(session.tenantId, session.id) : [];
@@ -80,13 +94,19 @@ export default async function ConnectPage({ searchParams }: ConnectPageProps) {
   const webhookUrl = `${origin}/api/meta/webhook`;
   const whatsappWebhookUrl = `${origin}/api/meta/whatsapp/webhook`;
   const metaConnectUrl = process.env.META_EMBEDDED_SIGNUP_URL?.trim();
-  const metaStatus = metaStatusCopy((await searchParams)?.meta);
+  const metaStatus = metaStatusCopy(params.meta);
+  const panelHeading =
+    activePanel === "settings"
+      ? { eyebrow: "Profile Settings", title: "Workspace and connection settings" }
+      : activePanel === "profile"
+      ? { eyebrow: "Profile", title: "Operator profile and workspace access" }
+      : { eyebrow: "Meta connection", title: "Connect Meta messaging" };
 
   return (
     <div className="space-y-6">
       <Panel className="p-5 md:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <SectionTitle eyebrow="Meta connection" title="Connect Meta messaging" />
+          <SectionTitle eyebrow={panelHeading.eyebrow} title={panelHeading.title} />
           <Badge tone={hasMetaConnection ? "lime" : metaConnectUrl ? "teal" : "amber"}>
             {hasMetaConnection ? "Connected" : metaConnectUrl ? "Ready to connect" : "Onboarding pending"}
           </Badge>

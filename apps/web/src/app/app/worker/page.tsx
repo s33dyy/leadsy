@@ -15,7 +15,22 @@ import { listMetaOAuthConnections } from "@/lib/meta-oauth-store";
 
 export const dynamic = "force-dynamic";
 
-export default async function WorkerPage() {
+type WorkerPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+function paramValue(params: Record<string, string | string[] | undefined>, key: string) {
+  const value = params[key];
+  return Array.isArray(value) ? value[0] ?? "" : value ?? "";
+}
+
+function focusColumnFromTab(value: string) {
+  return value === "pending" || value === "approval" || value === "approvals" ? "approval" : undefined;
+}
+
+export default async function WorkerPage({ searchParams }: WorkerPageProps) {
+  const params = searchParams ? await searchParams : {};
+  const focusColumn = focusColumnFromTab(paramValue(params, "tab"));
   const session = await getCurrentSession();
   const tokens = session ? await listExtensionTokens(session.tenantId, session.id) : [];
   const conversations = session ? await listExtensionConversations(session.tenantId, session.id) : [];
@@ -84,7 +99,7 @@ export default async function WorkerPage() {
           <Badge tone="teal">{tasks.length} tasks</Badge>
         </div>
         <div className="mt-6">
-          <ExtensionTaskBoard initialTasks={tasks} initialEvents={taskEvents} />
+          <ExtensionTaskBoard initialTasks={tasks} initialEvents={taskEvents} focusColumn={focusColumn} />
         </div>
       </Panel>
 
