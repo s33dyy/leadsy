@@ -28,6 +28,14 @@ const preparedTask = {
   draftMessage: "Hi, should I send the details here?"
 };
 
+const duplicateTargetTask = {
+  ...queuedTask,
+  id: "exttask_duplicate_target",
+  draftMessage: "Hi Asha, following up again.",
+  createdAt: "2026-06-02T08:05:00.000Z",
+  updatedAt: "2026-06-02T08:05:00.000Z"
+};
+
 describe("side panel task queue", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -108,5 +116,46 @@ describe("side panel task queue", () => {
     expect(document.querySelector('[data-task-approve-send="exttask_2"]')).toBeNull();
     expect(document.body.textContent).toContain("Waiting for Leadsy app");
     expect(sendMessage).not.toHaveBeenCalledWith({ type: "leadsy:approveTaskSend", taskId: "exttask_2" });
+  });
+
+  it("selects only one runnable task per conversation target for batch runs", async () => {
+    const sendMessage = vi.fn(async (message: { type: string; taskIds?: string[] }) => {
+      if (message.type === "leadsy:getSettings") {
+        return {
+          ok: true,
+          value: {
+            baseUrl: "http://localhost:3000",
+            token: "lext_test",
+            fallbackEnabled: true
+          }
+        };
+      }
+      if (message.type === "leadsy:getTasks") {
+        return { ok: true, value: [queuedTask, duplicateTargetTask] };
+      }
+      if (message.type === "leadsy:runSelectedTasks") {
+        return { ok: true, value: { batchRunId: "batch_test", requested: message.taskIds?.length ?? 0, sent: 1, postponed: 0, failed: 0 } };
+      }
+      return { ok: true, value: undefined };
+    });
+    vi.stubGlobal("chrome", {
+      runtime: {
+        sendMessage
+      }
+    });
+
+    await import("../src/sidepanel/index");
+    await vi.waitFor(() => expect(document.querySelectorAll(".task-row")).toHaveLength(2));
+
+    document.querySelector<HTMLButtonElement>("#select-visible")?.click();
+
+    expect(Array.from(document.querySelectorAll<HTMLInputElement>("[data-task-checkbox]")).filter((checkbox) => checkbox.checked)).toHaveLength(1);
+    expect(document.body.textContent).toContain("1 selected, 1 ready to run.");
+
+    document.querySelector<HTMLButtonElement>("#run-selected")?.click();
+
+    await vi.waitFor(() => {
+      expect(sendMessage).toHaveBeenCalledWith({ type: "leadsy:runSelectedTasks", taskIds: ["exttask_1"] });
+    });
   });
 });

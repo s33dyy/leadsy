@@ -27,6 +27,57 @@ describe("mergeNewMessages", () => {
     expect(mergeNewMessages(existing, incoming)).toHaveLength(2);
     expect(mergeNewMessages(existing, incoming).map((message) => message.id)).toEqual(["a", "b"]);
   });
+
+  it("reconciles incoming messages when they have different IDs but identical texts", () => {
+    const existing: ChatMessage[] = [
+      {
+        id: "old_a",
+        direction: "incoming",
+        text: "Hello how are you?",
+        timestamp: 1,
+        sourceUrl: "https://chat.test"
+      }
+    ];
+    const incoming: ChatMessage[] = [
+      {
+        id: "new_a",
+        direction: "incoming",
+        text: "Hello how are you?",
+        timestamp: 2,
+        sourceUrl: "https://chat.test"
+      }
+    ];
+
+    const merged = mergeNewMessages(existing, incoming);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].id).toBe("old_a");
+  });
+
+  it("reconciles and updates direction of incoming system messages when aligning with existing logs", () => {
+    const existing: ChatMessage[] = [
+      {
+        id: "msg_1",
+        direction: "incoming",
+        text: "Hello there",
+        timestamp: 1,
+        sourceUrl: "https://chat.test"
+      }
+    ];
+    const incoming: ChatMessage[] = [
+      {
+        id: "temp_1",
+        direction: "system", // Misclassified as system due to rendering delay
+        text: "Hello there",
+        timestamp: 2,
+        sourceUrl: "https://chat.test"
+      }
+    ];
+
+    const merged = mergeNewMessages(existing, incoming);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].id).toBe("msg_1");
+    expect(merged[0].direction).toBe("incoming");
+  });
 });
 
 describe("getUnansweredIncomingTurn", () => {

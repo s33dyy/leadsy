@@ -1,10 +1,72 @@
 import type { ChatMessage, ChatSiteProfile, MessageDirection } from "./types";
 
+function getAlignmentScore(existing: ChatMessage[], incoming: ChatMessage[], shift: number): number {
+  let matches = 0;
+
+  const startIncoming = Math.max(0, -shift);
+  const endIncoming = Math.min(incoming.length, existing.length - shift);
+
+  if (startIncoming >= endIncoming) return 0; // No overlap
+
+  for (let i = startIncoming; i < endIncoming; i++) {
+    const eMsg = existing[i + shift];
+    const iMsg = incoming[i];
+
+    const eText = eMsg.text.trim().replace(/\s+/g, " ");
+    const iText = iMsg.text.trim().replace(/\s+/g, " ");
+
+    if (eText !== iText) {
+      return 0; // Text mismatch -> invalid alignment
+    }
+
+    const dirMatch = eMsg.direction === iMsg.direction || eMsg.direction === "system" || iMsg.direction === "system";
+    if (!dirMatch) {
+      return 0; // Direction mismatch -> invalid alignment
+    }
+
+    matches += (eMsg.direction === iMsg.direction) ? 2 : 1;
+  }
+
+  return matches;
+}
+
 export function mergeNewMessages(existing: ChatMessage[], incoming: ChatMessage[]): ChatMessage[] {
+  if (existing.length === 0) {
+    return [...incoming];
+  }
+
+  // Clone incoming messages to avoid mutating the caller's input
+  const reconciledIncoming = incoming.map(msg => ({ ...msg }));
+
+  let bestShift = null;
+  let maxScore = -1;
+
+  // Search shifts from existing.length - 1 down to -incoming.length
+  for (let shift = existing.length - 1; shift >= -reconciledIncoming.length; shift--) {
+    const score = getAlignmentScore(existing, reconciledIncoming, shift);
+    if (score > 0 && score > maxScore) {
+      maxScore = score;
+      bestShift = shift;
+    }
+  }
+
+  if (bestShift !== null) {
+    const startIncoming = Math.max(0, -bestShift);
+    const endIncoming = Math.min(reconciledIncoming.length, existing.length - bestShift);
+
+    for (let i = startIncoming; i < endIncoming; i++) {
+      const eMsg = existing[i + bestShift];
+      reconciledIncoming[i].id = eMsg.id;
+      if (eMsg.direction !== "system" && reconciledIncoming[i].direction === "system") {
+        reconciledIncoming[i].direction = eMsg.direction;
+      }
+    }
+  }
+
   const seen = new Set(existing.map((message) => message.id));
   const merged = [...existing];
 
-  for (const message of incoming) {
+  for (const message of reconciledIncoming) {
     if (!seen.has(message.id)) {
       seen.add(message.id);
       merged.push(message);
@@ -40,6 +102,20 @@ export function createMessageId(text: string, direction: MessageDirection, seed:
   return `${direction}:${hashString(`${seed}:${normalized}`)}`;
 }
 
+function closestWithin(node: HTMLElement, selector: string, boundarySelector: string): HTMLElement | null {
+  try {
+    const matched = node.closest<HTMLElement>(selector);
+    if (!matched) return null;
+    const boundary = node.closest<HTMLElement>(boundarySelector);
+    if (boundary && !boundary.contains(matched)) {
+      return null;
+    }
+    return matched;
+  } catch {
+    return null;
+  }
+}
+
 export function extractMessagesFromDocument(
   profile: ChatSiteProfile,
   doc: Document = document
@@ -59,12 +135,14 @@ export function extractMessagesFromDocument(
     const rawTimestamp = node.getAttribute("data-timestamp") || node.getAttribute("datetime");
     const timestamp = rawTimestamp ? Number(rawTimestamp) || Date.now() : Date.now();
 
+    const parentIdNode = profile.messageListSelector ? closestWithin(node, "[data-id]", profile.messageListSelector) : node.closest<HTMLElement>("[data-id]");
+
     messages.push({
       id:
         node.id ||
         node.getAttribute("data-message-id") ||
         node.getAttribute("data-id") ||
-        node.closest<HTMLElement>("[data-id]")?.getAttribute("data-id") ||
+        parentIdNode?.getAttribute("data-id") ||
         createMessageId(text, direction, `${sourceUrl}:${index}`),
       direction,
       text,
@@ -105,19 +183,21 @@ function extractReadableMessageText(node: HTMLElement): string {
 }
 
 function inferDirection(node: HTMLElement, profile: ChatSiteProfile): MessageDirection {
-  if (
-    node.matches(profile.incomingSelector) ||
-    node.closest(profile.incomingSelector) ||
-    node.querySelector(profile.incomingSelector)
-  ) {
+  const boundary = profile.messageListSelector;
+
+  const hasIncoming = node.matches(profile.incomingSelector) ||
+    node.querySelector(profile.incomingSelector) ||
+    (boundary ? closestWithin(node, profile.incomingSelector, boundary) : node.closest(profile.incomingSelector));
+
+  if (hasIncoming) {
     return "incoming";
   }
 
-  if (
-    node.matches(profile.outgoingSelector) ||
-    node.closest(profile.outgoingSelector) ||
-    node.querySelector(profile.outgoingSelector)
-  ) {
+  const hasOutgoing = node.matches(profile.outgoingSelector) ||
+    node.querySelector(profile.outgoingSelector) ||
+    (boundary ? closestWithin(node, profile.outgoingSelector, boundary) : node.closest(profile.outgoingSelector));
+
+  if (hasOutgoing) {
     return "outgoing";
   }
 

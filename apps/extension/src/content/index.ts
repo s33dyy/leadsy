@@ -60,7 +60,7 @@ async function executeActiveTask(controller: ChatAutomationController, activeTas
           sentAt: result.sentAt
         }
       });
-      void controller.arm().catch(() => undefined);
+      controller.pause("Selected task sent. Waiting for human review before the next outreach.");
       return;
     }
 

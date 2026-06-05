@@ -274,8 +274,17 @@ runSelectedButton.addEventListener("click", () => {
 });
 
 selectVisibleButton.addEventListener("click", () => {
+  const selectedKeys = new Set(
+    currentTasks
+      .filter((task) => selectedTaskIds.has(task.id))
+      .map(taskConversationKey)
+  );
   for (const task of visibleTasksForActiveFilter()) {
-    if (taskIsRunnable(task)) selectedTaskIds.add(task.id);
+    const key = taskConversationKey(task);
+    if (taskIsRunnable(task) && !selectedKeys.has(key)) {
+      selectedTaskIds.add(task.id);
+      selectedKeys.add(key);
+    }
   }
   renderTasks(currentTasks);
 });
@@ -390,9 +399,43 @@ function taskIsRunnable(task: ExtensionTask) {
   return task.status === "queued" || task.status === "approved" || task.status === "postponed";
 }
 
+function uniqueRunnableTasksForBatch(tasks: ExtensionTask[]) {
+  const seen = new Set<string>();
+  return tasks.filter((task) => {
+    if (!taskIsRunnable(task)) return false;
+    const key = taskConversationKey(task);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function taskConversationKey(task: ExtensionTask) {
+  return normalizeTaskUrl(task.targetUrl) || [task.platform, cleanKey(task.contact?.phone), cleanKey(task.contact?.email), cleanKey(task.contact?.handle), cleanKey(task.contact?.profileUrl), cleanKey(task.contact?.displayName)].filter(Boolean).join(":") || task.id;
+}
+
+function normalizeTaskUrl(value?: string) {
+  if (!value) return "";
+  try {
+    const url = new URL(value);
+    url.hash = "";
+    if (url.hostname === "web.whatsapp.com") {
+      const phone = url.searchParams.get("phone")?.replace(/[^\d]/g, "");
+      if (phone) return `whatsapp:${phone}`;
+    }
+    return url.toString().toLowerCase();
+  } catch {
+    return value.trim().toLowerCase();
+  }
+}
+
+function cleanKey(value?: string) {
+  return value?.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 function renderBatchSummary(message?: string) {
   const selected = currentTasks.filter((task) => selectedTaskIds.has(task.id));
-  const runnable = selected.filter(taskIsRunnable);
+  const runnable = uniqueRunnableTasksForBatch(selected);
   runSelectedButton.disabled = !runnable.length;
   batchSummary.textContent = message || `${selectedTaskIds.size} selected, ${runnable.length} ready to run.`;
 }
@@ -451,7 +494,7 @@ function renderDetail(task?: ExtensionTask) {
 }
 
 async function runSelectedTasks() {
-  const taskIds = currentTasks.filter((task) => selectedTaskIds.has(task.id) && taskIsRunnable(task)).map((task) => task.id);
+  const taskIds = uniqueRunnableTasksForBatch(currentTasks.filter((task) => selectedTaskIds.has(task.id))).map((task) => task.id);
   if (!taskIds.length) {
     renderBatchSummary("Select at least one ready task.");
     return;
