@@ -1,6 +1,6 @@
 # Developer Automation Guide
 
-Status: founder-readable guide for the planned n8n automation layer.
+Status: founder-readable guide for the first n8n automation layer. The n8n Railway service is live; workflows are source-controlled but intentionally inactive until Leadsy service-auth/action endpoints are implemented.
 
 ## Plain-English Overview
 
@@ -30,6 +30,15 @@ Planned n8n workflows:
 Workflow documentation lives in:
 
 - `N8N_WORKFLOWS.md`
+
+Importable n8n workflow JSON lives in:
+
+- `packages/workflows/n8n/`
+
+The workflow list is generated from typed source in:
+
+- `packages/workflows/src/automation-catalog.ts`
+- `packages/workflows/src/n8n-blueprints.ts`
 
 Railway setup documentation lives in:
 
@@ -78,14 +87,16 @@ Existing service:
 
 - Leadsy web app.
 
-New planned service:
+New service:
 
 - `n8n`.
+- URL: `https://n8n-production-3749.up.railway.app`
+- Railway service ID: `4f5fec76-72ac-4b07-b2c4-452ef03e8449`
 
 Existing databases/services:
 
 - Postgres.
-- Redis if present.
+- Redis if present. Railway production currently has no Redis service, so n8n runs in regular execution mode for this phase.
 
 Important rule:
 
@@ -100,10 +111,12 @@ n8n-specific variables belong on the n8n service:
 
 - `N8N_ENCRYPTION_KEY`
 - `N8N_HOST`
+- `N8N_LISTEN_ADDRESS`
 - `N8N_PORT`
 - `N8N_PROTOCOL`
 - `N8N_EDITOR_BASE_URL`
 - `WEBHOOK_URL`
+- `PORT`
 - `GENERIC_TIMEZONE`
 - `DB_TYPE`
 - `DB_POSTGRESDB_HOST`
@@ -112,6 +125,9 @@ n8n-specific variables belong on the n8n service:
 - `DB_POSTGRESDB_USER`
 - `DB_POSTGRESDB_PASSWORD`
 - `DB_POSTGRESDB_SCHEMA`
+- `DB_POSTGRESDB_SSL_ENABLED`
+- `DB_POSTGRESDB_SSL_REJECT_UNAUTHORIZED`
+- `DB_TABLE_PREFIX`
 - `EXECUTIONS_MODE`
 - Redis queue variables if queue mode is enabled.
 
@@ -126,15 +142,15 @@ These are for the admin dashboard only.
 
 ## How Workflows Are Deployed
 
-Planned process:
+Current process:
 
-1. Build or edit workflow in n8n.
-2. Test with non-production data.
-3. Export workflow JSON from n8n.
-4. Remove secrets from exported JSON.
-5. Commit workflow JSON to the repo if the team chooses source-controlled workflows.
-6. Import/update workflow in production n8n.
-7. Verify the workflow appears in Leadsy Settings -> Infrastructure -> Automation.
+1. Edit the typed workflow catalog or blueprint builder in `packages/workflows/src/`.
+2. Run `npm run workflows:export-n8n`.
+3. Run `npm run test:n8n-workflows`.
+4. Import the relevant JSON file from `packages/workflows/n8n/` into n8n.
+5. Keep the workflow inactive until credentials and Leadsy action endpoints are ready.
+6. Reconnect credentials inside n8n; do not commit secrets into JSON.
+7. Verify the workflow appears in Leadsy Settings -> Infrastructure -> Automation after the web service has the n8n URL variables.
 
 ## How Workflows Are Edited
 
@@ -148,6 +164,8 @@ Edit in n8n when changing:
 
 Edit in Leadsy code when changing:
 
+- The source-controlled workflow catalog.
+- The generated import JSON files.
 - Authentication.
 - Authorization.
 - Database writes.

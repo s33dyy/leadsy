@@ -1,6 +1,45 @@
 # n8n Workflows
 
-Status: workflow catalog and implementation contract. These workflows are not yet imported into n8n.
+Status: workflow catalog, typed blueprint source, and source-controlled n8n JSON exports. The workflows are intentionally exported inactive and are not yet activated in production n8n.
+
+## Source-Controlled Workflow Files
+
+Typed source:
+
+- `packages/workflows/src/automation-catalog.ts`
+- `packages/workflows/src/n8n-blueprints.ts`
+
+n8n import files:
+
+- `packages/workflows/n8n/lead-added.json`
+- `packages/workflows/n8n/lead-updated.json`
+- `packages/workflows/n8n/research-requested.json`
+- `packages/workflows/n8n/qualification-requested.json`
+- `packages/workflows/n8n/task-generated.json`
+- `packages/workflows/n8n/approval-requested.json`
+- `packages/workflows/n8n/follow-up-due.json`
+- `packages/workflows/n8n/meta-lead-received.json`
+- `packages/workflows/n8n/whatsapp-message-received.json`
+- `packages/workflows/n8n/worker-retry.json`
+- `packages/workflows/n8n/index.json`
+
+Generation command:
+
+```bash
+npm run workflows:export-n8n
+```
+
+Validation command:
+
+```bash
+npm run test:n8n-workflows
+```
+
+Import posture:
+
+- Import one JSON workflow file at a time into n8n.
+- Keep imported workflows inactive until Leadsy automation action endpoints and service authentication are in place.
+- Reconnect credentials in n8n instead of storing secrets in workflow JSON.
 
 ## Global Rules
 

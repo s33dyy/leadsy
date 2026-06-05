@@ -68,10 +68,14 @@ Files:
 
 - `apps/web/src/lib/automation-workflows.ts`
 - `apps/web/src/lib/infrastructure-status.ts`
+- `packages/workflows/src/automation-catalog.ts`
+- `packages/workflows/src/n8n-blueprints.ts`
+- `packages/workflows/n8n/*.json`
 
 Behavior:
 
-- Defines the ten requested n8n workflow contracts.
+- Defines the ten requested n8n workflow contracts from shared package source.
+- Exports inactive n8n JSON workflows for later import/review.
 - Probes n8n only when optional n8n env vars are configured.
 - Returns a clean `not configured` state when n8n is absent.
 - Keeps Leadsy as the source of truth.

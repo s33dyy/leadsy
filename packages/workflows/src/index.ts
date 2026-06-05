@@ -8,6 +8,18 @@ import {
 } from "@leadsy/domain";
 import { eventBus } from "@leadsy/events";
 
+export {
+  automationWorkflowDefinitions,
+  workflowDefinitionForKey,
+  type AutomationWorkflowDefinition,
+  type AutomationWorkflowKey
+} from "./automation-catalog";
+export {
+  n8nBlueprintForWorkflow,
+  n8nWorkflowBlueprints,
+  type N8nWorkflowBlueprint
+} from "./n8n-blueprints";
+
 export type WorkflowEdge = {
   from: string;
   to: string;

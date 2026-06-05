@@ -1,6 +1,6 @@
 # Railway Migration Plan: Add n8n Automation Service
 
-Status: plan only. No Railway service has been created by this document.
+Status: first implementation complete for service creation. The `n8n` Railway service exists and is healthy, while workflow import/activation remains gated.
 
 ## Goal
 
@@ -50,6 +50,15 @@ Name:
 n8n
 ```
 
+Live service:
+
+- Service ID: `4f5fec76-72ac-4b07-b2c4-452ef03e8449`
+- Public URL: `https://n8n-production-3749.up.railway.app`
+- Latest verified deployment: `47eb448c-a4c2-4866-b9e3-115bc21861af`
+- Health check: `GET /healthz` returned HTTP 200 on 2026-06-05.
+- Existing web service was not replaced or renamed.
+- Railway Redis is not present in production; queue mode is deferred.
+
 Placement:
 
 - Same Railway project as the existing Leadsy web service.
@@ -58,13 +67,13 @@ Placement:
 - Connected to existing Postgres.
 - Connected to existing Redis if present.
 
-Recommended image:
+Image used:
 
 ```text
-n8nio/n8n:latest
+docker.n8n.io/n8nio/n8n:stable
 ```
 
-Pin the image to an explicit version before production if Railway supports it in the chosen setup.
+The official n8n Docker docs recommend `stable` for production. Pin to an explicit tested version before a later high-volume automation rollout.
 
 ## Required n8n Variables
 
@@ -72,10 +81,12 @@ Add these only to the new `n8n` service unless explicitly needed by the web serv
 
 - `N8N_ENCRYPTION_KEY`
 - `N8N_HOST`
+- `N8N_LISTEN_ADDRESS`
 - `N8N_PORT`
 - `N8N_PROTOCOL`
 - `N8N_EDITOR_BASE_URL`
 - `WEBHOOK_URL`
+- `PORT`
 - `GENERIC_TIMEZONE`
 - `DB_TYPE`
 - `DB_POSTGRESDB_HOST`
@@ -83,7 +94,10 @@ Add these only to the new `n8n` service unless explicitly needed by the web serv
 - `DB_POSTGRESDB_DATABASE`
 - `DB_POSTGRESDB_USER`
 - `DB_POSTGRESDB_PASSWORD`
-- `DB_POSTGRESDB_SCHEMA`
+- `DB_POSTGRESDB_SCHEMA` if using a dedicated schema
+- `DB_POSTGRESDB_SSL_ENABLED`
+- `DB_POSTGRESDB_SSL_REJECT_UNAUTHORIZED`
+- `DB_TABLE_PREFIX`
 - `QUEUE_BULL_REDIS_HOST`
 - `QUEUE_BULL_REDIS_PORT`
 - `QUEUE_BULL_REDIS_PASSWORD`
@@ -94,10 +108,17 @@ Add these only to the new `n8n` service unless explicitly needed by the web serv
 
 Recommended:
 
+- `EXECUTIONS_MODE=regular` until a Railway Redis service exists.
 - `EXECUTIONS_MODE=queue` when Redis is connected and worker mode is configured.
 - `DB_TYPE=postgresdb`.
+- `DB_TABLE_PREFIX=n8n_` when using the shared Postgres database to avoid table-name collision.
+- `DB_POSTGRESDB_SCHEMA` can remain unset in the first phase because the service uses the default schema plus `DB_TABLE_PREFIX=n8n_`.
 - `GENERIC_TIMEZONE=Asia/Kolkata`.
 - Disable diagnostics/version notifications if the team wants minimal outbound telemetry.
+
+Runtime note:
+
+- Railway Postgres currently presents a self-signed certificate chain to n8n. `DB_POSTGRESDB_SSL_ENABLED=true` and `DB_POSTGRESDB_SSL_REJECT_UNAUTHORIZED=false` were required for n8n startup. Replace this with a CA-backed configuration if Railway exposes the CA certificate cleanly.
 
 ## Optional Web Service Variables
 
@@ -109,6 +130,27 @@ Add only when implementing the Leadsy admin automation visibility UI:
 - `N8N_HEALTH_TIMEOUT_MS`
 
 These must be additive. Do not remove or rename existing Leadsy variables.
+
+Current status:
+
+- `N8N_PUBLIC_URL` and `N8N_HEALTH_TIMEOUT_MS` are confirmed on the web service with `--skip-deploys`.
+- `N8N_INTERNAL_URL` timed out through Railway CLI and should be retried later.
+- These variables are picked up by the next normal `main` deploy after CI:
+
+```bash
+railway variable set --service @leadsy/web \
+  N8N_PUBLIC_URL=https://n8n-production-3749.up.railway.app \
+  N8N_HEALTH_TIMEOUT_MS=2500 \
+  --skip-deploys
+```
+
+Optional private networking retry:
+
+```bash
+railway variable set --service @leadsy/web \
+  'N8N_INTERNAL_URL=http://${{n8n.RAILWAY_PRIVATE_DOMAIN}}:5678' \
+  --skip-deploys
+```
 
 ## Database Connection Strategy
 
@@ -171,11 +213,11 @@ Do not bypass Leadsy for business mutations.
 ## Migration Sequence
 
 1. Confirm current `main` CI is green and Railway web deploy is healthy.
-2. Add n8n service in Railway UI or approved Railway workflow.
-3. Attach Postgres to n8n using a separate schema/database.
-4. Attach Redis if present and configure queue mode.
-5. Configure n8n encryption key and base URLs.
-6. Verify n8n health from Railway logs and public dashboard URL.
+2. Add n8n service in Railway UI or approved Railway workflow. Done.
+3. Attach Postgres to n8n using a separate schema/database. First phase done with shared Postgres and `n8n_` table prefix.
+4. Attach Redis if present and configure queue mode. Deferred because Railway Redis is not present.
+5. Configure n8n encryption key and base URLs. Done.
+6. Verify n8n health from Railway logs and public dashboard URL. Done.
 7. Add additive Leadsy env vars for n8n visibility only.
 8. Add Leadsy infrastructure/admin APIs.
 9. Add Settings -> Infrastructure -> Automation UI.

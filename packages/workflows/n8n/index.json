@@ -1,0 +1,62 @@
+[
+  {
+    "key": "lead-added",
+    "name": "Leadsy - Lead Added",
+    "file": "lead-added.json",
+    "active": false
+  },
+  {
+    "key": "lead-updated",
+    "name": "Leadsy - Lead Updated",
+    "file": "lead-updated.json",
+    "active": false
+  },
+  {
+    "key": "research-requested",
+    "name": "Leadsy - Research Requested",
+    "file": "research-requested.json",
+    "active": false
+  },
+  {
+    "key": "qualification-requested",
+    "name": "Leadsy - Qualification Requested",
+    "file": "qualification-requested.json",
+    "active": false
+  },
+  {
+    "key": "task-generated",
+    "name": "Leadsy - Task Generated",
+    "file": "task-generated.json",
+    "active": false
+  },
+  {
+    "key": "approval-requested",
+    "name": "Leadsy - Approval Requested",
+    "file": "approval-requested.json",
+    "active": false
+  },
+  {
+    "key": "follow-up-due",
+    "name": "Leadsy - Follow-up Due",
+    "file": "follow-up-due.json",
+    "active": false
+  },
+  {
+    "key": "meta-lead-received",
+    "name": "Leadsy - Meta Lead Received",
+    "file": "meta-lead-received.json",
+    "active": false
+  },
+  {
+    "key": "whatsapp-message-received",
+    "name": "Leadsy - WhatsApp Message Received",
+    "file": "whatsapp-message-received.json",
+    "active": false
+  },
+  {
+    "key": "worker-retry",
+    "name": "Leadsy - Worker Retry",
+    "file": "worker-retry.json",
+    "active": false
+  }
+]
