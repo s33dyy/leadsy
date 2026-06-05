@@ -1,6 +1,6 @@
 # n8n Workflows
 
-Status: workflow catalog, typed blueprint source, and source-controlled n8n JSON exports. The workflows are intentionally exported inactive and are not yet activated in production n8n.
+Status: workflow catalog, typed blueprint source, and one source-controlled n8n router export. The router is intentionally exported inactive and should not be activated until Leadsy service-auth/action endpoints are in place.
 
 ## Source-Controlled Workflow Files
 
@@ -11,17 +11,16 @@ Typed source:
 
 n8n import files:
 
-- `packages/workflows/n8n/lead-added.json`
-- `packages/workflows/n8n/lead-updated.json`
-- `packages/workflows/n8n/research-requested.json`
-- `packages/workflows/n8n/qualification-requested.json`
-- `packages/workflows/n8n/task-generated.json`
-- `packages/workflows/n8n/approval-requested.json`
-- `packages/workflows/n8n/follow-up-due.json`
-- `packages/workflows/n8n/meta-lead-received.json`
-- `packages/workflows/n8n/whatsapp-message-received.json`
-- `packages/workflows/n8n/worker-retry.json`
+- `packages/workflows/n8n/leadsy-automation-router.json`
 - `packages/workflows/n8n/index.json`
+
+The router is the only workflow operators need to configure in n8n. It contains:
+
+- One webhook trigger: `leadsy/automation-router`
+- Two schedule triggers: Follow-up Due and Worker Retry
+- One `Route Event` switch with branches for all ten Leadsy automation event types
+- Shared started/succeeded execution logging through Leadsy APIs
+- Shared retry settings on the Leadsy HTTP action nodes
 
 Generation command:
 
@@ -37,9 +36,10 @@ npm run test:n8n-workflows
 
 Import posture:
 
-- Import one JSON workflow file at a time into n8n.
-- Keep imported workflows inactive until Leadsy automation action endpoints and service authentication are in place.
-- Reconnect credentials in n8n instead of storing secrets in workflow JSON.
+- Import `leadsy-automation-router.json` into n8n.
+- Keep the router inactive until Leadsy automation action endpoints and service authentication are in place.
+- Reconnect the single Leadsy API credential in n8n instead of storing secrets in workflow JSON.
+- Add new routes inside the router rather than creating a new workflow per event type.
 
 ## Global Rules
 
@@ -95,7 +95,7 @@ Leadsy should expose an audit endpoint or internal repository call for workflow 
 - `automation.workflow.approval_required`
 - `automation.workflow.action_dispatched`
 
-## Workflow Definitions
+## Router Branch Definitions
 
 ### 1. Lead Added
 

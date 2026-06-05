@@ -1,6 +1,6 @@
 # Final Migration Report
 
-Status: safe migration slice completed and deployed through the normal GitHub/Railway path. Full product redesign and workflow activation remain as follow-up work.
+Status: backend/n8n migration slice deployed; Lovable operator UI port is being shipped as the next production frontend change.
 
 ## What Changed
 
@@ -16,7 +16,7 @@ Status: safe migration slice completed and deployed through the normal GitHub/Ra
 - Added Settings -> Infrastructure -> Automation visibility inside Leadsy.
 - Moved the automation workflow catalog into `@leadsy/workflows`.
 - Added source-controlled n8n blueprint generation.
-- Added importable inactive n8n workflow JSON files under `packages/workflows/n8n/`.
+- Added one importable inactive n8n Automation Router workflow JSON under `packages/workflows/n8n/`.
 - Added `npm run workflows:export-n8n`.
 - Added `npm run test:n8n-workflows`.
 - Created a separate Railway service named `n8n`.
@@ -37,18 +37,22 @@ Status: safe migration slice completed and deployed through the normal GitHub/Ra
 
 ## New Workflows
 
-All workflow JSON files are generated inactive for review/import:
+The n8n production service now uses one inactive workflow for easier configuration:
 
-- `Leadsy - Lead Added`
-- `Leadsy - Lead Updated`
-- `Leadsy - Research Requested`
-- `Leadsy - Qualification Requested`
-- `Leadsy - Task Generated`
-- `Leadsy - Approval Requested`
-- `Leadsy - Follow-up Due`
-- `Leadsy - Meta Lead Received`
-- `Leadsy - WhatsApp Message Received`
-- `Leadsy - Worker Retry`
+- `Leadsy - Automation Router`
+
+The router has branches for:
+
+- Lead Added
+- Lead Updated
+- Research Requested
+- Qualification Requested
+- Task Generated
+- Approval Requested
+- Follow-up Due
+- Meta Lead Received
+- WhatsApp Message Received
+- Worker Retry
 
 Source files:
 
@@ -57,7 +61,8 @@ Source files:
 
 Generated files:
 
-- `packages/workflows/n8n/*.json`
+- `packages/workflows/n8n/leadsy-automation-router.json`
+- `packages/workflows/n8n/index.json`
 
 ## New Railway Services
 
@@ -75,12 +80,12 @@ Generated files:
 
 ## Risks
 
-- n8n is live but workflows are not imported or active yet.
+- n8n is live and the single `Leadsy - Automation Router` workflow is imported but inactive.
 - The workflow JSON references future Leadsy automation action endpoints such as `/api/automation/events/*`; those endpoints still need implementation before activation.
 - Durable execution metadata and AI cost persistence still need Postgres-backed tables/repositories.
 - `N8N_PUBLIC_URL` and `N8N_HEALTH_TIMEOUT_MS` were confirmed on the web service with `--skip-deploys`; `N8N_INTERNAL_URL` timed out and should be retried later if private networking is preferred.
 - n8n Postgres SSL uses `DB_POSTGRESDB_SSL_REJECT_UNAUTHORIZED=false` because Railway Postgres presented a self-signed certificate chain to n8n. Prefer CA-backed validation if Railway exposes the CA.
-- Full Lovable-quality frontend redesign is not complete in this slice.
+- The Lovable dashboard/app-shell/auth port is implemented on the current feature branch and still needs CI/Railway deployment.
 
 ## Remaining Work
 
@@ -90,15 +95,14 @@ Generated files:
 - Implement Leadsy automation action endpoints.
 - Add Postgres-backed automation execution metadata.
 - Add Postgres-backed AI usage/cost ledger.
-- Import the inactive workflow JSON files into n8n.
-- Review credentials in n8n and activate workflows one by one.
+- Review credentials in n8n and activate the single Automation Router after Leadsy action endpoints are ready.
 - Add Redis to Railway and move n8n to queue mode if automation volume requires it.
-- Complete the full CRM/Dashboard/Workers/Approvals frontend redesign.
+- Complete the full CRM/Workers/Approvals detail-page redesign after the dashboard/app-shell port lands.
 
 ## Rollback Plan
 
 1. Keep the existing Leadsy web service running.
-2. Pause or leave inactive all n8n workflows.
+2. Pause or leave inactive the n8n Automation Router.
 3. Remove or leave unset web `N8N_*` variables if the admin dashboard should show n8n as unavailable.
 4. Stop the Railway `n8n` service if it causes resource pressure.
 5. Do not route Meta or WhatsApp public webhooks to n8n.

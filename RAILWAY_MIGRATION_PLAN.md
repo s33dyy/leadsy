@@ -221,8 +221,8 @@ Do not bypass Leadsy for business mutations.
 7. Add additive Leadsy env vars for n8n visibility only.
 8. Add Leadsy infrastructure/admin APIs.
 9. Add Settings -> Infrastructure -> Automation UI.
-10. Import initial workflows from `N8N_WORKFLOWS.md`.
-11. Test workflows against staging/local-like data.
+10. Import the single inactive `Leadsy - Automation Router` workflow from `N8N_WORKFLOWS.md`.
+11. Test router branches against staging/local-like data.
 12. Push through feature branch, CI on `main`, and Railway production deploy.
 13. Confirm Railway production deployment hash matches successful `main` commit hash.
 
@@ -232,7 +232,7 @@ If n8n causes issues:
 
 1. Disable workflow triggers in Leadsy by toggling the additive automation flag introduced during implementation.
 2. Leave existing Leadsy APIs active.
-3. Pause n8n workflows.
+3. Pause the n8n Automation Router.
 4. Keep n8n service running for log inspection.
 5. If needed, remove n8n public URL exposure while preserving database logs.
 6. Do not rollback the existing web service unless web-specific code changed and failed CI/deploy verification.

@@ -1,18 +1,22 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { n8nWorkflowBlueprints } from "@leadsy/workflows";
 
-function fileNameForWorkflow(key: string) {
-  return `${key}.json`;
-}
+const routerFileName = "leadsy-automation-router.json";
 
 async function main() {
   const outputDir = join(process.cwd(), "packages", "workflows", "n8n");
   await mkdir(outputDir, { recursive: true });
+  const existingFiles = await readdir(outputDir).catch(() => []);
+  for (const file of existingFiles) {
+    if (file.endsWith(".json")) {
+      await rm(join(outputDir, file));
+    }
+  }
 
   for (const workflow of n8nWorkflowBlueprints) {
     await writeFile(
-      join(outputDir, fileNameForWorkflow(workflow.meta.leadsyWorkflowKey)),
+      join(outputDir, routerFileName),
       `${JSON.stringify(workflow, null, 2)}\n`,
       "utf8"
     );
@@ -24,8 +28,13 @@ async function main() {
       n8nWorkflowBlueprints.map((workflow) => ({
         key: workflow.meta.leadsyWorkflowKey,
         name: workflow.name,
-        file: fileNameForWorkflow(workflow.meta.leadsyWorkflowKey),
-        active: workflow.active
+        file: routerFileName,
+        active: workflow.active,
+        routes: workflow.meta.routes.map((route) => ({
+          key: route.key,
+          name: route.name,
+          purpose: route.purpose
+        }))
       })),
       null,
       2

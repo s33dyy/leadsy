@@ -15,7 +15,7 @@ export {
   type AutomationWorkflowKey
 } from "./automation-catalog";
 export {
-  n8nBlueprintForWorkflow,
+  n8nAutomationRouterBlueprint,
   n8nWorkflowBlueprints,
   type N8nWorkflowBlueprint
 } from "./n8n-blueprints";

@@ -43,11 +43,19 @@ async function main() {
   assert(appShell.includes("activePaths"), "app shell should preserve active path mapping for existing workspace routes");
   assert(!appShell.includes('href: "/crm", label: "CRM"'), "CRM tab clicks should not leave the authenticated shell first");
   assert(!appShell.includes('href: "/workers", label: "Workers"'), "Worker tab clicks should not leave the authenticated shell first");
+  assert(appShell.includes("Quick search"), "app shell should include the Lovable-style quick search control");
+  assert(appShell.includes("Workflow"), "app shell should group navigation by workflow");
+  assert(appShell.includes("Knowledge"), "app shell should keep knowledge navigation visible");
+  assert(appShell.includes("4 workers running"), "app shell top bar should expose worker activity context");
 
   const workspaceIndex = await read("apps/web/src/app/app/page.tsx");
   assert(!workspaceIndex.includes('redirect("/app/leads")'), "Dashboard navigation should not redirect operators into the CRM leads workspace");
   assert(workspaceIndex.includes("listLeadKnowledgeRecords"), "Dashboard should render live lead intelligence instead of a redirect");
   assert(workspaceIndex.includes("Operations dashboard"), "Dashboard should expose a real operator dashboard surface");
+  assert(workspaceIndex.includes("Operator overview"), "Dashboard should match the Lovable operator overview layout");
+  assert(workspaceIndex.includes("Qualification funnel"), "Dashboard should include the Lovable qualification funnel surface");
+  assert(workspaceIndex.includes("Worker throughput"), "Dashboard should include worker throughput");
+  assert(workspaceIndex.includes("Needs you"), "Dashboard should include the right-side Needs You rail");
 }
 
 main().catch((error) => {

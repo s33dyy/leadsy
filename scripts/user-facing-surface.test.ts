@@ -83,9 +83,9 @@ async function main() {
   for (const route of ["/app/analytics", "/app/capture", "/app/clients", "/app/crm", "/app/inbox", "/app/magnet", "/app/meta", "/app/workflows"]) {
     assert(!appShell.includes(route), `app nav should not include ${route}`);
   }
-  assert(appShell.includes("Meta messaging connection"), "workspace header should frame connection as Meta messaging onboarding");
-  assert(appShell.includes("hasMetaConnection"), "workspace header should receive the saved Meta connection state");
-  assert(appShell.includes("Connected"), "workspace header should show connected Meta state after OAuth");
+  assert(appShell.includes("4 workers running"), "workspace header should frame the Lovable-style worker queue context");
+  assert(appShell.includes("hasMetaConnection"), "workspace shell should receive the saved Meta connection state");
+  assert(appShell.includes("Meta connection needs attention"), "workspace notifications should still surface missing Meta setup");
   assert(!appShell.includes("WhatsApp leads · browser worker"), "workspace header should not merge Meta connection with worker ops");
   assert(!appShell.includes("CopilotDock"), "copilot dock should not be part of the clean user-facing shell");
 
@@ -237,10 +237,11 @@ async function main() {
   assert(!rootLayout.includes("Revenue OS"), "app metadata should not position Leadsy as Revenue OS");
 
   const dashboardPage = await readFile(join(root, "apps/web/src/app/app/page.tsx"), "utf8");
-  assert(dashboardPage.includes("Daily lead volume"), "dashboard should show daily lead volume");
-  assert(dashboardPage.includes("Lead source split"), "dashboard should show source split from lead records");
-  assert(dashboardPage.includes("Status pipeline"), "dashboard should show CRM status pipeline");
-  assert(dashboardPage.includes("Assignee workload"), "dashboard should show assignee workload");
+  assert(dashboardPage.includes("New leads · 24h"), "dashboard should show compact new lead volume");
+  assert(dashboardPage.includes("Lead sources"), "dashboard should show source split from lead records");
+  assert(dashboardPage.includes("Qualification funnel"), "dashboard should show the Lovable qualification funnel");
+  assert(dashboardPage.includes("Worker throughput"), "dashboard should show worker throughput");
+  assert(dashboardPage.includes("Needs you"), "dashboard should expose the right-side approval rail");
   assert(dashboardPage.includes("crmStatus"), "dashboard counts should use CRM status fields");
   assert(dashboardPage.includes("leadSource"), "dashboard counts should use stored lead source fields");
 
