@@ -120,7 +120,16 @@ Local verification passed:
 
 Deployment verification:
 
-- GitHub Actions `Web CI` passed on `main` commit `de9f473662a33a9ac6c92e36cb5a9aa65209bbee`.
-- Railway web deployment `01a1930a-8b0b-4f7b-8a03-7fdf75b4fae0` succeeded for commit `de9f473662a33a9ac6c92e36cb5a9aa65209bbee`.
-- Railway n8n service deployment `47eb448c-a4c2-4866-b9e3-115bc21861af` succeeded.
+- GitHub Actions `Web CI` passed on `main` after the migration commits.
+- Railway web deployment succeeded on `main` after CI.
+- Railway n8n service deployment succeeded.
+- Leadsy public health returned HTTP 200.
 - n8n public health returned HTTP 200.
+
+Use these commands to retrieve the latest exact IDs:
+
+```bash
+gh run list --branch main --limit 3 --json databaseId,headSha,status,conclusion,workflowName,url
+railway deployment list --service @leadsy/web --json --limit 3
+railway deployment list --service n8n --json --limit 3
+```
