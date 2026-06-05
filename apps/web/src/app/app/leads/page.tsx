@@ -76,14 +76,6 @@ function paramValue(params: Record<string, string | string[] | undefined>, key: 
   return Array.isArray(value) ? value[0] ?? "" : value ?? "";
 }
 
-function formatDate(value?: string) {
-  if (!value) return "No activity";
-  return new Date(value).toLocaleString("en-IN", {
-    dateStyle: "medium",
-    timeStyle: "short"
-  });
-}
-
 function shortDate(value?: string) {
   if (!value) return "No touch";
   return new Date(value).toLocaleString("en-IN", {
@@ -144,7 +136,7 @@ function noticeCopy(params: Record<string, string | string[] | undefined>) {
   if (notice === "manual-message-added") return "Manual communication logged.";
   if (notice === "lead-edited") return "Lead details updated.";
   if (notice === "lead-archived") return "Lead archived. History is preserved.";
-  if (notice === "message-hidden") return "Communication hidden from the active timeline.";
+  if (notice === "message-hidden") return "Communication hidden from the chat.";
   if (notice === "message-restored") return "Communication restored.";
   if (notice === "lead-magnet-archived") return "Lead Magnet is archived. Lead Intelligence is the active workspace.";
   return "";
@@ -198,13 +190,6 @@ function matchesView(lead: LeadKnowledgeRecord, view: ViewFilter) {
 
 function filterLeads(leads: LeadKnowledgeRecord[], view: ViewFilter, query: string) {
   return leads.filter((lead) => matchesView(lead, view) && matchesQuery(lead, query));
-}
-
-function activityTitle(message: LeadKnowledgeMessage) {
-  if (message.direction === "outbound") return "Outbound";
-  if (message.direction === "note") return "Manual note";
-  if (message.direction === "system") return "Worker event";
-  return "Inbound";
 }
 
 function channelLabel(channel: LeadKnowledgeChannel) {
@@ -338,6 +323,18 @@ function sourceTone(message: LeadKnowledgeMessage): "teal" | "amber" | "lime" | 
   if (message.source === "meta-webhook") return "lime";
   if (message.source === "extension") return "sky";
   return "amber";
+}
+
+function messageTime(message: LeadKnowledgeMessage) {
+  const parsed = Date.parse(message.sentAt);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function chatSenderLabel(message: LeadKnowledgeMessage) {
+  if (message.direction === "outbound") return "You";
+  if (message.direction === "note") return "Internal note";
+  if (message.direction === "system") return "Leadsy";
+  return "Lead";
 }
 
 function Metric({
@@ -793,6 +790,7 @@ function LeadCommsTab({
   commChannel: CommChannelFilter;
 }) {
   const messages = messagesForCommChannel(lead, commChannel);
+  const orderedMessages = [...messages].sort((a, b) => messageTime(a) - messageTime(b));
   const conversations = conversationsForCommChannel(lead, commChannel);
   return (
     <div className="space-y-4">
@@ -816,7 +814,6 @@ function LeadCommsTab({
       <div className="grid gap-4 xl:grid-cols-[0.38fr_0.62fr]">
         <div className="space-y-4">
           <ManualReplyHandoff lead={lead} />
-          <ManualMessageForm lead={lead} commChannel={commChannel} />
           <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-sm font-semibold text-white">
@@ -835,20 +832,32 @@ function LeadCommsTab({
           </div>
         </div>
 
-        <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-sm font-semibold text-white">
-              <MessageCircle size={16} className="text-[var(--teal)]" />
-              Activity timeline
+        <div data-testid="lead-comms-chat" className="flex min-h-[620px] flex-col overflow-hidden rounded-[8px] border border-[var(--line)] bg-black/20">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] bg-white/[0.03] px-4 py-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                <MessageCircle size={16} className="text-[var(--teal)]" />
+                Conversation chat
+              </div>
+              <div className="mt-1 truncate text-xs text-[var(--muted)]">{contactLabel(lead)}</div>
             </div>
-            <Badge tone="neutral">{messages.length} logged comms</Badge>
+            <Badge tone="neutral">{messages.length} messages</Badge>
           </div>
-          <div className="mt-3 grid max-h-[620px] gap-2 overflow-y-auto overflow-x-hidden pr-1">
-            {messages.length ? (
-              [...messages].reverse().map((message) => <MessageEvent key={message.id} lead={lead} message={message} />)
+          <div className="flex-1 overflow-y-auto overflow-x-hidden bg-[radial-gradient(circle_at_top,rgba(32,230,190,0.06),transparent_32%)] px-3 py-4 md:px-4">
+            {orderedMessages.length ? (
+              <div className="flex flex-col gap-3">
+                {orderedMessages.map((message) => (
+                  <ChatMessageBubble key={message.id} lead={lead} message={message} />
+                ))}
+              </div>
             ) : (
-              <EmptyState icon={Inbox} title="No comms in this channel" detail="Choose another channel or log a manual communication." />
+              <div className="grid min-h-[460px] place-items-center">
+                <EmptyState icon={Inbox} title="No messages in this chat" detail="Choose another channel or log a manual communication." />
+              </div>
             )}
+          </div>
+          <div className="border-t border-[var(--line)] bg-black/25">
+            <ManualMessageForm lead={lead} commChannel={commChannel} variant="composer" />
           </div>
         </div>
       </div>
@@ -872,7 +881,7 @@ function ManualReplyHandoff({ lead }: { lead: LeadKnowledgeRecord }) {
             Manual reply handoff
           </div>
           <p className="mt-2 text-sm leading-6 text-[var(--muted-2)]">
-            Leadsy tracks this. You send it. Reply in the real channel, then log the result below.
+            Leadsy tracks this. You send it. Reply in the real channel, then log it in the chat composer.
           </p>
         </div>
         <Badge tone="amber">Human in loop</Badge>
@@ -981,13 +990,29 @@ function defaultManualChannel(commChannel: CommChannelFilter): LeadKnowledgeChan
   return "manual";
 }
 
-function ManualMessageForm({ lead, commChannel }: { lead: LeadKnowledgeRecord; commChannel: CommChannelFilter }) {
+function ManualMessageForm({
+  lead,
+  commChannel,
+  variant = "panel"
+}: {
+  lead: LeadKnowledgeRecord;
+  commChannel: CommChannelFilter;
+  variant?: "panel" | "composer";
+}) {
+  const isComposer = variant === "composer";
   return (
-    <form action="/api/leads/manual-message" method="post" className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-4">
+    <form
+      action="/api/leads/manual-message"
+      method="post"
+      className={isComposer ? "p-4" : "rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-4"}
+    >
       <input type="hidden" name="leadId" value={lead.id} />
-      <div className="flex items-center gap-2 text-sm font-semibold text-white">
-        <NotebookPen size={16} className="text-[var(--teal)]" />
-        Log manual comms
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-sm font-semibold text-white">
+          <NotebookPen size={16} className="text-[var(--teal)]" />
+          Log manual comms
+        </div>
+        {isComposer ? <Badge tone="neutral">Chat composer</Badge> : null}
       </div>
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
         <select
@@ -1016,16 +1041,18 @@ function ManualMessageForm({ lead, commChannel }: { lead: LeadKnowledgeRecord; c
       <textarea
         name="body"
         required
-        rows={4}
-        placeholder="Add call notes, offline updates, email summaries, or manually recorded messages"
+        rows={isComposer ? 3 : 4}
+        placeholder="Log the next inbound, outbound, note, or channel handoff"
         className="mt-2 w-full resize-y rounded-[6px] border border-[var(--line)] bg-black/30 px-3 py-2 text-sm leading-6 text-white outline-none placeholder:text-[var(--muted)]"
       />
-      <button
-        type="submit"
-        className="mt-3 inline-flex h-10 items-center justify-center rounded-[6px] border border-teal-300/30 bg-teal-300/[0.12] px-3 text-sm font-medium text-teal-100 hover:bg-teal-300/[0.18]"
-      >
-        Save manual comm
-      </button>
+      <div className="mt-3 flex justify-end">
+        <button
+          type="submit"
+          className="inline-flex h-10 items-center justify-center rounded-[6px] border border-teal-300/30 bg-teal-300/[0.12] px-3 text-sm font-medium text-teal-100 hover:bg-teal-300/[0.18]"
+        >
+          Save manual comm
+        </button>
+      </div>
     </form>
   );
 }
@@ -1070,35 +1097,48 @@ function ConversationCard({ lead, conversation }: { lead: LeadKnowledgeRecord; c
   );
 }
 
-function MessageEvent({ lead, message }: { lead: LeadKnowledgeRecord; message: LeadKnowledgeMessage }) {
+function ChatMessageBubble({ lead, message }: { lead: LeadKnowledgeRecord; message: LeadKnowledgeMessage }) {
+  const isOutbound = message.direction === "outbound";
+  const isInternal = message.direction === "note" || message.direction === "system";
+  const rowClass = isInternal ? "justify-center" : isOutbound ? "justify-end" : "justify-start";
+  const bubbleClass = isInternal
+    ? "max-w-[92%] border-[var(--line)] bg-white/[0.04] text-[var(--muted-2)]"
+    : isOutbound
+      ? "max-w-[82%] border-sky-300/25 bg-sky-300/[0.13] text-sky-50"
+      : "max-w-[82%] border-teal-300/20 bg-white/[0.06] text-white";
+  const tailClass = isInternal ? "rounded-[8px]" : isOutbound ? "rounded-[8px] rounded-br-[3px]" : "rounded-[8px] rounded-bl-[3px]";
+
   return (
-    <div className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-sm font-semibold text-white">
-          <MessageCircle size={14} className={message.direction === "outbound" ? "text-sky-200" : "text-[var(--teal)]"} />
-          {activityTitle(message)}
+    <div data-testid="lead-chat-bubble" className={`flex ${rowClass}`}>
+      <div className={`min-w-0 border px-3 py-2 shadow-[0_12px_30px_rgba(0,0,0,0.18)] ${tailClass} ${bubbleClass}`}>
+        <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-xs font-semibold">
+            <MessageCircle size={13} className={isOutbound ? "text-sky-100" : "text-[var(--teal)]"} />
+            {chatSenderLabel(message)}
+          </div>
+          <span className="text-[11px] text-current/60">{shortDate(message.sentAt)}</span>
         </div>
-        <Badge tone={message.direction === "outbound" ? "sky" : message.direction === "note" ? "neutral" : "teal"}>
-          {message.direction}
-        </Badge>
-      </div>
-      <p className="mt-2 break-words text-sm leading-6 text-[var(--muted-2)]">{message.body}</p>
-      <div className="mt-2 flex flex-wrap gap-2 text-xs text-[var(--muted)]">
-        <span>{formatDate(message.sentAt)}</span>
-        <Badge tone={toneForChannel(message.channel)}>{channelLabel(message.channel)}</Badge>
-        <Badge tone={sourceTone(message)}>{sourceLabel(message)}</Badge>
-        <form action="/api/leads/message-status" method="post">
-          <input type="hidden" name="leadId" value={lead.id} />
-          <input type="hidden" name="messageId" value={message.id} />
-          <input type="hidden" name="hidden" value="true" />
-          <button
-            type="submit"
-            className="inline-flex h-7 items-center justify-center gap-1 rounded-[6px] border border-[var(--line)] bg-black/20 px-2 text-[11px] font-medium text-[var(--muted-2)] hover:text-white"
-          >
-            <EyeOff size={12} />
-            Hide from timeline
-          </button>
-        </form>
+        <p className="whitespace-pre-wrap break-words text-sm leading-6">{message.body}</p>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-current/70">
+          <Badge tone={message.direction === "outbound" ? "sky" : message.direction === "note" ? "neutral" : "teal"}>
+            {message.direction}
+          </Badge>
+          <Badge tone={toneForChannel(message.channel)}>{channelLabel(message.channel)}</Badge>
+          <Badge tone={sourceTone(message)}>{sourceLabel(message)}</Badge>
+          <form action="/api/leads/message-status" method="post">
+            <input type="hidden" name="leadId" value={lead.id} />
+            <input type="hidden" name="messageId" value={message.id} />
+            <input type="hidden" name="hidden" value="true" />
+            <button
+              type="submit"
+              data-testid="lead-chat-hide-message"
+              className="inline-flex h-7 items-center justify-center gap-1 rounded-[6px] border border-current/15 bg-black/15 px-2 text-[11px] font-medium text-current/70 hover:text-white"
+            >
+              <EyeOff size={12} />
+              Hide
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );

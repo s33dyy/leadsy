@@ -154,7 +154,11 @@ async function main() {
   assert(leadsPage.includes("Lead Intelligence"), "leads page should be positioned around lead intelligence");
   assert(leadsPage.includes("Knowledge workspace"), "leads page should make knowledge primary over CRM copy");
   assert(!leadsPage.includes("CRM pipeline"), "leads page should not be positioned as CRM-first");
-  assert(leadsPage.includes("Activity timeline"), "leads page should expose logged communication activity");
+  assert(leadsPage.includes("Conversation chat"), "leads page should present comms as a chat transcript");
+  assert(leadsPage.includes('data-testid="lead-comms-chat"'), "comms tab should expose a stable chat transcript pane");
+  assert(leadsPage.includes('data-testid="lead-chat-bubble"'), "comms tab should render messages as chat bubbles");
+  assert(leadsPage.includes("justify-end"), "outbound comms should be aligned like sent chat bubbles");
+  assert(!leadsPage.includes("Activity timeline"), "comms tab should no longer present messages as a generic activity timeline");
   assert(leadsPage.includes("Next action"), "leads page should make next operational action visible");
   assert(leadsPage.includes("Needs reply"), "leads page should separate conversations that need a response");
   assert(!leadsPage.includes("<LeadTaskGenerateMenu"), "selected lead header should not expose the AI task generation menu");
@@ -198,7 +202,7 @@ async function main() {
   assert(leadsPage.includes("/api/leads/message-status"), "leads page should let users hide or restore individual communication records");
   assert(leadsPage.includes("Edit lead"), "selected lead details should expose edit controls");
   assert(leadsPage.includes("Archive lead"), "selected lead details should expose soft-delete controls");
-  assert(leadsPage.includes("Hide from timeline"), "communication timeline should expose soft-delete controls for comm records");
+  assert(leadsPage.includes('data-testid="lead-chat-hide-message"'), "chat bubbles should expose soft-delete controls for comm records");
   assert(!leadsPage.includes("Incoming WhatsApp leads from Meta ads"), "leads page should not imply only Meta ad leads are tracked");
   for (const adminCopy of ["Raw webhook message", "rawPreview", "message.raw"]) {
     assert(!leadsPage.includes(adminCopy), `leads page should not expose admin/raw webhook copy: ${adminCopy}`);
