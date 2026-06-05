@@ -5,6 +5,7 @@ import {
   collectDomSnapshot,
   createSiteFingerprint,
   detectLocalChatProfile,
+  extractChatContact,
   validateChatSiteProfile
 } from "../core/profile";
 import { applySafetyPolicy } from "../core/safety";
@@ -13,6 +14,7 @@ import { ConversationStore } from "../core/storage";
 import type {
   AssistantSettings,
   ChatMessage,
+  ChatContact,
   ChatSiteProfile,
   ConversationLog,
   DomSnapshot,
@@ -121,6 +123,7 @@ export class ChatAutomationController {
       this.profile = { ...profile, validationStatus: "valid", updatedAt: Date.now() };
       await this.store.saveProfile(this.profile);
       this.log = await this.loadOrCreateLog(siteFingerprint, this.profile.id);
+      await this.refreshLogContact();
       this.startObserver();
       await this.processVisibleMessages();
       await this.syncToLeadsy("monitor_started", "Browser monitor armed and chat controls validated.");
@@ -389,6 +392,7 @@ export class ChatAutomationController {
     const merged = mergeNewMessages(this.log.messages, visibleMessages);
     const messages = this.filterLeadsyOutboundEchoes(merged);
     this.log.messages = messages;
+    this.mergeLogContact(extractChatContact(document));
     this.log.updatedAt = Date.now();
     await this.store.saveLog(this.log);
     await this.syncToLeadsy("monitor_synced", "Visible chat messages synced to Leadsy.");
@@ -470,6 +474,24 @@ export class ChatAutomationController {
     this.emit(state);
   }
 
+  private async refreshLogContact(): Promise<void> {
+    if (!this.log) return;
+    if (this.mergeLogContact(extractChatContact(document))) {
+      await this.store.saveLog(this.log);
+    }
+  }
+
+  private mergeLogContact(contact: ChatContact | undefined): boolean {
+    if (!this.log || !contact) return false;
+    const next = mergeContacts(this.log.contact, contact);
+    if (!next) return false;
+    const changed = JSON.stringify(this.log.contact ?? {}) !== JSON.stringify(next);
+    if (changed) {
+      this.log.contact = next;
+    }
+    return changed;
+  }
+
   private recordLeadsyOutbound(text: string, externalId = `leadsy-out:${Date.now()}`, sentAt = Date.now()): void {
     if (!this.log) return;
     const outgoing = {
@@ -535,6 +557,17 @@ export class ChatAutomationController {
       }
     });
   }
+}
+
+function mergeContacts(current: ChatContact | undefined, incoming: ChatContact | undefined): ChatContact | undefined {
+  if (!current && !incoming) return undefined;
+  return {
+    displayName: current?.displayName || incoming?.displayName,
+    phone: current?.phone || incoming?.phone,
+    email: current?.email || incoming?.email,
+    handle: current?.handle || incoming?.handle,
+    profileUrl: current?.profileUrl || incoming?.profileUrl
+  };
 }
 
 function createIncomingTurnKey(messages: ChatMessage[]): string {

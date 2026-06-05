@@ -62,6 +62,7 @@ export class LeadsyWorkerClient implements WorkerModelClient {
           platform: platformFromUrl(messages.at(-1)?.sourceUrl || chat.chatFingerprint),
           sourceUrl: messages.at(-1)?.sourceUrl || chat.chatFingerprint,
           chatFingerprint: chat.chatFingerprint,
+          contact: chat.contact,
           messages: messages.slice(-40).map((message) => ({
             id: message.id,
             externalId: message.id,
@@ -108,6 +109,7 @@ export class LeadsyWorkerClient implements WorkerModelClient {
         platform: platformFromUrl(lastMessage?.sourceUrl || input.chat.chatFingerprint),
         sourceUrl: lastMessage?.sourceUrl || input.chat.chatFingerprint,
         chatFingerprint: input.chat.chatFingerprint,
+        contact: input.chat.contact,
         captureSource: "browser-extension",
         tabUrl: lastMessage?.sourceUrl || input.chat.chatFingerprint,
         observedAt: new Date().toISOString(),

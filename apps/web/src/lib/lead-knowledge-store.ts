@@ -271,6 +271,11 @@ function profileKey(channel: string, value?: string) {
   }
 }
 
+function displayNameKey(channel: string, value?: string) {
+  const clean = value?.trim().replace(/\s+/g, " ").toLowerCase();
+  return clean ? `${channel}:display:${clean}` : undefined;
+}
+
 function cleanContact(contact: LeadKnowledgeContact = {}): LeadKnowledgeContact {
   return {
     displayName: contact.displayName?.trim() || undefined,
@@ -289,6 +294,13 @@ function identityKeysForContact(channel: string, contact: LeadKnowledgeContact) 
     emailKey(contact.email),
     handleKey(channel, contact.handle),
     profileKey(channel, contact.profileUrl)
+  ]);
+}
+
+function extensionIdentityKeysForContact(channel: string, contact: LeadKnowledgeContact) {
+  return uniqueStrings([
+    ...identityKeysForContact(channel, contact),
+    displayNameKey(channel, contact.displayName)
   ]);
 }
 
@@ -721,8 +733,12 @@ function extensionConversationTargetKey(input: {
   if (email) return email;
   const handle = handleKey(input.platform, contact.handle);
   if (handle) return handle;
-  const profile = profileKey(input.platform, contact.profileUrl || input.sourceUrl);
-  if (profile) return profile;
+  const contactProfile = profileKey(input.platform, contact.profileUrl);
+  if (contactProfile) return contactProfile;
+  const displayName = displayNameKey(input.platform, contact.displayName);
+  if (displayName) return displayName;
+  const sourceProfile = profileKey(input.platform, input.sourceUrl);
+  if (sourceProfile) return sourceProfile;
   return `fingerprint:${input.chatFingerprint}`;
 }
 
@@ -928,7 +944,7 @@ export async function syncLeadsyExtensionConversation(input: Scope & {
   const state = await readState();
   const contact = cleanContact(input.contact);
   const channel = channelForExtensionPlatform(input.platform);
-  const identityKeys = identityKeysForContact(input.platform, contact);
+  const identityKeys = extensionIdentityKeysForContact(input.platform, contact);
   const lead = upsertLead(state, input, {
     identityKeys,
     contact,

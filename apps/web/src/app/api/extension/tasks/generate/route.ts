@@ -120,7 +120,9 @@ function isRecentMessage(sentAt: string) {
 }
 
 function platformForLead(lead: LeadKnowledgeRecord) {
-  if (lead.contact.phone || lead.contact.waId || lead.channels.includes("whatsapp")) return "whatsapp-web" as const;
+  if (lead.contact.phone || lead.contact.waId || lead.channels.some((channel) => channel === "whatsapp" || channel === "whatsapp-web")) {
+    return "whatsapp-web" as const;
+  }
   if (lead.channels.includes("instagram") || lead.contact.profileUrl?.includes("instagram.com")) return "instagram-web" as const;
   if (lead.channels.includes("facebook") || lead.contact.profileUrl?.includes("facebook.com")) return "facebook-web" as const;
   return "generic-web-chat" as const;

@@ -215,6 +215,56 @@ async function main() {
       "same extension contact target should keep one conversation even when the chat fingerprint changes"
     );
 
+    const sigmaFirstSync = await syncLeadsyExtensionConversation({
+      ...scope,
+      platform: "whatsapp-web",
+      sourceUrl: "https://web.whatsapp.com/",
+      chatFingerprint: "https://web.whatsapp.com/",
+      contact: {
+        displayName: "Mr. Sigma"
+      },
+      messages: [
+        {
+          externalId: "sigma-in-1",
+          direction: "inbound",
+          body: "Can I get more info?",
+          sentAt: "2026-06-02T08:09:00.000Z"
+        }
+      ],
+      events: [
+        {
+          type: "monitor_synced",
+          summary: "Visible WhatsApp chat messages synced by display name.",
+          occurredAt: "2026-06-02T08:09:01.000Z"
+        }
+      ]
+    });
+    const sigmaSecondSync = await syncLeadsyExtensionConversation({
+      ...scope,
+      platform: "whatsapp-web",
+      sourceUrl: "https://web.whatsapp.com/",
+      chatFingerprint: "https://web.whatsapp.com/",
+      contact: {
+        displayName: "Mr. Sigma"
+      },
+      messages: [
+        {
+          externalId: "sigma-in-2",
+          direction: "inbound",
+          body: "Tomorrow works. Send details?",
+          sentAt: "2026-06-02T08:10:00.000Z"
+        }
+      ]
+    });
+    assert.equal(sigmaSecondSync.lead.id, sigmaFirstSync.lead.id, "display-name-only WhatsApp syncs should keep the same lead");
+    assert.equal(sigmaSecondSync.lead.contact.displayName, "Mr. Sigma");
+    assert.equal(sigmaSecondSync.lead.messageCount, 2);
+    assert.equal(
+      sigmaSecondSync.lead.conversations.filter((conversation) => conversation.channel === "whatsapp-web").length,
+      1,
+      "display-name-only WhatsApp syncs should not collapse into a generic unknown conversation"
+    );
+
     await appendManualLeadMessage({
       ...scope,
       leadId: extensionSync.lead.id,
@@ -264,7 +314,7 @@ async function main() {
     assert.equal(manualOnlyLead.messages.some((message) => message.body.includes("Manual lead created from CRM intake")), true);
 
     const leads = await listLeadKnowledgeRecords(scope);
-    assert.equal(leads.length, 4, "WhatsApp, Instagram, Facebook, and manual contacts should be tracked as lead records");
+    assert.equal(leads.length, 5, "WhatsApp, Instagram, Facebook, display-name-only WhatsApp, and manual contacts should be tracked as lead records");
     const asha = leads.find((lead) => lead.contact.displayName === "Asha Buyer");
     assert(asha, "Asha lead should exist");
     assert.equal(asha.messageCount, 6);
@@ -389,11 +439,11 @@ async function main() {
     assert.equal(splitB.messages.some((message) => message.body.includes("Worker task A")), false);
 
     const health = await summarizeLeadKnowledgeHealth();
-    assert.equal(health.records, 7, "lead health should count all non-deleted lead knowledge records");
-    assert.equal(health.activeLeads, 6, "lead health should count active lead knowledge records");
+    assert.equal(health.records, 8, "lead health should count all non-deleted lead knowledge records");
+    assert.equal(health.activeLeads, 7, "lead health should count active lead knowledge records");
     assert.equal(health.excludedLeads, 1, "lead health should count excluded lead knowledge records");
     assert.equal(health.metaSourced, 3, "lead health should count official Meta-sourced records");
-    assert.equal(health.extensionSourced, 4, "lead health should count extension and worker-task sourced records");
+    assert.equal(health.extensionSourced, 5, "lead health should count extension and worker-task sourced records");
     assert(health.messages >= 10, "lead health should expose real message volume");
   } finally {
     await rm(tempDir, { recursive: true, force: true });

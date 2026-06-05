@@ -159,4 +159,61 @@ describe("LeadsyWorkerClient", () => {
     expect(body.messages[0].externalId).toBe("message:1");
     expect(body.messages.at(-1).externalId).toBe("message:75");
   });
+
+  it("syncs WhatsApp inbound messages with visible contact identity when the page URL is generic", async () => {
+    const local = {
+      detectProfile: vi.fn(),
+      decideReply: vi.fn()
+    };
+    const fetchFn = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    const client = new LeadsyWorkerClient({
+      baseUrl: "http://localhost:3000",
+      token: "tok_test",
+      fetchFn,
+      fallback: local
+    });
+    const messages = [
+      {
+        id: "outbound:1",
+        direction: "outgoing" as const,
+        text: "Hi Bibhor Das, just following up.",
+        timestamp: Date.UTC(2026, 5, 5, 13, 51),
+        sourceUrl: "https://web.whatsapp.com/"
+      },
+      {
+        id: "incoming:2",
+        direction: "incoming" as const,
+        text: "Can I get more info?",
+        timestamp: Date.UTC(2026, 5, 5, 16, 40),
+        sourceUrl: "https://web.whatsapp.com/"
+      }
+    ];
+
+    await client.syncConversation({
+      chat: {
+        chatFingerprint: "https://web.whatsapp.com/",
+        contact: {
+          displayName: "Mr. Sigma"
+        },
+        approvalState: "approved",
+        messages,
+        createdAt: 1,
+        updatedAt: 1
+      },
+      messages
+    });
+
+    const calls = fetchFn.mock.calls as unknown as Array<[string, RequestInit]>;
+    const request = calls[0]?.[1];
+    const body = JSON.parse(String(request?.body));
+    expect(body.platform).toBe("whatsapp-web");
+    expect(body.contact).toEqual(expect.objectContaining({ displayName: "Mr. Sigma" }));
+    expect(body.messages.at(-1)).toEqual(
+      expect.objectContaining({
+        externalId: "incoming:2",
+        direction: "inbound",
+        body: "Can I get more info?"
+      })
+    );
+  });
 });

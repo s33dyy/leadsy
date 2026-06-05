@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectLocalChatProfile, validateChatSiteProfile } from "../src/core/profile";
+import { detectLocalChatProfile, extractChatContact, validateChatSiteProfile } from "../src/core/profile";
 import type { ChatSiteProfile } from "../src/core/types";
 
 describe("validateChatSiteProfile", () => {
@@ -131,5 +131,28 @@ describe("detectLocalChatProfile", () => {
         validationStatus: "valid"
       })
     );
+  });
+});
+
+describe("extractChatContact", () => {
+  it("reads the active WhatsApp chat header name as contact identity", () => {
+    document.body.innerHTML = `
+      <main id="main">
+        <header>
+          <div role="button">
+            <span dir="auto" title="Mr. Sigma">Mr. Sigma</span>
+          </div>
+        </header>
+        <section>
+          <div class="message-in" data-id="false_1">
+            <span class="selectable-text">Can I get more info?</span>
+          </div>
+        </section>
+      </main>
+    `;
+
+    const contact = extractChatContact(document, "whatsapp-web");
+
+    expect(contact).toEqual(expect.objectContaining({ displayName: "Mr. Sigma" }));
   });
 });

@@ -1,4 +1,5 @@
 import type {
+  ChatContact,
   ChatMessage,
   ChatSiteProfile,
   DomSnapshot,
@@ -160,6 +161,28 @@ export function detectLocalChatProfile(
   return undefined;
 }
 
+export function extractChatContact(doc: Document = document, platform = platformFromUrl(doc.location?.href || "")): ChatContact | undefined {
+  if (platform === "whatsapp-web") {
+    const displayName = firstUsefulText(doc, [
+      "#main header span[title]",
+      "#main header [title]",
+      "header span[title]",
+      "header [data-testid='conversation-info-header-chat-title']",
+      "header [dir='auto']",
+      "#main [data-testid='conversation-info-header'] [dir='auto']"
+    ]);
+    if (displayName) {
+      const phone = phoneFromText(displayName);
+      return cleanContact({
+        displayName,
+        phone: phone && phone === displayName.replace(/\D/g, "") ? phone : undefined
+      });
+    }
+  }
+
+  return undefined;
+}
+
 function validateSelectorSyntax(
   fieldName: keyof Pick<ChatSiteProfile, "sendButtonSelector">,
   selector: string,
@@ -243,6 +266,61 @@ function validateSelector(
   } catch {
     errors.push(`${fieldName} is not a valid selector`);
   }
+}
+
+function firstUsefulText(doc: Document, selectors: string[]) {
+  for (const selector of selectors) {
+    let nodes: HTMLElement[] = [];
+    try {
+      nodes = Array.from(doc.querySelectorAll<HTMLElement>(selector));
+    } catch {
+      continue;
+    }
+
+    for (const node of nodes) {
+      const text = normalizedText(node.getAttribute("title") || node.innerText || node.textContent || "");
+      if (isUsefulContactText(text)) return text;
+    }
+  }
+  return undefined;
+}
+
+function cleanContact(contact: ChatContact): ChatContact | undefined {
+  const cleaned: ChatContact = {
+    displayName: contact.displayName?.trim() || undefined,
+    phone: contact.phone?.trim() || undefined,
+    email: contact.email?.trim() || undefined,
+    handle: contact.handle?.trim() || undefined,
+    profileUrl: contact.profileUrl?.trim() || undefined
+  };
+  return Object.values(cleaned).some(Boolean) ? cleaned : undefined;
+}
+
+function isUsefulContactText(value: string) {
+  if (!value || value.length > 160) return false;
+  const normalized = value.toLowerCase();
+  return ![
+    "search",
+    "menu",
+    "more options",
+    "type a message",
+    "message",
+    "online",
+    "typing",
+    "click here to update"
+  ].some((blocked) => normalized === blocked || normalized.includes(` ${blocked}`));
+}
+
+function phoneFromText(value: string) {
+  const digits = value.replace(/\D/g, "");
+  return digits.length >= 7 ? digits : undefined;
+}
+
+function platformFromUrl(value: string) {
+  if (/web\.whatsapp\.com/i.test(value)) return "whatsapp-web";
+  if (/instagram\.com/i.test(value)) return "instagram-web";
+  if (/facebook\.com|messenger\.com/i.test(value)) return "facebook-web";
+  return "generic-web-chat";
 }
 
 function toSnapshotElement(element: HTMLElement): DomSnapshotElement {

@@ -67,4 +67,5 @@ assert(generateRoute.includes('"reply_to_inbound"'), "selected lead task generat
 assert(generateRoute.includes('"auto_detect"'), "selected lead task generation should accept auto_detect");
 assert(generateRoute.includes("detectExtensionTaskType"), "selected lead task generation should classify the best task type from lead context");
 assert(generateRoute.includes("leadHasTaskTarget"), "selected lead task generation should allow manual leads with usable contact or knowledge");
+assert(generateRoute.includes('channel === "whatsapp-web"'), "extension task generation should keep WhatsApp Web leads in the WhatsApp worker lane");
 assert(!generateRoute.includes("lead.conversations.some((conversation) => conversation.knowledgeStatus === \"included\")"), "selected lead task generation should not require an extension conversation");

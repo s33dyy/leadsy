@@ -30,9 +30,18 @@ export interface ChatMessage {
   raw?: Record<string, unknown>;
 }
 
+export interface ChatContact {
+  displayName?: string;
+  phone?: string;
+  email?: string;
+  handle?: string;
+  profileUrl?: string;
+}
+
 export interface ConversationLog {
   chatFingerprint: string;
   profileId?: string;
+  contact?: ChatContact;
   approvalState: ApprovalState;
   messages: ChatMessage[];
   lastHandledIncomingId?: string;
