@@ -1,0 +1,142 @@
+{
+  "capturedAt": "2026-06-05T17:21:56.101Z",
+  "baseUrl": "http://localhost:3000",
+  "routes": [
+    {
+      "name": "home",
+      "route": "/",
+      "status": 200,
+      "finalUrl": "http://localhost:3000/",
+      "file": "docs/ui-baseline/home.png",
+      "error": null
+    },
+    {
+      "name": "login",
+      "route": "/login",
+      "status": 200,
+      "finalUrl": "http://localhost:3000/app/leads",
+      "file": "docs/ui-baseline/login.png",
+      "error": null
+    },
+    {
+      "name": "signup",
+      "route": "/signup",
+      "status": 404,
+      "finalUrl": "http://localhost:3000/signup",
+      "file": "docs/ui-baseline/signup.png",
+      "error": null
+    },
+    {
+      "name": "forgot-password",
+      "route": "/forgot-password",
+      "status": 404,
+      "finalUrl": "http://localhost:3000/forgot-password",
+      "file": "docs/ui-baseline/forgot-password.png",
+      "error": null
+    },
+    {
+      "name": "extension",
+      "route": "/extension",
+      "status": 200,
+      "finalUrl": "http://localhost:3000/extension",
+      "file": "docs/ui-baseline/extension.png",
+      "error": null
+    },
+    {
+      "name": "dashboard-alias",
+      "route": "/dashboard",
+      "status": 404,
+      "finalUrl": "http://localhost:3000/dashboard",
+      "file": "docs/ui-baseline/dashboard-alias.png",
+      "error": null
+    },
+    {
+      "name": "crm-alias",
+      "route": "/crm",
+      "status": 404,
+      "finalUrl": "http://localhost:3000/crm",
+      "file": "docs/ui-baseline/crm-alias.png",
+      "error": null
+    },
+    {
+      "name": "workers-alias",
+      "route": "/workers",
+      "status": 404,
+      "finalUrl": "http://localhost:3000/workers",
+      "file": "docs/ui-baseline/workers-alias.png",
+      "error": null
+    },
+    {
+      "name": "settings",
+      "route": "/settings",
+      "status": 404,
+      "finalUrl": "http://localhost:3000/settings",
+      "file": "docs/ui-baseline/settings.png",
+      "error": null
+    },
+    {
+      "name": "app-dashboard",
+      "route": "/app",
+      "status": 500,
+      "finalUrl": "http://localhost:3000/app",
+      "file": "docs/ui-baseline/app-dashboard.png",
+      "error": null
+    },
+    {
+      "name": "app-leads-crm",
+      "route": "/app/leads",
+      "status": 200,
+      "finalUrl": "http://localhost:3000/app/leads",
+      "file": "docs/ui-baseline/app-leads-crm.png",
+      "error": null
+    },
+    {
+      "name": "app-leads-knowledge",
+      "route": "/app/leads?panel=knowledge",
+      "status": 200,
+      "finalUrl": "http://localhost:3000/app/leads?panel=knowledge",
+      "file": "docs/ui-baseline/app-leads-knowledge.png",
+      "error": null
+    },
+    {
+      "name": "app-worker",
+      "route": "/app/worker",
+      "status": 500,
+      "finalUrl": "http://localhost:3000/app/worker",
+      "file": "docs/ui-baseline/app-worker.png",
+      "error": null
+    },
+    {
+      "name": "app-approvals",
+      "route": "/app/worker?tab=pending",
+      "status": 500,
+      "finalUrl": "http://localhost:3000/app/worker?tab=pending",
+      "file": "docs/ui-baseline/app-approvals.png",
+      "error": null
+    },
+    {
+      "name": "app-connect",
+      "route": "/app/connect",
+      "status": 200,
+      "finalUrl": "http://localhost:3000/app/connect",
+      "file": "docs/ui-baseline/app-connect.png",
+      "error": null
+    },
+    {
+      "name": "app-settings",
+      "route": "/app/connect?panel=settings",
+      "status": 200,
+      "finalUrl": "http://localhost:3000/app/connect?panel=settings",
+      "file": "docs/ui-baseline/app-settings.png",
+      "error": null
+    },
+    {
+      "name": "app-magnet",
+      "route": "/app/magnet",
+      "status": 500,
+      "finalUrl": "http://localhost:3000/app/magnet",
+      "file": "docs/ui-baseline/app-magnet.png",
+      "error": null
+    }
+  ]
+}

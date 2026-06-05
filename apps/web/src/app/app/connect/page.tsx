@@ -1,6 +1,9 @@
 import { headers } from "next/headers";
 import {
+  Activity,
+  AlertTriangle,
   BadgeCheck,
+  BrainCircuit,
   Building2,
   CheckCircle2,
   ExternalLink,
@@ -8,12 +11,15 @@ import {
   MessageCircle,
   Phone,
   ShieldCheck,
+  Workflow,
   Webhook
 } from "lucide-react";
 import { ExtensionPairing } from "@/components/extension-pairing";
 import { Badge, Panel, SectionTitle } from "@/components/ui";
 import { getCurrentSession } from "@/lib/auth";
+import { automationWorkflowDefinitions } from "@/lib/automation-workflows";
 import { listExtensionTokens } from "@/lib/extension-store";
+import { getAiCostDashboard, getInfrastructureStatus, type HealthTone } from "@/lib/infrastructure-status";
 import { listMetaOAuthConnections, type MetaOAuthConnectionSummary } from "@/lib/meta-oauth-store";
 
 export const dynamic = "force-dynamic";
@@ -82,12 +88,39 @@ function channelAssetsForConnection(connection?: MetaOAuthConnectionSummary) {
   ];
 }
 
+function toneForHealth(status: HealthTone): "neutral" | "teal" | "amber" | "rose" | "lime" {
+  if (status === "healthy") return "lime";
+  if (status === "warning") return "amber";
+  if (status === "critical") return "rose";
+  return "neutral";
+}
+
+function compactDate(value?: string) {
+  if (!value) return "No execution yet";
+  return new Date(value).toLocaleString("en-IN", {
+    dateStyle: "medium",
+    timeStyle: "short"
+  });
+}
+
+function formatInr(value: number) {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 4
+  }).format(value);
+}
+
 export default async function ConnectPage({ searchParams }: ConnectPageProps) {
   const params = searchParams ? await searchParams : {};
   const activePanel = panelFromValue(paramValue(params, "panel"));
   const session = await getCurrentSession();
-  const tokens = session ? await listExtensionTokens(session.tenantId, session.id) : [];
-  const metaConnections = session ? await listMetaOAuthConnections(session.tenantId, session.id) : [];
+  const [tokens, metaConnections, infrastructure, aiCosts] = await Promise.all([
+    session ? listExtensionTokens(session.tenantId, session.id) : [],
+    session ? listMetaOAuthConnections(session.tenantId, session.id) : [],
+    getInfrastructureStatus(),
+    getAiCostDashboard()
+  ]);
   const latestMetaConnection = metaConnections[0];
   const hasMetaConnection = Boolean(latestMetaConnection);
   const origin = await appOrigin();
@@ -252,6 +285,192 @@ export default async function ConnectPage({ searchParams }: ConnectPageProps) {
           <ExtensionPairing initialTokens={tokens} />
         </div>
       </Panel>
+
+      {activePanel === "settings" ? (
+        <Panel className="p-5 md:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <SectionTitle eyebrow="Infrastructure" title="Automation and service health" />
+            <Badge tone={toneForHealth(infrastructure.automation.health)}>
+              n8n {infrastructure.automation.configured ? infrastructure.automation.health : "not configured"}
+            </Badge>
+          </div>
+
+          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {[
+              { label: "n8n URL", value: infrastructure.automation.publicUrl ?? "Not configured", icon: Workflow },
+              { label: "Workflow count", value: String(infrastructure.automation.workflowCount), icon: Activity },
+              { label: "Last execution", value: compactDate(infrastructure.automation.lastExecution), icon: CheckCircle2 },
+              { label: "Failed executions", value: String(infrastructure.automation.failedExecutions), icon: AlertTriangle }
+            ].map((item) => {
+              const Icon = item.icon;
+              return (
+                <div key={item.label} className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-3">
+                  <div className="flex items-center gap-2 text-xs font-medium uppercase text-[var(--muted)]">
+                    <Icon size={14} className="text-[var(--teal)]" />
+                    {item.label}
+                  </div>
+                  <div className="mt-3 truncate text-sm font-semibold text-white" title={item.value}>
+                    {item.value}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-5 grid gap-4 xl:grid-cols-[0.92fr_1.08fr]">
+            <section className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-white">Infrastructure dashboard</div>
+                  <p className="mt-1 text-sm leading-6 text-[var(--muted-2)]">
+                    Service status, latency, errors, and sync signals for Leadsy operations.
+                  </p>
+                </div>
+                {infrastructure.automation.dashboardUrl ? (
+                  <a
+                    href={infrastructure.automation.dashboardUrl}
+                    className="inline-flex h-9 items-center gap-2 rounded-[6px] border border-[var(--line)] bg-white/[0.03] px-3 text-sm font-medium text-[var(--muted-2)] hover:text-white"
+                  >
+                    Open n8n
+                    <ExternalLink size={14} />
+                  </a>
+                ) : null}
+              </div>
+
+              <div className="mt-4 overflow-hidden rounded-[8px] border border-[var(--line)]">
+                <table className="w-full border-collapse text-left text-sm">
+                  <thead className="bg-white/[0.04] text-xs uppercase text-[var(--muted)]">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">Service</th>
+                      <th className="px-3 py-2 font-medium">Status</th>
+                      <th className="px-3 py-2 font-medium">Latency</th>
+                      <th className="px-3 py-2 font-medium">Errors</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {infrastructure.services.map((service) => (
+                      <tr key={service.key} className="border-t border-[var(--line)]">
+                        <td className="px-3 py-3">
+                          <div className="font-medium text-white">{service.label}</div>
+                          <div className="mt-1 max-w-[360px] truncate text-xs text-[var(--muted)]" title={service.detail}>
+                            {service.detail}
+                          </div>
+                        </td>
+                        <td className="px-3 py-3">
+                          <Badge tone={toneForHealth(service.status)}>{service.status}</Badge>
+                        </td>
+                        <td className="px-3 py-3 text-[var(--muted-2)]">{typeof service.latencyMs === "number" ? `${service.latencyMs}ms` : "n/a"}</td>
+                        <td className="px-3 py-3 text-[var(--muted-2)]">{service.errors}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-white">Automation workflows</div>
+                  <p className="mt-1 text-sm leading-6 text-[var(--muted-2)]">
+                    Workflow catalog for n8n orchestration. Leadsy remains the source of truth.
+                  </p>
+                </div>
+                <Badge tone={infrastructure.automation.queueStatus === "healthy" ? "lime" : "neutral"}>
+                  queue {infrastructure.automation.queueStatus.replace(/_/g, " ")}
+                </Badge>
+              </div>
+
+              <div className="mt-4 max-h-[420px] overflow-auto rounded-[8px] border border-[var(--line)]">
+                <table className="w-full border-collapse text-left text-sm">
+                  <thead className="sticky top-0 bg-[#0b0f12] text-xs uppercase text-[var(--muted)]">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">Workflow</th>
+                      <th className="px-3 py-2 font-medium">Trigger</th>
+                      <th className="px-3 py-2 font-medium">Links</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {automationWorkflowDefinitions.map((workflow) => (
+                      <tr key={workflow.key} className="border-t border-[var(--line)]">
+                        <td className="px-3 py-3">
+                          <div className="font-medium text-white">{workflow.name}</div>
+                          <div className="mt-1 text-xs leading-5 text-[var(--muted)]">{workflow.purpose}</div>
+                        </td>
+                        <td className="px-3 py-3 text-xs leading-5 text-[var(--muted-2)]">{workflow.trigger}</td>
+                        <td className="px-3 py-3">
+                          {infrastructure.automation.publicUrl ? (
+                            <a
+                              href={`${infrastructure.automation.publicUrl}/workflow/${workflow.key}`}
+                              className="inline-flex h-8 items-center gap-1 rounded-[6px] border border-[var(--line)] px-2 text-xs text-[var(--muted-2)] hover:text-white"
+                            >
+                              Open
+                              <ExternalLink size={12} />
+                            </a>
+                          ) : (
+                            <span className="text-xs text-[var(--muted)]">Pending n8n</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+
+          <section className="mt-5 rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                <BrainCircuit size={17} className="text-[var(--teal)]" />
+                AI cost dashboard
+              </div>
+              <Badge tone="teal">{formatInr(aiCosts.totals.estimatedCostInr)} estimated</Badge>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-5">
+              {[
+                ["Requests", aiCosts.totals.requests],
+                ["Prompt tokens", aiCosts.totals.promptTokens],
+                ["Completion tokens", aiCosts.totals.completionTokens],
+                ["Total tokens", aiCosts.totals.totalTokens],
+                ["Failures", aiCosts.totals.failures]
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-3">
+                  <div className="mono text-[10px] uppercase text-[var(--muted)]">{label}</div>
+                  <div className="mt-2 text-lg font-semibold text-white">{value}</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 overflow-hidden rounded-[8px] border border-[var(--line)]">
+              <table className="w-full border-collapse text-left text-sm">
+                <thead className="bg-white/[0.04] text-xs uppercase text-[var(--muted)]">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">Workflow</th>
+                    <th className="px-3 py-2 font-medium">Requests</th>
+                    <th className="px-3 py-2 font-medium">Tokens</th>
+                    <th className="px-3 py-2 font-medium">Cost</th>
+                    <th className="px-3 py-2 font-medium">Failures</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {aiCosts.workflows.slice(0, 6).map((workflow) => (
+                    <tr key={workflow.workflowKey} className="border-t border-[var(--line)]">
+                      <td className="px-3 py-3 font-medium text-white">{workflow.workflowName}</td>
+                      <td className="px-3 py-3 text-[var(--muted-2)]">{workflow.requests}</td>
+                      <td className="px-3 py-3 text-[var(--muted-2)]">{workflow.totalTokens}</td>
+                      <td className="px-3 py-3 text-[var(--muted-2)]">{formatInr(workflow.estimatedCostInr)}</td>
+                      <td className="px-3 py-3 text-[var(--muted-2)]">{workflow.failures}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-3 text-xs leading-5 text-[var(--muted)]">{aiCosts.detail}</p>
+          </section>
+        </Panel>
+      ) : null}
 
       <Panel className="p-5">
         <details className="group">
