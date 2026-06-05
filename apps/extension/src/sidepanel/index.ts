@@ -188,7 +188,7 @@ app.innerHTML = `
     <div class="topbar">
       <div>
         <h1>Leadsy Worker</h1>
-        <p>Queue, prepare, approve send, report.</p>
+        <p>Queue, prepare, wait for Leadsy, report.</p>
       </div>
       <button class="secondary" id="refresh-tasks" type="button">Refresh</button>
     </div>

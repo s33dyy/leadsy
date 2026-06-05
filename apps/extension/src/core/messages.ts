@@ -130,25 +130,70 @@ function inferDirection(node: HTMLElement, profile: ChatSiteProfile): MessageDir
   }
 
   const rect = node.getBoundingClientRect();
-  if (rect.width > 0 && window.innerWidth > 0) {
-    const isBubbleSized = rect.width < window.innerWidth * 0.75;
-    if (isBubbleSized && rect.left < window.innerWidth * 0.5) {
+  const containerRect = directionContainerRect(node, profile);
+  if (rect.width > 0 && containerRect.width > 0) {
+    const leftGap = Math.max(0, rect.left - containerRect.left);
+    const rightGap = Math.max(0, containerRect.right - rect.right);
+    const isBubbleSized = rect.width < containerRect.width * 0.9;
+
+    if (containerRect.fromContainer && isBubbleSized && Math.abs(leftGap - rightGap) > containerRect.width * 0.05) {
+      return rightGap < leftGap ? "outgoing" : "incoming";
+    }
+
+    if (!containerRect.fromContainer && isBubbleSized && rect.left < containerRect.width * 0.5) {
       return "incoming";
     }
-    if (isBubbleSized && rect.left > window.innerWidth * 0.5) {
+    if (!containerRect.fromContainer && isBubbleSized && rect.left > containerRect.width * 0.5) {
       return "outgoing";
     }
 
     const center = rect.left + rect.width / 2;
-    if (center > window.innerWidth * 0.58) {
+    const relativeCenter = (center - containerRect.left) / containerRect.width;
+    if (relativeCenter > 0.58) {
       return "outgoing";
     }
-    if (center < window.innerWidth * 0.42) {
+    if (relativeCenter < 0.42) {
       return "incoming";
     }
   }
 
   return "system";
+}
+
+function directionContainerRect(
+  node: HTMLElement,
+  profile: ChatSiteProfile
+): Pick<DOMRect, "left" | "right" | "width"> & { fromContainer: boolean } {
+  const ownerDocument = node.ownerDocument || document;
+  const container = safeClosest(node, profile.messageListSelector) || safeQuery(ownerDocument, profile.messageListSelector);
+  const rect = container?.getBoundingClientRect();
+  if (rect && rect.width > 0) {
+    return { left: rect.left, right: rect.right, width: rect.width, fromContainer: true };
+  }
+
+  const width = ownerDocument.defaultView?.innerWidth || window.innerWidth || 0;
+  return {
+    left: 0,
+    right: width,
+    width,
+    fromContainer: false
+  };
+}
+
+function safeClosest(node: HTMLElement, selector: string): HTMLElement | null {
+  try {
+    return node.closest<HTMLElement>(selector);
+  } catch {
+    return null;
+  }
+}
+
+function safeQuery(doc: Document, selector: string): HTMLElement | null {
+  try {
+    return doc.querySelector<HTMLElement>(selector);
+  } catch {
+    return null;
+  }
 }
 
 function findLastIndex<T>(items: T[], predicate: (item: T) => boolean): number {

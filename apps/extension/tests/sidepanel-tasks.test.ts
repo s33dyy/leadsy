@@ -79,7 +79,7 @@ describe("side panel task queue", () => {
     });
   });
 
-  it("shows a send approval action for prepared tasks", async () => {
+  it("shows prepared tasks as waiting on Leadsy app approval", async () => {
     const sendMessage = vi.fn(async (message: { type: string; taskId?: string }) => {
       if (message.type === "leadsy:getSettings") {
         return {
@@ -94,9 +94,6 @@ describe("side panel task queue", () => {
       if (message.type === "leadsy:getTasks") {
         return { ok: true, value: [preparedTask] };
       }
-      if (message.type === "leadsy:approveTaskSend") {
-        return { ok: true, value: { ...preparedTask, status: "in_progress", sendApprovedAt: "2026-06-02T08:01:00.000Z" } };
-      }
       return { ok: true, value: undefined };
     });
     vi.stubGlobal("chrome", {
@@ -108,13 +105,8 @@ describe("side panel task queue", () => {
     await import("../src/sidepanel/index");
     await vi.waitFor(() => expect(document.body.textContent).toContain("Prepared Buyer"));
 
-    const button = document.querySelector<HTMLButtonElement>('[data-task-approve-send="exttask_2"]');
-    expect(button).not.toBeNull();
-    expect(button?.textContent).toContain("Approve send");
-    button?.click();
-
-    await vi.waitFor(() => {
-      expect(sendMessage).toHaveBeenCalledWith({ type: "leadsy:approveTaskSend", taskId: "exttask_2" });
-    });
+    expect(document.querySelector('[data-task-approve-send="exttask_2"]')).toBeNull();
+    expect(document.body.textContent).toContain("Waiting for Leadsy app");
+    expect(sendMessage).not.toHaveBeenCalledWith({ type: "leadsy:approveTaskSend", taskId: "exttask_2" });
   });
 });

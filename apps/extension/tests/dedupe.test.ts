@@ -152,4 +152,68 @@ describe("extractMessagesFromDocument", () => {
       })
     );
   });
+
+  it("classifies right-aligned bubbles inside a split-screen chat pane as outgoing", () => {
+    document.body.innerHTML = `
+      <main data-message-list>
+        <div data-message-row>
+          <div dir="auto">Hi there, yes, I can help.</div>
+        </div>
+      </main>
+    `;
+    const listNode = document.querySelector<HTMLElement>("[data-message-list]");
+    const messageNode = document.querySelector<HTMLElement>("[data-message-row]");
+    if (!listNode || !messageNode) {
+      throw new Error("fixture nodes were not created");
+    }
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1854 });
+    listNode.getBoundingClientRect = () =>
+      ({
+        left: 0,
+        right: 918,
+        width: 918,
+        top: 0,
+        bottom: 900,
+        height: 900,
+        x: 0,
+        y: 0,
+        toJSON: () => ({})
+      }) as DOMRect;
+    messageNode.getBoundingClientRect = () =>
+      ({
+        left: 212,
+        right: 817,
+        width: 605,
+        top: 120,
+        bottom: 220,
+        height: 100,
+        x: 212,
+        y: 120,
+        toJSON: () => ({})
+      }) as DOMRect;
+
+    const profile: ChatSiteProfile = {
+      id: "wa-split",
+      siteFingerprint: "https://web.whatsapp.com/",
+      messageListSelector: "[data-message-list]",
+      messageSelector: "[data-message-row]",
+      composerSelector: '[role="textbox"]',
+      sendButtonSelector: '[aria-label="Send"]',
+      incomingSelector: '[data-direction="incoming"]',
+      outgoingSelector: '[data-direction="outgoing"]',
+      confidence: 0.8,
+      validationStatus: "valid",
+      createdAt: 1,
+      updatedAt: 1
+    };
+
+    const messages = extractMessagesFromDocument(profile, document);
+
+    expect(messages[0]).toEqual(
+      expect.objectContaining({
+        direction: "outgoing",
+        text: "Hi there, yes, I can help."
+      })
+    );
+  });
 });
