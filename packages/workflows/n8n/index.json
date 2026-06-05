@@ -34,6 +34,118 @@
         "secretFieldCount": 1
       }
     ],
+    "backendLogicModules": [
+      {
+        "key": "lead-added",
+        "label": "Lead added intelligence plan",
+        "owner": "n8n",
+        "actionCount": 4,
+        "editableFrom": [
+          "n8n_canvas",
+          "github_json",
+          "codex"
+        ]
+      },
+      {
+        "key": "lead-updated",
+        "label": "Lead update refresh plan",
+        "owner": "n8n",
+        "actionCount": 4,
+        "editableFrom": [
+          "n8n_canvas",
+          "github_json",
+          "codex"
+        ]
+      },
+      {
+        "key": "research-requested",
+        "label": "Research pipeline",
+        "owner": "n8n",
+        "actionCount": 4,
+        "editableFrom": [
+          "n8n_canvas",
+          "github_json",
+          "codex"
+        ]
+      },
+      {
+        "key": "qualification-requested",
+        "label": "Qualification scoring plan",
+        "owner": "n8n",
+        "actionCount": 4,
+        "editableFrom": [
+          "n8n_canvas",
+          "github_json",
+          "codex"
+        ]
+      },
+      {
+        "key": "task-generated",
+        "label": "Task routing plan",
+        "owner": "n8n",
+        "actionCount": 3,
+        "editableFrom": [
+          "n8n_canvas",
+          "github_json",
+          "codex"
+        ]
+      },
+      {
+        "key": "approval-requested",
+        "label": "Approval routing plan",
+        "owner": "n8n",
+        "actionCount": 3,
+        "editableFrom": [
+          "n8n_canvas",
+          "github_json",
+          "codex"
+        ]
+      },
+      {
+        "key": "follow-up-due",
+        "label": "Follow-up automation plan",
+        "owner": "n8n",
+        "actionCount": 4,
+        "editableFrom": [
+          "n8n_canvas",
+          "github_json",
+          "codex"
+        ]
+      },
+      {
+        "key": "meta-lead-received",
+        "label": "Meta lead automation plan",
+        "owner": "n8n",
+        "actionCount": 4,
+        "editableFrom": [
+          "n8n_canvas",
+          "github_json",
+          "codex"
+        ]
+      },
+      {
+        "key": "whatsapp-message-received",
+        "label": "WhatsApp reply intelligence plan",
+        "owner": "n8n",
+        "actionCount": 5,
+        "editableFrom": [
+          "n8n_canvas",
+          "github_json",
+          "codex"
+        ]
+      },
+      {
+        "key": "worker-retry",
+        "label": "Worker retry plan",
+        "owner": "n8n",
+        "actionCount": 4,
+        "editableFrom": [
+          "n8n_canvas",
+          "github_json",
+          "codex"
+        ]
+      }
+    ],
     "routes": [
       {
         "key": "lead-added",

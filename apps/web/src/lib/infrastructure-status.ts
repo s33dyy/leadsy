@@ -1,6 +1,11 @@
 import "server-only";
 
-import { automationWorkflowDefinitions, n8nProviderConfigGroups, n8nProviderConfigByWorkflowKey } from "./automation-workflows";
+import {
+  automationWorkflowDefinitions,
+  n8nBackendLogicModules,
+  n8nProviderConfigByWorkflowKey,
+  n8nProviderConfigGroups
+} from "./automation-workflows";
 import { summarizeCrmHealth } from "./crm-store";
 import { summarizeExtensionHealth } from "./extension-store";
 import { summarizeLeadKnowledgeHealth } from "./lead-knowledge-store";
@@ -41,6 +46,17 @@ export type ProviderConfigHubStatus = {
   fieldCount: number;
   secretFieldCount: number;
   workflowCount: number;
+  detail: string;
+};
+
+export type BackendLogicHubStatus = {
+  key: string;
+  label: string;
+  owner: "n8n";
+  editableFrom: string[];
+  actionCount: number;
+  guardrailCount: number;
+  providerConfigCount: number;
   detail: string;
 };
 
@@ -111,6 +127,19 @@ export async function getAutomationStatus(): Promise<AutomationStatus> {
       ? `${probe.detail} One router workflow handles ${automationWorkflowDefinitions.length} Leadsy event types.`
       : "Add n8n as a separate Railway service to enable automation orchestration."
   };
+}
+
+function getBackendLogicHubStatus(): BackendLogicHubStatus[] {
+  return n8nBackendLogicModules.map((module) => ({
+    key: module.key,
+    label: module.label,
+    owner: module.owner,
+    editableFrom: module.editableFrom,
+    actionCount: module.actionPlan.length,
+    guardrailCount: module.guardrails.length,
+    providerConfigCount: module.providerConfigs.length,
+    detail: `${module.n8nOwns.join(", ")}. Leadsy keeps ${module.leadsyOwns.join(", ")}.`
+  }));
 }
 
 function getProviderConfigHubStatus(automation: AutomationStatus): ProviderConfigHubStatus[] {
@@ -233,6 +262,7 @@ export async function getInfrastructureStatus() {
   return {
     checkedAt: now,
     automation,
+    backendLogic: getBackendLogicHubStatus(),
     providerConfigs,
     services
   };

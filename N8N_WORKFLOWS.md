@@ -20,6 +20,7 @@ The router is the only workflow operators need to configure in n8n. It contains:
 - Two schedule triggers: Follow-up Due and Worker Retry
 - One `Validate Event` code node that maps `workflowKey` to the matching Leadsy API path
 - One `Provider Config Check` code node that reads Meta, WhatsApp, Email, and OpenRouter readiness from the n8n service environment
+- One `Backend Logic Modules` code node that owns the mutable workflow decisions, action plans, approval rules, provider requirements, and failure policies
 - One `Dispatch Automation` HTTP node for every supported event type
 - Shared started/succeeded execution logging through Leadsy APIs
 - Shared retry settings on the three Leadsy HTTP handoff nodes
@@ -42,6 +43,42 @@ Import posture:
 - Keep the router inactive until Leadsy automation action endpoints and service authentication are in place.
 - Configure `LEADSY_API_BASE_URL`, `LEADSY_N8N_WEBHOOK_SECRET`, and provider credentials on the n8n service.
 - Add new routes to the typed catalog and `Validate Event` map rather than creating a new workflow or visible branch per event type.
+
+## Backend Logic Hub
+
+n8n owns the mutable automation logic. Leadsy remains the durable backend and safety boundary.
+
+The `Backend Logic Modules` node contains one module per supported event:
+
+- Lead Added
+- Lead Updated
+- Research Requested
+- Qualification Requested
+- Task Generated
+- Approval Requested
+- Follow-up Due
+- Meta Lead Received
+- WhatsApp Message Received
+- Worker Retry
+
+Each module defines:
+
+- What n8n owns
+- What Leadsy owns
+- Decision inputs
+- Provider config requirements
+- Action plan
+- Approval requirements
+- Guardrails
+- Failure policy
+
+The module output is sent to Leadsy as `n8nLogicPlan`. Leadsy may execute or persist the plan only through authenticated APIs. n8n does not write Leadsy business tables directly.
+
+Edit paths:
+
+- Manual: edit the `Backend Logic Modules` code node in n8n.
+- Codex/GitHub: edit `packages/workflows/src/logic-modules.ts`, run `npm run workflows:export-n8n`, test, commit, and import/update the n8n workflow.
+- Hybrid: export from n8n after a manual change, then port the changed module back into `logic-modules.ts` so GitHub remains the recoverable source.
 
 ## Provider Configuration Hub
 

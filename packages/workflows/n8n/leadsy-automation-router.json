@@ -184,12 +184,27 @@
       "notesInFlow": true
     },
     {
+      "id": "leadsy-router-backend-logic-modules",
+      "name": "Backend Logic Modules",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const modules = {\n  \"lead-added\": {\n    \"key\": \"lead-added\",\n    \"label\": \"Lead added intelligence plan\",\n    \"owner\": \"n8n\",\n    \"editableFrom\": [\n      \"n8n_canvas\",\n      \"github_json\",\n      \"codex\"\n    ],\n    \"providerConfigs\": [\n      \"openrouter\"\n    ],\n    \"leadsyOwns\": [\n      \"lead record\",\n      \"tenant checks\",\n      \"dedupe state\",\n      \"CRM source of truth\"\n    ],\n    \"n8nOwns\": [\n      \"qualification trigger policy\",\n      \"summary refresh policy\",\n      \"initial task suggestion policy\"\n    ],\n    \"guardrails\": [\n      \"Never create a lead directly in n8n\",\n      \"No outbound send without Leadsy approval state\"\n    ],\n    \"decisionInputs\": [\n      \"source\",\n      \"leadId\",\n      \"campaignId\",\n      \"messageCount\",\n      \"existingQualification\"\n    ],\n    \"actionPlan\": [\n      {\n        \"action\": \"fetch-lead-context\",\n        \"when\": \"always\",\n        \"writesTo\": \"leadsy-api\",\n        \"approvalRequired\": false\n      },\n      {\n        \"action\": \"run-qualification\",\n        \"when\": \"lead has new contact or intent evidence\",\n        \"writesTo\": \"provider\",\n        \"approvalRequired\": false\n      },\n      {\n        \"action\": \"generate-task\",\n        \"when\": \"score is hot, urgent, or reply-ready\",\n        \"writesTo\": \"leadsy-api\",\n        \"approvalRequired\": true\n      },\n      {\n        \"action\": \"write-audit-event\",\n        \"when\": \"always\",\n        \"writesTo\": \"leadsy-api\",\n        \"approvalRequired\": false\n      }\n    ],\n    \"failurePolicy\": \"Skip duplicate idempotency keys; retry transient Leadsy/provider failures; escalate provider config gaps.\"\n  },\n  \"lead-updated\": {\n    \"key\": \"lead-updated\",\n    \"label\": \"Lead update refresh plan\",\n    \"owner\": \"n8n\",\n    \"editableFrom\": [\n      \"n8n_canvas\",\n      \"github_json\",\n      \"codex\"\n    ],\n    \"providerConfigs\": [\n      \"openrouter\"\n    ],\n    \"leadsyOwns\": [\n      \"lead mutation\",\n      \"field-level validation\",\n      \"tenant checks\"\n    ],\n    \"n8nOwns\": [\n      \"changed-field routing\",\n      \"refresh scope\",\n      \"follow-up rescheduling policy\"\n    ],\n    \"guardrails\": [\n      \"No direct field writes from n8n\",\n      \"No refresh when changed fields are operational-only\"\n    ],\n    \"decisionInputs\": [\n      \"changedFields\",\n      \"previousStatus\",\n      \"newStatus\",\n      \"lastActivityAt\"\n    ],\n    \"actionPlan\": [\n      {\n        \"action\": \"fetch-lead-context\",\n        \"when\": \"changed fields include contact, status, knowledge, task, or communication\",\n        \"writesTo\": \"leadsy-api\",\n        \"approvalRequired\": false\n      },\n      {\n        \"action\": \"refresh-lead-intelligence\",\n        \"when\": \"knowledge or communication changed\",\n        \"writesTo\": \"provider\",\n        \"approvalRequired\": false\n      },\n      {\n        \"action\": \"generate-task\",\n        \"when\": \"status or intent change creates a next action\",\n        \"writesTo\": \"leadsy-api\",\n        \"approvalRequired\": true\n      },\n      {\n        \"action\": \"write-audit-event\",\n        \"when\": \"always\",\n        \"writesTo\": \"leadsy-api\",\n        \"approvalRequired\": false\n      }\n    ],\n    \"failurePolicy\": \"No-op on non-actionable fields; retry conflicts/transient failures; preserve latest Leadsy state.\"\n  },\n  \"research-requested\": {\n    \"key\": \"research-requested\",\n    \"label\": \"Research pipeline\",\n    \"owner\": \"n8n\",\n    \"editableFrom\": [\n      \"n8n_canvas\",\n      \"github_json\",\n      \"codex\"\n    ],\n    \"providerConfigs\": [\n      \"openrouter\"\n    ],\n    \"leadsyOwns\": [\n      \"research request\",\n      \"saved evidence\",\n      \"cost ledger\",\n      \"approval records\"\n    ],\n    \"n8nOwns\": [\n      \"research source order\",\n      \"model choice\",\n      \"confidence thresholds\",\n      \"approval routing\"\n    ],\n    \"guardrails\": [\n      \"Respect Leadsy budget cap\",\n      \"Store evidence only through Leadsy API\",\n      \"Route uncertain claims to approval\"\n    ],\n    \"decisionInputs\": [\n      \"budgetCap\",\n      \"sourceTypes\",\n      \"leadFacts\",\n      \"existingEvidence\",\n      \"confidenceThreshold\"\n    ],\n    \"actionPlan\": [\n      {\n        \"action\": \"fetch-lead-context\",\n        \"when\": \"always\",\n        \"writesTo\": \"leadsy-api\",\n        \"approvalRequired\": false\n      },\n      {\n        \"action\": \"run-research\",\n        \"when\": \"provider config and budget cap allow\",\n        \"writesTo\": \"provider\",\n        \"approvalRequired\": false\n      },\n      {\n        \"action\": \"create-approval\",\n        \"when\": \"confidence is low or outreach-impacting findings changed\",\n        \"writesTo\": \"leadsy-api\",\n        \"approvalRequired\": true\n      },\n      {\n        \"action\": \"write-audit-event\",\n        \"when\": \"always\",\n        \"writesTo\": \"leadsy-api\",\n        \"approvalRequired\": false\n      }\n    ],\n    \"failurePolicy\": \"Stop on spend cap; retry transient provider failures; save low-confidence no-op metadata.\"\n  },\n  \"qualification-requested\": {\n    \"key\": \"qualification-requested\",\n    \"label\": \"Qualification scoring plan\",\n    \"owner\": \"n8n\",\n    \"editableFrom\": [\n      \"n8n_canvas\",\n      \"github_json\",\n      \"codex\"\n    ],\n    \"providerConfigs\": [\n      \"openrouter\"\n    ],\n    \"leadsyOwns\": [\n      \"qualification profile\",\n      \"stored scores\",\n      \"CRM stage\"\n    ],\n    \"n8nOwns\": [\n      \"scoring rubric\",\n      \"urgency thresholds\",\n      \"recommended-action rules\"\n    ],\n    \"guardrails\": [\n      \"Never overwrite Leadsy qualification without tenant-approved API\",\n      \"Approval required before outbound draft send\"\n    ],\n    \"decisionInputs\": [\n      \"qualificationProfileId\",\n      \"leadFacts\",\n      \"conversationSummary\",\n      \"source\",\n      \"urgencySignals\"\n    ],\n    \"actionPlan\": [\n      {\n        \"action\": \"fetch-lead-context\",\n        \"when\": \"always\",\n        \"writesTo\": \"leadsy-api\",\n        \"approvalRequired\": false\n      },\n      {\n        \"action\": \"run-qualification\",\n        \"when\": \"profile exists and lead has enough evidence\",\n        \"writesTo\": \"provider\",\n        \"approvalRequired\": false\n      },\n      {\n        \"action\": \"create-approval\",\n        \"when\": \"score is hot or rationale affects outreach\",\n        \"writesTo\": \"leadsy-api\",\n        \"approvalRequired\": true\n      },\n      {\n        \"action\": \"write-audit-event\",\n        \"when\": \"always\",\n        \"writesTo\": \"leadsy-api\",\n        \"approvalRequired\": false\n      }\n    ],\n    \"failurePolicy\": \"Route missing profile to setup; retry transient model failures; preserve previous score on failure.\"\n  },\n  \"task-generated\": {\n    \"key\": \"task-generated\",\n    \"label\": \"Task routing plan\",\n    \"owner\": \"n8n\",\n    \"editableFrom\": [\n      \"n8n_canvas\",\n      \"github_json\",\n      \"codex\"\n    ],\n    \"providerConfigs\": [\n      \"email\"\n    ],\n    \"leadsyOwns\": [\n      \"task record\",\n      \"task status\",\n      \"owner assignment\"\n    ],\n    \"n8nOwns\": [\n      \"approval routing\",\n      \"reminder cadence\",\n      \"notification channel choice\"\n    ],\n    \"guardrails\": [\n      \"Do not mark tasks complete from n8n\",\n      \"Do not send external messages without approval\"\n    ],\n    \"decisionInputs\": [\n      \"taskType\",\n      \"requiresApproval\",\n      \"dueAt\",\n      \"ownerId\",\n      \"leadId\"\n    ],\n    \"actionPlan\": [\n      {\n        \"action\": \"create-approval\",\n        \"when\": \"task requires approval\",\n        \"writesTo\": \"leadsy-api\",\n        \"approvalRequired\": true\n      },\n      {\n        \"action\": \"send-notification\",\n        \"when\": \"owner needs attention or due time is close\",\n        \"writesTo\": \"provider\",\n        \"approvalRequired\": false\n      },\n      {\n        \"action\": \"write-audit-event\",\n        \"when\": \"always\",\n        \"writesTo\": \"leadsy-api\",\n        \"approvalRequired\": false\n      }\n    ],\n    \"failurePolicy\": \"No-op deleted tasks; retry notification failures; keep Leadsy task state authoritative.\"\n  },\n  \"approval-requested\": {\n    \"key\": \"approval-requested\",\n    \"label\": \"Approval routing plan\",\n    \"owner\": \"n8n\",\n    \"editableFrom\": [\n      \"n8n_canvas\",\n      \"github_json\",\n      \"codex\"\n    ],\n    \"providerConfigs\": [\n      \"email\"\n    ],\n    \"leadsyOwns\": [\n      \"approval item\",\n      \"review state\",\n      \"resource ownership\"\n    ],\n    \"n8nOwns\": [\n      \"routing rules\",\n      \"escalation timing\",\n      \"notification policy\"\n    ],\n    \"guardrails\": [\n      \"Never auto-approve\",\n      \"Never send rejected drafts\"\n    ],\n    \"decisionInputs\": [\n      \"approvalType\",\n      \"risk\",\n      \"ownerId\",\n      \"resourceId\",\n      \"ageMinutes\"\n    ],\n    \"actionPlan\": [\n      {\n        \"action\": \"create-approval\",\n        \"when\": \"always\",\n        \"writesTo\": \"leadsy-api\",\n        \"approvalRequired\": true\n      },\n      {\n        \"action\": \"send-notification\",\n        \"when\": \"risk is medium or high, or item is stale\",\n        \"writesTo\": \"provider\",\n        \"approvalRequired\": false\n      },\n      {\n        \"action\": \"write-audit-event\",\n        \"when\": \"always\",\n        \"writesTo\": \"leadsy-api\",\n        \"approvalRequired\": false\n      }\n    ],\n    \"failurePolicy\": \"Escalate missing owner; retry notifications; preserve pending review state.\"\n  },\n  \"follow-up-due\": {\n    \"key\": \"follow-up-due\",\n    \"label\": \"Follow-up automation plan\",\n    \"owner\": \"n8n\",\n    \"editableFrom\": [\n      \"n8n_canvas\",\n      \"github_json\",\n      \"codex\"\n    ],\n    \"providerConfigs\": [\n      \"whatsapp\",\n      \"email\",\n      \"openrouter\"\n    ],\n    \"leadsyOwns\": [\n      \"follow-up task\",\n      \"lead status\",\n      \"conversation history\",\n      \"approval state\"\n    ],\n    \"n8nOwns\": [\n      \"due-window scan\",\n      \"drafting policy\",\n      \"channel preference\",\n      \"reminder cadence\"\n    ],\n    \"guardrails\": [\n      \"Approval required before external send\",\n      \"Skip excluded or converted leads\",\n      \"Write outbound records through Leadsy only\"\n    ],\n    \"decisionInputs\": [\n      \"dueWindowMinutes\",\n      \"leadStatus\",\n      \"lastInboundAt\",\n      \"preferredChannel\",\n      \"approvalMode\"\n    ],\n    \"actionPlan\": [\n      {\n        \"action\": \"fetch-lead-context\",\n        \"when\": \"always\",\n        \"writesTo\": \"leadsy-api\",\n        \"approvalRequired\": false\n      },\n      {\n        \"action\": \"draft-follow-up\",\n        \"when\": \"lead is active and due\",\n        \"writesTo\": \"provider\",\n        \"approvalRequired\": true\n      },\n      {\n        \"action\": \"create-approval\",\n        \"when\": \"draft created or human review is required\",\n        \"writesTo\": \"leadsy-api\",\n        \"approvalRequired\": true\n      },\n      {\n        \"action\": \"write-audit-event\",\n        \"when\": \"always\",\n        \"writesTo\": \"leadsy-api\",\n        \"approvalRequired\": false\n      }\n    ],\n    \"failurePolicy\": \"No-op completed/excluded leads; retry provider failures; create manual review task on draft failure.\"\n  },\n  \"meta-lead-received\": {\n    \"key\": \"meta-lead-received\",\n    \"label\": \"Meta lead automation plan\",\n    \"owner\": \"n8n\",\n    \"editableFrom\": [\n      \"n8n_canvas\",\n      \"github_json\",\n      \"codex\"\n    ],\n    \"providerConfigs\": [\n      \"meta\",\n      \"openrouter\"\n    ],\n    \"leadsyOwns\": [\n      \"Meta webhook verification\",\n      \"lead storage\",\n      \"asset-to-owner routing\"\n    ],\n    \"n8nOwns\": [\n      \"post-storage enrichment\",\n      \"qualification trigger\",\n      \"campaign-specific follow-up policy\"\n    ],\n    \"guardrails\": [\n      \"Public Meta webhooks never terminate at n8n\",\n      \"No direct lead table writes\"\n    ],\n    \"decisionInputs\": [\n      \"metaObject\",\n      \"assetIds\",\n      \"campaignId\",\n      \"leadId\",\n      \"source\"\n    ],\n    \"actionPlan\": [\n      {\n        \"action\": \"fetch-lead-context\",\n        \"when\": \"Leadsy has stored the Meta lead\",\n        \"writesTo\": \"leadsy-api\",\n        \"approvalRequired\": false\n      },\n      {\n        \"action\": \"run-qualification\",\n        \"when\": \"campaign or form indicates sales intent\",\n        \"writesTo\": \"provider\",\n        \"approvalRequired\": false\n      },\n      {\n        \"action\": \"generate-task\",\n        \"when\": \"hot lead or missing owner follow-up\",\n        \"writesTo\": \"leadsy-api\",\n        \"approvalRequired\": true\n      },\n      {\n        \"action\": \"write-audit-event\",\n        \"when\": \"always\",\n        \"writesTo\": \"leadsy-api\",\n        \"approvalRequired\": false\n      }\n    ],\n    \"failurePolicy\": \"Escalate ambiguous asset routing; retry provider calls; webhook verification failures never reach n8n.\"\n  },\n  \"whatsapp-message-received\": {\n    \"key\": \"whatsapp-message-received\",\n    \"label\": \"WhatsApp reply intelligence plan\",\n    \"owner\": \"n8n\",\n    \"editableFrom\": [\n      \"n8n_canvas\",\n      \"github_json\",\n      \"codex\"\n    ],\n    \"providerConfigs\": [\n      \"whatsapp\",\n      \"openrouter\"\n    ],\n    \"leadsyOwns\": [\n      \"inbound message storage\",\n      \"conversation state\",\n      \"lead exclusion\",\n      \"approval records\"\n    ],\n    \"n8nOwns\": [\n      \"reply suggestion policy\",\n      \"qualification refresh policy\",\n      \"follow-up task generation\"\n    ],\n    \"guardrails\": [\n      \"Approval required before sending a WhatsApp reply\",\n      \"Skip duplicates and excluded leads\"\n    ],\n    \"decisionInputs\": [\n      \"messageId\",\n      \"direction\",\n      \"conversationId\",\n      \"leadStatus\",\n      \"latestInboundText\"\n    ],\n    \"actionPlan\": [\n      {\n        \"action\": \"fetch-lead-context\",\n        \"when\": \"message is inbound and not duplicate\",\n        \"writesTo\": \"leadsy-api\",\n        \"approvalRequired\": false\n      },\n      {\n        \"action\": \"draft-follow-up\",\n        \"when\": \"message needs reply\",\n        \"writesTo\": \"provider\",\n        \"approvalRequired\": true\n      },\n      {\n        \"action\": \"run-qualification\",\n        \"when\": \"message changes urgency or fit\",\n        \"writesTo\": \"provider\",\n        \"approvalRequired\": false\n      },\n      {\n        \"action\": \"create-approval\",\n        \"when\": \"reply draft exists\",\n        \"writesTo\": \"leadsy-api\",\n        \"approvalRequired\": true\n      },\n      {\n        \"action\": \"write-audit-event\",\n        \"when\": \"always\",\n        \"writesTo\": \"leadsy-api\",\n        \"approvalRequired\": false\n      }\n    ],\n    \"failurePolicy\": \"Skip duplicates; retry transient provider failures; pause on approval-required states.\"\n  },\n  \"worker-retry\": {\n    \"key\": \"worker-retry\",\n    \"label\": \"Worker retry plan\",\n    \"owner\": \"n8n\",\n    \"editableFrom\": [\n      \"n8n_canvas\",\n      \"github_json\",\n      \"codex\"\n    ],\n    \"providerConfigs\": [\n      \"email\"\n    ],\n    \"leadsyOwns\": [\n      \"worker task\",\n      \"extension pairing\",\n      \"task status\",\n      \"retry count\"\n    ],\n    \"n8nOwns\": [\n      \"retry schedule\",\n      \"safe retry policy\",\n      \"exhaustion escalation\"\n    ],\n    \"guardrails\": [\n      \"Do not retry non-idempotent sends\",\n      \"Do not change extension authentication\"\n    ],\n    \"decisionInputs\": [\n      \"failureReason\",\n      \"retryCount\",\n      \"retryAfter\",\n      \"taskType\",\n      \"lastError\"\n    ],\n    \"actionPlan\": [\n      {\n        \"action\": \"retry-worker\",\n        \"when\": \"failure is transient and retry count is below policy\",\n        \"writesTo\": \"leadsy-api\",\n        \"approvalRequired\": false\n      },\n      {\n        \"action\": \"create-approval\",\n        \"when\": \"failure is exhausted, ambiguous, or unsafe\",\n        \"writesTo\": \"leadsy-api\",\n        \"approvalRequired\": true\n      },\n      {\n        \"action\": \"send-notification\",\n        \"when\": \"operator attention is needed\",\n        \"writesTo\": \"provider\",\n        \"approvalRequired\": false\n      },\n      {\n        \"action\": \"write-audit-event\",\n        \"when\": \"always\",\n        \"writesTo\": \"leadsy-api\",\n        \"approvalRequired\": false\n      }\n    ],\n    \"failurePolicy\": \"Retry safe transient failures three times; escalate non-retryable or exhausted tasks.\"\n  }\n};\nconst module = modules[$json.workflowKey];\nif (!module) {\n  throw new Error(`No n8n backend logic module for workflowKey: ${$json.workflowKey}`);\n}\nconst providerConfigMissing = Array.isArray($json.providerConfigMissing) ? $json.providerConfigMissing : [];\nconst actionQueue = module.actionPlan.map((step, index) => ({\n  index: index + 1,\n  ...step,\n  source: 'n8n',\n  status: providerConfigMissing.length ? 'blocked_provider_config' : 'planned'\n}));\nconst n8nLogicPlan = {\n  moduleKey: module.key,\n  moduleLabel: module.label,\n  owner: module.owner,\n  editableFrom: module.editableFrom,\n  providerConfigs: module.providerConfigs,\n  providerConfigMissing,\n  guardrails: module.guardrails,\n  leadsyOwns: module.leadsyOwns,\n  n8nOwns: module.n8nOwns,\n  decisionInputs: module.decisionInputs,\n  actionQueue,\n  failurePolicy: module.failurePolicy,\n  generatedAt: new Date().toISOString()\n};\nreturn [{\n  json: {\n    ...$json,\n    backendLogicSource: 'n8n',\n    n8nLogicPlan\n  }\n}];"
+      },
+      "notes": "This is where mutable backend workflow logic lives for automation: decision inputs, action plans, guardrails, approval requirements, and failure policy. Edit it in n8n, or edit the typed source and re-export from GitHub/Codex.",
+      "notesInFlow": true
+    },
+    {
       "id": "leadsy-router-dispatch-automation",
       "name": "Dispatch Automation",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1160,
+        1360,
         0
       ],
       "retryOnFail": true,
@@ -218,7 +233,7 @@
         },
         "sendBody": true,
         "contentType": "json",
-        "jsonBody": "{\"workflowKey\":\"={{$json.workflowKey}}\",\"workflowName\":\"={{$json.workflowName}}\",\"n8nExecutionId\":\"={{$execution.id}}\",\"idempotencyKey\":\"={{$json.idempotencyKey}}\",\"tenantId\":\"={{$json.tenantId}}\",\"ownerId\":\"={{$json.ownerId}}\",\"leadId\":\"={{$json.leadId}}\",\"taskId\":\"={{$json.taskId}}\",\"conversationId\":\"={{$json.conversationId}}\",\"providerConfigSource\":\"={{$json.providerConfigSource}}\",\"requiredProviderConfig\":\"={{$json.requiredProviderConfig}}\",\"providerConfigMissing\":\"={{$json.providerConfigMissing}}\",\"providerConfig\":\"={{$json.providerConfig}}\",\"payload\":\"={{$json.payload}}\"}",
+        "jsonBody": "{\"workflowKey\":\"={{$json.workflowKey}}\",\"workflowName\":\"={{$json.workflowName}}\",\"n8nExecutionId\":\"={{$execution.id}}\",\"idempotencyKey\":\"={{$json.idempotencyKey}}\",\"tenantId\":\"={{$json.tenantId}}\",\"ownerId\":\"={{$json.ownerId}}\",\"leadId\":\"={{$json.leadId}}\",\"taskId\":\"={{$json.taskId}}\",\"conversationId\":\"={{$json.conversationId}}\",\"providerConfigSource\":\"={{$json.providerConfigSource}}\",\"requiredProviderConfig\":\"={{$json.requiredProviderConfig}}\",\"providerConfigMissing\":\"={{$json.providerConfigMissing}}\",\"providerConfig\":\"={{$json.providerConfig}}\",\"backendLogicSource\":\"={{$json.backendLogicSource}}\",\"n8nLogicPlan\":\"={{$json.n8nLogicPlan}}\",\"payload\":\"={{$json.payload}}\"}",
         "options": {
           "timeout": 30000
         }
@@ -230,7 +245,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1480,
+        1680,
         0
       ],
       "retryOnFail": true,
@@ -360,6 +375,17 @@
       ]
     },
     "Provider Config Check": {
+      "main": [
+        [
+          {
+            "node": "Backend Logic Modules",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Backend Logic Modules": {
       "main": [
         [
           {
@@ -619,8 +645,626 @@
         "email"
       ]
     },
+    "backendLogicModules": [
+      {
+        "key": "lead-added",
+        "label": "Lead added intelligence plan",
+        "owner": "n8n",
+        "editableFrom": [
+          "n8n_canvas",
+          "github_json",
+          "codex"
+        ],
+        "providerConfigs": [
+          "openrouter"
+        ],
+        "leadsyOwns": [
+          "lead record",
+          "tenant checks",
+          "dedupe state",
+          "CRM source of truth"
+        ],
+        "n8nOwns": [
+          "qualification trigger policy",
+          "summary refresh policy",
+          "initial task suggestion policy"
+        ],
+        "guardrails": [
+          "Never create a lead directly in n8n",
+          "No outbound send without Leadsy approval state"
+        ],
+        "decisionInputs": [
+          "source",
+          "leadId",
+          "campaignId",
+          "messageCount",
+          "existingQualification"
+        ],
+        "actionPlan": [
+          {
+            "action": "fetch-lead-context",
+            "when": "always",
+            "writesTo": "leadsy-api",
+            "approvalRequired": false
+          },
+          {
+            "action": "run-qualification",
+            "when": "lead has new contact or intent evidence",
+            "writesTo": "provider",
+            "approvalRequired": false
+          },
+          {
+            "action": "generate-task",
+            "when": "score is hot, urgent, or reply-ready",
+            "writesTo": "leadsy-api",
+            "approvalRequired": true
+          },
+          {
+            "action": "write-audit-event",
+            "when": "always",
+            "writesTo": "leadsy-api",
+            "approvalRequired": false
+          }
+        ],
+        "failurePolicy": "Skip duplicate idempotency keys; retry transient Leadsy/provider failures; escalate provider config gaps."
+      },
+      {
+        "key": "lead-updated",
+        "label": "Lead update refresh plan",
+        "owner": "n8n",
+        "editableFrom": [
+          "n8n_canvas",
+          "github_json",
+          "codex"
+        ],
+        "providerConfigs": [
+          "openrouter"
+        ],
+        "leadsyOwns": [
+          "lead mutation",
+          "field-level validation",
+          "tenant checks"
+        ],
+        "n8nOwns": [
+          "changed-field routing",
+          "refresh scope",
+          "follow-up rescheduling policy"
+        ],
+        "guardrails": [
+          "No direct field writes from n8n",
+          "No refresh when changed fields are operational-only"
+        ],
+        "decisionInputs": [
+          "changedFields",
+          "previousStatus",
+          "newStatus",
+          "lastActivityAt"
+        ],
+        "actionPlan": [
+          {
+            "action": "fetch-lead-context",
+            "when": "changed fields include contact, status, knowledge, task, or communication",
+            "writesTo": "leadsy-api",
+            "approvalRequired": false
+          },
+          {
+            "action": "refresh-lead-intelligence",
+            "when": "knowledge or communication changed",
+            "writesTo": "provider",
+            "approvalRequired": false
+          },
+          {
+            "action": "generate-task",
+            "when": "status or intent change creates a next action",
+            "writesTo": "leadsy-api",
+            "approvalRequired": true
+          },
+          {
+            "action": "write-audit-event",
+            "when": "always",
+            "writesTo": "leadsy-api",
+            "approvalRequired": false
+          }
+        ],
+        "failurePolicy": "No-op on non-actionable fields; retry conflicts/transient failures; preserve latest Leadsy state."
+      },
+      {
+        "key": "research-requested",
+        "label": "Research pipeline",
+        "owner": "n8n",
+        "editableFrom": [
+          "n8n_canvas",
+          "github_json",
+          "codex"
+        ],
+        "providerConfigs": [
+          "openrouter"
+        ],
+        "leadsyOwns": [
+          "research request",
+          "saved evidence",
+          "cost ledger",
+          "approval records"
+        ],
+        "n8nOwns": [
+          "research source order",
+          "model choice",
+          "confidence thresholds",
+          "approval routing"
+        ],
+        "guardrails": [
+          "Respect Leadsy budget cap",
+          "Store evidence only through Leadsy API",
+          "Route uncertain claims to approval"
+        ],
+        "decisionInputs": [
+          "budgetCap",
+          "sourceTypes",
+          "leadFacts",
+          "existingEvidence",
+          "confidenceThreshold"
+        ],
+        "actionPlan": [
+          {
+            "action": "fetch-lead-context",
+            "when": "always",
+            "writesTo": "leadsy-api",
+            "approvalRequired": false
+          },
+          {
+            "action": "run-research",
+            "when": "provider config and budget cap allow",
+            "writesTo": "provider",
+            "approvalRequired": false
+          },
+          {
+            "action": "create-approval",
+            "when": "confidence is low or outreach-impacting findings changed",
+            "writesTo": "leadsy-api",
+            "approvalRequired": true
+          },
+          {
+            "action": "write-audit-event",
+            "when": "always",
+            "writesTo": "leadsy-api",
+            "approvalRequired": false
+          }
+        ],
+        "failurePolicy": "Stop on spend cap; retry transient provider failures; save low-confidence no-op metadata."
+      },
+      {
+        "key": "qualification-requested",
+        "label": "Qualification scoring plan",
+        "owner": "n8n",
+        "editableFrom": [
+          "n8n_canvas",
+          "github_json",
+          "codex"
+        ],
+        "providerConfigs": [
+          "openrouter"
+        ],
+        "leadsyOwns": [
+          "qualification profile",
+          "stored scores",
+          "CRM stage"
+        ],
+        "n8nOwns": [
+          "scoring rubric",
+          "urgency thresholds",
+          "recommended-action rules"
+        ],
+        "guardrails": [
+          "Never overwrite Leadsy qualification without tenant-approved API",
+          "Approval required before outbound draft send"
+        ],
+        "decisionInputs": [
+          "qualificationProfileId",
+          "leadFacts",
+          "conversationSummary",
+          "source",
+          "urgencySignals"
+        ],
+        "actionPlan": [
+          {
+            "action": "fetch-lead-context",
+            "when": "always",
+            "writesTo": "leadsy-api",
+            "approvalRequired": false
+          },
+          {
+            "action": "run-qualification",
+            "when": "profile exists and lead has enough evidence",
+            "writesTo": "provider",
+            "approvalRequired": false
+          },
+          {
+            "action": "create-approval",
+            "when": "score is hot or rationale affects outreach",
+            "writesTo": "leadsy-api",
+            "approvalRequired": true
+          },
+          {
+            "action": "write-audit-event",
+            "when": "always",
+            "writesTo": "leadsy-api",
+            "approvalRequired": false
+          }
+        ],
+        "failurePolicy": "Route missing profile to setup; retry transient model failures; preserve previous score on failure."
+      },
+      {
+        "key": "task-generated",
+        "label": "Task routing plan",
+        "owner": "n8n",
+        "editableFrom": [
+          "n8n_canvas",
+          "github_json",
+          "codex"
+        ],
+        "providerConfigs": [
+          "email"
+        ],
+        "leadsyOwns": [
+          "task record",
+          "task status",
+          "owner assignment"
+        ],
+        "n8nOwns": [
+          "approval routing",
+          "reminder cadence",
+          "notification channel choice"
+        ],
+        "guardrails": [
+          "Do not mark tasks complete from n8n",
+          "Do not send external messages without approval"
+        ],
+        "decisionInputs": [
+          "taskType",
+          "requiresApproval",
+          "dueAt",
+          "ownerId",
+          "leadId"
+        ],
+        "actionPlan": [
+          {
+            "action": "create-approval",
+            "when": "task requires approval",
+            "writesTo": "leadsy-api",
+            "approvalRequired": true
+          },
+          {
+            "action": "send-notification",
+            "when": "owner needs attention or due time is close",
+            "writesTo": "provider",
+            "approvalRequired": false
+          },
+          {
+            "action": "write-audit-event",
+            "when": "always",
+            "writesTo": "leadsy-api",
+            "approvalRequired": false
+          }
+        ],
+        "failurePolicy": "No-op deleted tasks; retry notification failures; keep Leadsy task state authoritative."
+      },
+      {
+        "key": "approval-requested",
+        "label": "Approval routing plan",
+        "owner": "n8n",
+        "editableFrom": [
+          "n8n_canvas",
+          "github_json",
+          "codex"
+        ],
+        "providerConfigs": [
+          "email"
+        ],
+        "leadsyOwns": [
+          "approval item",
+          "review state",
+          "resource ownership"
+        ],
+        "n8nOwns": [
+          "routing rules",
+          "escalation timing",
+          "notification policy"
+        ],
+        "guardrails": [
+          "Never auto-approve",
+          "Never send rejected drafts"
+        ],
+        "decisionInputs": [
+          "approvalType",
+          "risk",
+          "ownerId",
+          "resourceId",
+          "ageMinutes"
+        ],
+        "actionPlan": [
+          {
+            "action": "create-approval",
+            "when": "always",
+            "writesTo": "leadsy-api",
+            "approvalRequired": true
+          },
+          {
+            "action": "send-notification",
+            "when": "risk is medium or high, or item is stale",
+            "writesTo": "provider",
+            "approvalRequired": false
+          },
+          {
+            "action": "write-audit-event",
+            "when": "always",
+            "writesTo": "leadsy-api",
+            "approvalRequired": false
+          }
+        ],
+        "failurePolicy": "Escalate missing owner; retry notifications; preserve pending review state."
+      },
+      {
+        "key": "follow-up-due",
+        "label": "Follow-up automation plan",
+        "owner": "n8n",
+        "editableFrom": [
+          "n8n_canvas",
+          "github_json",
+          "codex"
+        ],
+        "providerConfigs": [
+          "whatsapp",
+          "email",
+          "openrouter"
+        ],
+        "leadsyOwns": [
+          "follow-up task",
+          "lead status",
+          "conversation history",
+          "approval state"
+        ],
+        "n8nOwns": [
+          "due-window scan",
+          "drafting policy",
+          "channel preference",
+          "reminder cadence"
+        ],
+        "guardrails": [
+          "Approval required before external send",
+          "Skip excluded or converted leads",
+          "Write outbound records through Leadsy only"
+        ],
+        "decisionInputs": [
+          "dueWindowMinutes",
+          "leadStatus",
+          "lastInboundAt",
+          "preferredChannel",
+          "approvalMode"
+        ],
+        "actionPlan": [
+          {
+            "action": "fetch-lead-context",
+            "when": "always",
+            "writesTo": "leadsy-api",
+            "approvalRequired": false
+          },
+          {
+            "action": "draft-follow-up",
+            "when": "lead is active and due",
+            "writesTo": "provider",
+            "approvalRequired": true
+          },
+          {
+            "action": "create-approval",
+            "when": "draft created or human review is required",
+            "writesTo": "leadsy-api",
+            "approvalRequired": true
+          },
+          {
+            "action": "write-audit-event",
+            "when": "always",
+            "writesTo": "leadsy-api",
+            "approvalRequired": false
+          }
+        ],
+        "failurePolicy": "No-op completed/excluded leads; retry provider failures; create manual review task on draft failure."
+      },
+      {
+        "key": "meta-lead-received",
+        "label": "Meta lead automation plan",
+        "owner": "n8n",
+        "editableFrom": [
+          "n8n_canvas",
+          "github_json",
+          "codex"
+        ],
+        "providerConfigs": [
+          "meta",
+          "openrouter"
+        ],
+        "leadsyOwns": [
+          "Meta webhook verification",
+          "lead storage",
+          "asset-to-owner routing"
+        ],
+        "n8nOwns": [
+          "post-storage enrichment",
+          "qualification trigger",
+          "campaign-specific follow-up policy"
+        ],
+        "guardrails": [
+          "Public Meta webhooks never terminate at n8n",
+          "No direct lead table writes"
+        ],
+        "decisionInputs": [
+          "metaObject",
+          "assetIds",
+          "campaignId",
+          "leadId",
+          "source"
+        ],
+        "actionPlan": [
+          {
+            "action": "fetch-lead-context",
+            "when": "Leadsy has stored the Meta lead",
+            "writesTo": "leadsy-api",
+            "approvalRequired": false
+          },
+          {
+            "action": "run-qualification",
+            "when": "campaign or form indicates sales intent",
+            "writesTo": "provider",
+            "approvalRequired": false
+          },
+          {
+            "action": "generate-task",
+            "when": "hot lead or missing owner follow-up",
+            "writesTo": "leadsy-api",
+            "approvalRequired": true
+          },
+          {
+            "action": "write-audit-event",
+            "when": "always",
+            "writesTo": "leadsy-api",
+            "approvalRequired": false
+          }
+        ],
+        "failurePolicy": "Escalate ambiguous asset routing; retry provider calls; webhook verification failures never reach n8n."
+      },
+      {
+        "key": "whatsapp-message-received",
+        "label": "WhatsApp reply intelligence plan",
+        "owner": "n8n",
+        "editableFrom": [
+          "n8n_canvas",
+          "github_json",
+          "codex"
+        ],
+        "providerConfigs": [
+          "whatsapp",
+          "openrouter"
+        ],
+        "leadsyOwns": [
+          "inbound message storage",
+          "conversation state",
+          "lead exclusion",
+          "approval records"
+        ],
+        "n8nOwns": [
+          "reply suggestion policy",
+          "qualification refresh policy",
+          "follow-up task generation"
+        ],
+        "guardrails": [
+          "Approval required before sending a WhatsApp reply",
+          "Skip duplicates and excluded leads"
+        ],
+        "decisionInputs": [
+          "messageId",
+          "direction",
+          "conversationId",
+          "leadStatus",
+          "latestInboundText"
+        ],
+        "actionPlan": [
+          {
+            "action": "fetch-lead-context",
+            "when": "message is inbound and not duplicate",
+            "writesTo": "leadsy-api",
+            "approvalRequired": false
+          },
+          {
+            "action": "draft-follow-up",
+            "when": "message needs reply",
+            "writesTo": "provider",
+            "approvalRequired": true
+          },
+          {
+            "action": "run-qualification",
+            "when": "message changes urgency or fit",
+            "writesTo": "provider",
+            "approvalRequired": false
+          },
+          {
+            "action": "create-approval",
+            "when": "reply draft exists",
+            "writesTo": "leadsy-api",
+            "approvalRequired": true
+          },
+          {
+            "action": "write-audit-event",
+            "when": "always",
+            "writesTo": "leadsy-api",
+            "approvalRequired": false
+          }
+        ],
+        "failurePolicy": "Skip duplicates; retry transient provider failures; pause on approval-required states."
+      },
+      {
+        "key": "worker-retry",
+        "label": "Worker retry plan",
+        "owner": "n8n",
+        "editableFrom": [
+          "n8n_canvas",
+          "github_json",
+          "codex"
+        ],
+        "providerConfigs": [
+          "email"
+        ],
+        "leadsyOwns": [
+          "worker task",
+          "extension pairing",
+          "task status",
+          "retry count"
+        ],
+        "n8nOwns": [
+          "retry schedule",
+          "safe retry policy",
+          "exhaustion escalation"
+        ],
+        "guardrails": [
+          "Do not retry non-idempotent sends",
+          "Do not change extension authentication"
+        ],
+        "decisionInputs": [
+          "failureReason",
+          "retryCount",
+          "retryAfter",
+          "taskType",
+          "lastError"
+        ],
+        "actionPlan": [
+          {
+            "action": "retry-worker",
+            "when": "failure is transient and retry count is below policy",
+            "writesTo": "leadsy-api",
+            "approvalRequired": false
+          },
+          {
+            "action": "create-approval",
+            "when": "failure is exhausted, ambiguous, or unsafe",
+            "writesTo": "leadsy-api",
+            "approvalRequired": true
+          },
+          {
+            "action": "send-notification",
+            "when": "operator attention is needed",
+            "writesTo": "provider",
+            "approvalRequired": false
+          },
+          {
+            "action": "write-audit-event",
+            "when": "always",
+            "writesTo": "leadsy-api",
+            "approvalRequired": false
+          }
+        ],
+        "failurePolicy": "Retry safe transient failures three times; escalate non-retryable or exhausted tasks."
+      }
+    ],
     "purpose": "Route every Leadsy automation event through one configurable n8n workflow.",
-    "preserves": "n8n owns automation provider config; Leadsy remains the application backend, auth/RBAC boundary, and Postgres source of truth.",
+    "preserves": "n8n owns mutable automation logic and provider config; Leadsy remains the auth/RBAC boundary, API gateway, and Postgres source of truth.",
     "routes": [
       {
         "key": "lead-added",

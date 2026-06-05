@@ -36,6 +36,7 @@ function assertRequiredNodes(workflow: N8nWorkflowBlueprint) {
     "Log Started",
     "Validate Event",
     "Provider Config Check",
+    "Backend Logic Modules",
     "Dispatch Automation",
     "Log Succeeded"
   ]) {
@@ -108,6 +109,33 @@ function assertProviderConfigHub(workflow: N8nWorkflowBlueprint) {
   );
 }
 
+function assertBackendLogicModules(workflow: N8nWorkflowBlueprint) {
+  assert.deepEqual(
+    workflow.meta.backendLogicModules.map((module) => module.key),
+    requiredWorkflowKeys,
+    `${workflow.name} should carry n8n-owned backend logic modules for every router event`
+  );
+  for (const module of workflow.meta.backendLogicModules) {
+    assert.equal(module.owner, "n8n", `${module.label} should be owned by n8n`);
+    assert(module.editableFrom.includes("n8n_canvas"), `${module.label} should be manually editable in n8n`);
+    assert(module.editableFrom.includes("github_json"), `${module.label} should be source-editable through GitHub`);
+    assert(module.editableFrom.includes("codex"), `${module.label} should be Codex-editable`);
+    assert(module.actionPlan.length > 0, `${module.label} should define planned backend actions`);
+    assert(module.leadsyOwns.length > 0, `${module.label} should preserve a Leadsy boundary`);
+    assert(module.n8nOwns.length > 0, `${module.label} should define mutable logic owned by n8n`);
+    assert(module.guardrails.length > 0, `${module.label} should include safety guardrails`);
+  }
+  const serialized = JSON.stringify(workflow);
+  assert(
+    serialized.includes("n8nLogicPlan"),
+    `${workflow.name} should dispatch the n8n-generated backend logic plan to Leadsy`
+  );
+  assert(
+    serialized.includes("approvalRequired"),
+    `${workflow.name} should encode approval requirements inside n8n logic modules`
+  );
+}
+
 function assertRetryPolicy(workflow: N8nWorkflowBlueprint) {
   const retryingNodes = workflow.nodes.filter((node) => node.retryOnFail);
   assert.equal(retryingNodes.length, 3, `${workflow.name} should retry the three Leadsy HTTP handoff steps`);
@@ -119,7 +147,7 @@ function assertRetryPolicy(workflow: N8nWorkflowBlueprint) {
 
 function assertSimpleCanvas(workflow: N8nWorkflowBlueprint) {
   assert(
-    workflow.nodes.length <= 11,
+    workflow.nodes.length <= 12,
     `${workflow.name} should stay visually small enough to configure on one n8n screen`
   );
   const dispatchNodes = workflow.nodes.filter((node) => node.name === "Dispatch Automation");
@@ -151,6 +179,7 @@ async function main() {
   assertRetryPolicy(workflow);
   assertLeadsyBoundaries(workflow);
   assertProviderConfigHub(workflow);
+  assertBackendLogicModules(workflow);
 
   const exported = JSON.parse(
     await readFile(join(root, "packages", "workflows", "n8n", "leadsy-automation-router.json"), "utf8")
@@ -172,6 +201,11 @@ async function main() {
     index[0].providerConfigs.map((entry: { key: string }) => entry.key),
     ["meta", "whatsapp", "email", "openrouter"],
     "workflow export index should advertise the n8n-owned provider config groups"
+  );
+  assert.deepEqual(
+    index[0].backendLogicModules.map((entry: { key: string }) => entry.key),
+    requiredWorkflowKeys,
+    "workflow export index should advertise every n8n-owned backend logic module"
   );
 }
 

@@ -1,4 +1,5 @@
 import { automationWorkflowDefinitions, type AutomationWorkflowDefinition } from "./automation-catalog";
+import { n8nBackendLogicByWorkflowKey, n8nBackendLogicModules, type N8nBackendLogicModule } from "./logic-modules";
 import {
   n8nProviderConfigByWorkflowKey,
   n8nProviderConfigGroups,
@@ -46,6 +47,7 @@ export type N8nWorkflowBlueprint = {
     leadsyWorkflowKey: "automation-router";
     providerConfigs: N8nProviderConfigGroup[];
     routeProviderRequirements: Record<AutomationWorkflowDefinition["key"], N8nProviderConfigKey[]>;
+    backendLogicModules: N8nBackendLogicModule[];
     routes: Array<{
       key: AutomationWorkflowDefinition["key"];
       name: string;
@@ -304,6 +306,56 @@ function providerConfigStatusNode(): N8nNode {
   };
 }
 
+function backendLogicModulesNode(): N8nNode {
+  return {
+    id: nodeId("backend-logic-modules"),
+    name: "Backend Logic Modules",
+    type: "n8n-nodes-base.code",
+    typeVersion: 2,
+    position: [1040, 0],
+    parameters: {
+      jsCode: [
+        `const modules = ${JSON.stringify(n8nBackendLogicByWorkflowKey, null, 2)};`,
+        "const module = modules[$json.workflowKey];",
+        "if (!module) {",
+        "  throw new Error(`No n8n backend logic module for workflowKey: ${$json.workflowKey}`);",
+        "}",
+        "const providerConfigMissing = Array.isArray($json.providerConfigMissing) ? $json.providerConfigMissing : [];",
+        "const actionQueue = module.actionPlan.map((step, index) => ({",
+        "  index: index + 1,",
+        "  ...step,",
+        "  source: 'n8n',",
+        "  status: providerConfigMissing.length ? 'blocked_provider_config' : 'planned'",
+        "}));",
+        "const n8nLogicPlan = {",
+        "  moduleKey: module.key,",
+        "  moduleLabel: module.label,",
+        "  owner: module.owner,",
+        "  editableFrom: module.editableFrom,",
+        "  providerConfigs: module.providerConfigs,",
+        "  providerConfigMissing,",
+        "  guardrails: module.guardrails,",
+        "  leadsyOwns: module.leadsyOwns,",
+        "  n8nOwns: module.n8nOwns,",
+        "  decisionInputs: module.decisionInputs,",
+        "  actionQueue,",
+        "  failurePolicy: module.failurePolicy,",
+        "  generatedAt: new Date().toISOString()",
+        "};",
+        "return [{",
+        "  json: {",
+        "    ...$json,",
+        "    backendLogicSource: 'n8n',",
+        "    n8nLogicPlan",
+        "  }",
+        "}];"
+      ].join("\n")
+    },
+    notes: "This is where mutable backend workflow logic lives for automation: decision inputs, action plans, guardrails, approval requirements, and failure policy. Edit it in n8n, or edit the typed source and re-export from GitHub/Codex.",
+    notesInFlow: true
+  };
+}
+
 function validateEventNode(): N8nNode {
   const workflowNames = Object.fromEntries(
     automationWorkflowDefinitions.map((workflow) => [workflow.key, workflow.name])
@@ -358,9 +410,11 @@ function dispatchAutomationNode(): N8nNode {
       requiredProviderConfig: "={{$json.requiredProviderConfig}}",
       providerConfigMissing: "={{$json.providerConfigMissing}}",
       providerConfig: "={{$json.providerConfig}}",
+      backendLogicSource: "={{$json.backendLogicSource}}",
+      n8nLogicPlan: "={{$json.n8nLogicPlan}}",
       payload: "={{$json.payload}}"
     },
-    [1160, 0],
+    [1360, 0],
     { retryOnFail: true }
   );
 }
@@ -397,12 +451,13 @@ export function n8nAutomationRouterBlueprint(): N8nWorkflowBlueprint {
         dispatchResponse: "={{$json}}"
       }
     },
-    [1480, 0],
+    [1680, 0],
     { continueOnFail: true, retryOnFail: true }
   );
 
   const validateEvent = validateEventNode();
   const providerConfig = providerConfigStatusNode();
+  const backendLogicModules = backendLogicModulesNode();
   const dispatchAutomation = dispatchAutomationNode();
 
   return {
@@ -418,6 +473,7 @@ export function n8nAutomationRouterBlueprint(): N8nWorkflowBlueprint {
       logStarted,
       validateEvent,
       providerConfig,
+      backendLogicModules,
       dispatchAutomation,
       logSucceeded
     ],
@@ -429,7 +485,8 @@ export function n8nAutomationRouterBlueprint(): N8nWorkflowBlueprint {
       "Normalize Follow-up Due": { main: [[connection("Log Started"), connection("Validate Event")]] },
       "Normalize Worker Retry": { main: [[connection("Log Started"), connection("Validate Event")]] },
       "Validate Event": { main: [[connection("Provider Config Check")]] },
-      "Provider Config Check": { main: [[connection("Dispatch Automation")]] },
+      "Provider Config Check": { main: [[connection("Backend Logic Modules")]] },
+      "Backend Logic Modules": { main: [[connection("Dispatch Automation")]] },
       "Dispatch Automation": { main: [[connection("Log Succeeded")]] }
     },
     settings: {
@@ -445,8 +502,9 @@ export function n8nAutomationRouterBlueprint(): N8nWorkflowBlueprint {
       leadsyWorkflowKey: "automation-router",
       providerConfigs: n8nProviderConfigGroups,
       routeProviderRequirements: n8nProviderConfigByWorkflowKey,
+      backendLogicModules: n8nBackendLogicModules,
       purpose: "Route every Leadsy automation event through one configurable n8n workflow.",
-      preserves: "n8n owns automation provider config; Leadsy remains the application backend, auth/RBAC boundary, and Postgres source of truth.",
+      preserves: "n8n owns mutable automation logic and provider config; Leadsy remains the auth/RBAC boundary, API gateway, and Postgres source of truth.",
       routes: automationWorkflowDefinitions.map((workflow) => ({
         key: workflow.key,
         name: workflow.name,
