@@ -18,7 +18,7 @@ Planned n8n workflow:
 
 - Leadsy - Automation Router
 
-The router contains branches for:
+The router supports these event types without creating one visible branch per event:
 
 - Lead Added
 - Lead Updated
@@ -30,6 +30,16 @@ The router contains branches for:
 - Meta Lead Received
 - WhatsApp Message Received
 - Worker Retry
+
+Inside n8n, operators should see one compact router:
+
+- Webhook and schedule triggers
+- Normalize nodes
+- `Validate Event`
+- `Dispatch Automation`
+- Started/succeeded log calls
+
+The only normal configuration points are `LEADSY_API_BASE_URL` and `LEADSY_N8N_WEBHOOK_SECRET` in the n8n service environment.
 
 Workflow documentation lives in:
 

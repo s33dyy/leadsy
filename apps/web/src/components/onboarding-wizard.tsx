@@ -23,6 +23,22 @@ const targetQuestions = [
   "What is your typical sales cycle?"
 ];
 
+function onboardingDismissedKey(userId: string) {
+  return `leadsy:onboarding-dismissed:${userId}`;
+}
+
+function onboardingDismissedCookie() {
+  return "leadsy_onboarding_dismissed=true";
+}
+
+function onboardingDismissed(userId: string) {
+  if (typeof window === "undefined") return false;
+  return (
+    document.cookie.includes(onboardingDismissedCookie()) ||
+    window.localStorage.getItem(onboardingDismissedKey(userId)) === "true"
+  );
+}
+
 function textFromProfile(profile: Record<string, unknown> | undefined, key: string) {
   const value = profile?.[key];
   return typeof value === "string" ? value : "";
@@ -37,7 +53,9 @@ export function OnboardingWizard({
 }) {
   const { toast } = useToast();
   const initialProfile = session.onboardingProfile ?? {};
-  const [visible, setVisible] = useState(true);
+  const [visible, setVisible] = useState(() => {
+    return !onboardingDismissed(session.id);
+  });
   const [step, setStep] = useState(0);
   const [profile, setProfile] = useState<OnboardingProfile>({
     fullName: textFromProfile(initialProfile, "fullName") || session.name,
@@ -95,6 +113,12 @@ export function OnboardingWizard({
 
   if (!visible) return null;
 
+  function dismissWizard() {
+    window.localStorage.setItem(onboardingDismissedKey(session.id), "true");
+    document.cookie = `${onboardingDismissedCookie()}; path=/; max-age=2592000; SameSite=Lax`;
+    setVisible(false);
+  }
+
   function updateField(key: string, value: string) {
     setProfile((current) => ({ ...current, [key]: value }));
     setFieldErrors((current) => ({ ...current, [key]: "" }));
@@ -136,7 +160,7 @@ export function OnboardingWizard({
       }
       if (complete) {
         toast({ title: "Onboarding complete", detail: "Your profile context is ready for Leadsy workers.", tone: "success" });
-        setVisible(false);
+        dismissWizard();
       }
       return true;
     } finally {
@@ -205,8 +229,17 @@ export function OnboardingWizard({
               <div className="mono text-[11px] uppercase text-[var(--teal)]">Step {step + 1} of {steps.length}</div>
               <h2 id="onboarding-title" className="mt-2 text-xl font-semibold text-white">{steps[step]}</h2>
             </div>
-            <div className="w-40">
-              <ProgressBar value={((step + 1) / steps.length) * 100} />
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={dismissWizard}
+                className="h-8 rounded-[5px] border border-[var(--line)] bg-white/[0.03] px-2.5 text-[12px] text-[var(--muted-2)] hover:bg-white/[0.06] hover:text-white"
+              >
+                Skip for now
+              </button>
+              <div className="w-40">
+                <ProgressBar value={((step + 1) / steps.length) * 100} />
+              </div>
             </div>
           </div>
         </div>

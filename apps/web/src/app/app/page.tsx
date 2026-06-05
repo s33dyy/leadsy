@@ -252,23 +252,24 @@ export default async function WorkspaceIndexPage() {
   ].slice(0, 7);
 
   return (
-    <div className="grid min-h-[calc(100vh-64px)] grid-cols-1 border-t border-transparent lg:grid-cols-[minmax(0,1fr)_396px]">
-      <section className="px-4 py-7 md:px-7">
+    <div className="grid h-full min-h-0 grid-cols-12 gap-px bg-border">
+      <section className="col-span-12 overflow-y-auto bg-background xl:col-span-9">
+        <div className="p-5">
         <span className="sr-only">Operations dashboard</span>
-        <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex items-end justify-between gap-4">
           <div>
-            <div className="mono text-[12px] uppercase tracking-[0.24em] text-[var(--muted)]">Operator overview</div>
-            <h2 className="mt-4 text-2xl font-medium text-white md:text-3xl">Good morning, {session?.name?.split(" ")[0] || "operator"}.</h2>
-            <p className="mt-2 text-sm text-[var(--muted-2)]">
+            <div className="caption">Operator overview</div>
+            <h1 className="mt-1 text-[22px] tracking-tight">Good morning, {session?.name?.split(" ")[0] || "operator"}.</h1>
+            <p className="mt-0.5 text-[12.5px] text-muted-foreground">
               {actionItems.length} items need your eyes · {workerThroughput.filter((worker) => worker.value > 0).length} workers active · pipeline is healthy.
             </p>
           </div>
-          <div className="flex items-center gap-1 rounded-[8px] border border-[var(--line)] bg-white/[0.035] p-1">
+          <div className="flex items-center gap-1.5">
             {["Today", "7d", "30d"].map((range, index) => (
               <Link
                 key={range}
                 href={`/app?range=${range.toLowerCase()}`}
-                className={`h-8 rounded-[6px] px-3 text-sm ${index === 0 ? "bg-white/[0.08] text-white" : "text-[var(--muted-2)] hover:text-white"}`}
+                className={`h-7 rounded-[5px] px-2.5 text-[12px] ${index === 0 ? "border border-border bg-surface-2 text-foreground hover:bg-surface-3" : "text-muted-foreground hover:bg-surface-2"}`}
               >
                 {range}
               </Link>
@@ -276,164 +277,166 @@ export default async function WorkspaceIndexPage() {
           </div>
         </div>
 
-        <div className="mt-7 grid overflow-hidden rounded-[8px] border border-[var(--line)] sm:grid-cols-2 xl:grid-cols-6">
+        <div className="mt-5 grid grid-cols-2 gap-px overflow-hidden rounded-[8px] border border-border bg-border md:grid-cols-3 lg:grid-cols-6">
           {metrics.map((metric) => {
             const Icon = metric.icon;
             return (
               <Link
                 key={metric.label}
                 href={metric.href}
-                className="min-h-[148px] border-b border-r border-[var(--line)] bg-black/10 p-5 hover:bg-white/[0.035] xl:border-b-0"
+                className="group bg-background p-3.5 transition-colors hover:bg-surface-2"
               >
-                <div className="flex items-center justify-between gap-3 text-[var(--muted)]">
-                  <Icon size={18} />
-                  <span className={`mono text-xs ${metric.delta.startsWith("+") || metric.delta === "live" ? "text-[var(--teal)]" : "text-[var(--muted)]"}`}>
+                <div className="flex items-center justify-between">
+                  <Icon className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground" />
+                  <span className={`font-mono text-[10.5px] ${metric.delta.startsWith("+") || metric.delta === "live" ? "text-primary" : "text-muted-foreground"}`}>
                     {metric.delta}
                   </span>
                 </div>
-                <div className="mt-7 text-3xl font-medium text-white">{metric.value}</div>
-                <div className="mt-2 text-sm text-[var(--muted-2)]">{metric.label}</div>
+                <div className="mt-2 font-mono text-[24px] tracking-tight">{metric.value}</div>
+                <div className="mt-0.5 text-[11.5px] text-muted-foreground">{metric.label}</div>
               </Link>
             );
           })}
         </div>
 
-        <div className="mt-6 grid overflow-hidden rounded-[8px] border border-[var(--line)] xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
-          <div className="p-5">
+        <div className="mt-5 grid grid-cols-1 gap-px overflow-hidden rounded-[8px] border border-border bg-border lg:grid-cols-5">
+          <div className="bg-background p-4 lg:col-span-3">
             <div className="flex items-center justify-between gap-3">
               <SectionKicker label="Qualification funnel · 7d" />
-              <Link href="/app/leads" className="text-sm text-[var(--muted-2)] hover:text-white">
+              <Link href="/app/leads" className="text-[11.5px] text-muted-foreground hover:text-foreground">
                 Open CRM →
               </Link>
             </div>
-            <div className="mt-6 space-y-4">
+            <div className="mt-4 space-y-2.5">
               {funnelRows.map((row) => (
-                <div key={row.label} className="grid grid-cols-[96px_minmax(0,1fr)_48px] items-center gap-4">
-                  <div className="text-sm text-[var(--muted-2)]">{row.label}</div>
-                  <div className="h-7 overflow-hidden rounded-[5px] bg-white/[0.05]">
-                    <div className="flex h-full items-center justify-end rounded-[5px] bg-emerald-400 pr-2 text-sm text-emerald-950" style={{ width: `${Math.max(7, percent(row.value, funnelMax))}%` }}>
+                <div key={row.label} className="grid grid-cols-12 items-center gap-3">
+                  <div className="col-span-2 text-[12px] text-muted-foreground">{row.label}</div>
+                  <div className="relative col-span-8 h-5 overflow-hidden rounded-[4px] bg-surface-2">
+                    <div className="absolute inset-y-0 left-0 bg-primary/80" style={{ width: `${Math.max(7, percent(row.value, funnelMax))}%` }} />
+                    <div className="relative flex h-full items-center justify-end pr-2 font-mono text-[10.5px] text-foreground/80">
                       {row.value}
                     </div>
                   </div>
-                  <div className="mono text-right text-xs text-[var(--muted)]">{row.label === "Captured" ? "-" : `${percent(row.value, funnelMax)}%`}</div>
+                  <div className="col-span-2 text-right font-mono text-[10.5px] text-muted-foreground">{row.label === "Captured" ? "-" : `${percent(row.value, funnelMax)}%`}</div>
                 </div>
               ))}
             </div>
           </div>
-          <div className="border-t border-[var(--line)] p-5 xl:border-l xl:border-t-0">
+          <div className="bg-background p-4 lg:col-span-2">
             <SectionKicker label="Lead sources · 7d" />
-            <div className="mt-6 space-y-4">
+            <div className="mt-4 space-y-2.5">
               {sourceBreakdown.map((source) => (
-                <div key={source.label} className="grid grid-cols-[128px_minmax(0,1fr)_48px] items-center gap-4">
-                  <div className="flex items-center gap-3 text-sm text-white">
-                    <span className={`h-2 w-2 rounded-full ${source.color}`} />
+                <div key={source.label} className="flex items-center gap-3">
+                  <div className="flex flex-1 items-center gap-3 text-[12.5px]">
+                    <span className={`dot ${source.color}`} />
                     <span className="truncate">{source.label}</span>
                   </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-white/[0.05]">
+                  <div className="h-1.5 w-24 overflow-hidden rounded-full bg-surface-2">
                     <div className={`h-full rounded-full ${source.color}`} style={{ width: `${Math.max(4, source.percent)}%` }} />
                   </div>
-                  <div className="mono text-right text-xs text-[var(--muted)]">{source.percent}%</div>
+                  <div className="w-8 text-right font-mono text-[10.5px] text-muted-foreground">{source.percent}%</div>
                 </div>
               ))}
             </div>
           </div>
         </div>
 
-        <div className="mt-6 grid overflow-hidden rounded-[8px] border border-[var(--line)] xl:grid-cols-2">
-          <div className="p-5">
+        <div className="mt-5 grid grid-cols-1 gap-px overflow-hidden rounded-[8px] border border-border bg-border lg:grid-cols-2">
+          <div className="bg-background p-4">
             <div className="flex items-center justify-between gap-3">
               <SectionKicker label="Worker throughput · last hour" />
-              <Link href="/app/worker" className="text-sm text-[var(--muted-2)] hover:text-white">
+              <Link href="/app/worker" className="text-[11.5px] text-muted-foreground hover:text-foreground">
                 Open workers →
               </Link>
             </div>
-            <div className="mt-6 space-y-4">
+            <div className="mt-4 space-y-2">
               {workerThroughput.map((worker) => (
-                <div key={worker.name} className="grid grid-cols-[180px_minmax(0,1fr)_52px] items-center gap-4">
-                  <div className="flex items-center gap-3 text-sm text-white">
-                    <Bot size={15} className="text-[var(--muted)]" />
-                    <span className="mono truncate">{worker.name}</span>
+                <div key={worker.name} className="flex items-center gap-3">
+                  <div className="flex w-44 items-center gap-3">
+                    <Bot className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="truncate font-mono text-[12px]">{worker.name}</span>
                   </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-white/[0.05]">
-                    <div className="h-full rounded-full bg-emerald-400" style={{ width: `${Math.max(4, percent(worker.value, workerMax))}%` }} />
+                  <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-surface-2">
+                    <div className="absolute inset-y-0 left-0 bg-primary/80" style={{ width: `${Math.max(4, percent(worker.value, workerMax))}%` }} />
                   </div>
-                  <div className="mono text-right text-xs text-[var(--muted)]">{worker.value}</div>
+                  <div className="w-10 text-right font-mono text-[10.5px] text-muted-foreground">{worker.value}</div>
                 </div>
               ))}
             </div>
           </div>
-          <div className="border-t border-[var(--line)] p-5 xl:border-l xl:border-t-0">
+          <div className="bg-background p-4">
             <div className="flex items-center justify-between gap-3">
               <SectionKicker label="Recent activity" />
               <Badge tone="teal">streaming</Badge>
             </div>
             {recentActivity.length ? (
-              <div className="mt-6 space-y-3">
+              <div className="mt-3 space-y-2">
                 {recentActivity.map((item, index) => (
-                  <div key={`${item.time}-${index}`} className="grid grid-cols-[52px_minmax(0,1fr)] gap-4 text-sm">
-                    <div className="mono text-xs text-[var(--muted)]">{item.time}</div>
-                    <div className="leading-6 text-[var(--muted-2)]">{item.text}</div>
+                  <div key={`${item.time}-${index}`} className="grid grid-cols-[52px_minmax(0,1fr)] gap-4 text-[12.5px]">
+                    <div className="font-mono text-[10.5px] text-muted-foreground">{item.time}</div>
+                    <div className="leading-6 text-muted-foreground">{item.text}</div>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="mt-6 flex min-h-[220px] flex-col items-center justify-center rounded-[8px] border border-dashed border-[var(--line)] text-center">
-                <Inbox size={24} className="text-[var(--muted)]" />
-                <div className="mt-3 text-sm font-medium text-white">No live activity yet</div>
-                <p className="mt-1 max-w-sm text-sm text-[var(--muted)]">Lead, worker, and messaging events will stream here as they arrive.</p>
+              <div className="mt-6 flex min-h-[220px] flex-col items-center justify-center rounded-[8px] border border-dashed border-border text-center">
+                <Inbox size={24} className="text-muted-foreground" />
+                <div className="mt-3 text-sm font-medium text-foreground">No live activity yet</div>
+                <p className="mt-1 max-w-sm text-sm text-muted-foreground">Lead, worker, and messaging events will stream here as they arrive.</p>
               </div>
             )}
           </div>
         </div>
+        </div>
       </section>
 
-      <aside className="border-t border-[var(--line)] bg-black/10 lg:border-l lg:border-t-0">
-        <div className="sticky top-[64px]">
-          <div className="border-b border-[var(--line)] p-5">
+      <aside className="col-span-12 overflow-y-auto bg-background xl:col-span-3">
+        <div>
+          <div className="border-b border-border p-4">
             <div className="flex items-center justify-between gap-3">
               <SectionKicker label="Needs you" />
-              <Link href="/app/worker?tab=pending" className="text-sm text-[var(--muted-2)] hover:text-white">
+              <Link href="/app/worker?tab=pending" className="text-[11.5px] text-muted-foreground hover:text-foreground">
                 All →
               </Link>
             </div>
-            <p className="mt-2 text-sm text-[var(--muted-2)]">{actionItems.length} items pending across workers.</p>
+            <p className="mt-1 text-[12.5px] text-muted-foreground">{actionItems.length} items pending across workers.</p>
           </div>
           {actionItems.length ? (
-            <div className="divide-y divide-[var(--line)]">
+            <div className="divide-y divide-border">
               {actionItems.map((item) => (
-                <div key={`${item.priority}-${item.title}`} className="p-5">
+                <div key={`${item.priority}-${item.title}`} className="p-4 hover:bg-surface-2">
                   <div className="flex items-center justify-between gap-3">
-                    <div className="mono text-[12px] uppercase tracking-[0.22em] text-[var(--muted)]">
-                      <span className={item.priority === "P0" ? "text-rose-300" : item.priority === "P1" ? "text-amber-300" : "text-[var(--muted-2)]"}>{item.priority}</span>{" "}
+                    <div className="caption">
+                      <span className={item.priority === "P0" ? "text-destructive" : item.priority === "P1" ? "text-warning" : "text-muted-foreground"}>{item.priority}</span>{" "}
                       {item.kind}
                     </div>
-                    <div className="text-xs text-[var(--muted)]">{item.time}</div>
+                    <div className="font-mono text-[10.5px] text-muted-foreground">{item.time}</div>
                   </div>
-                  <div className="mt-4 text-sm font-semibold text-white">{item.title}</div>
-                  <p className="mt-2 line-clamp-2 text-sm leading-6 text-[var(--muted-2)]">{item.detail}</p>
-                  <div className="mt-4 flex items-center gap-2">
-                    <Link href={item.href} className="inline-flex h-8 items-center rounded-[6px] bg-[var(--teal)] px-3 text-sm font-medium text-black hover:bg-teal-200">
+                  <div className="mt-1.5 text-[12.5px] font-medium">{item.title}</div>
+                  <p className="mt-1 line-clamp-2 text-[11.5px] text-muted-foreground">{item.detail}</p>
+                  <div className="mt-2 flex items-center gap-1.5">
+                    <Link href={item.href} className="inline-flex h-6 items-center rounded-[4px] bg-primary px-2 text-[11px] font-medium text-primary-foreground hover:bg-primary/90">
                       Approve
                     </Link>
-                    <Link href={item.href} className="inline-flex h-8 items-center rounded-[6px] border border-[var(--line)] px-3 text-sm text-white hover:border-[var(--line-strong)]">
+                    <Link href={item.href} className="inline-flex h-6 items-center rounded-[4px] border border-border px-2 text-[11px] hover:bg-surface-3">
                       Edit
                     </Link>
-                    <Link href={item.href} className="text-sm text-[var(--muted-2)] hover:text-white">
+                    <Link href={item.href} className="h-6 rounded-[4px] px-2 text-[11px] text-muted-foreground hover:bg-surface-3">
                       Reject
                     </Link>
-                    <Link href={item.href} className="ml-auto text-[var(--muted-2)] hover:text-white" aria-label={`Open ${item.title}`}>
-                      <ArrowRight size={17} />
+                    <Link href={item.href} className="ml-auto text-muted-foreground hover:text-foreground" aria-label={`Open ${item.title}`}>
+                      <ArrowRight className="h-3.5 w-3.5" />
                     </Link>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="p-5">
-              <div className="flex min-h-[360px] flex-col items-center justify-center rounded-[8px] border border-dashed border-[var(--line)] text-center">
-                <MessageCircle size={24} className="text-[var(--muted)]" />
-                <div className="mt-3 text-sm font-medium text-white">No approvals waiting</div>
-                <p className="mt-1 max-w-xs text-sm text-[var(--muted)]">Worker drafts, research escalations, and follow-ups will appear here before action.</p>
+            <div className="p-4">
+              <div className="flex min-h-[360px] flex-col items-center justify-center rounded-[8px] border border-dashed border-border text-center">
+                <MessageCircle size={24} className="text-muted-foreground" />
+                <div className="mt-3 text-sm font-medium text-foreground">No approvals waiting</div>
+                <p className="mt-1 max-w-xs text-sm text-muted-foreground">Worker drafts, research escalations, and follow-ups will appear here before action.</p>
               </div>
             </div>
           )}
@@ -444,5 +447,5 @@ export default async function WorkspaceIndexPage() {
 }
 
 function SectionKicker({ label }: { label: string }) {
-  return <div className="mono text-[12px] uppercase tracking-[0.24em] text-[var(--muted)]">{label}</div>;
+  return <div className="caption">{label}</div>;
 }

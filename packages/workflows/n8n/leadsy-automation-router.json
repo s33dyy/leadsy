@@ -128,8 +128,19 @@
       "parameters": {
         "method": "POST",
         "url": "={{$env.LEADSY_API_BASE_URL + '/api/automation/executions'}}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{'Bearer ' + $env.LEADSY_N8N_WEBHOOK_SECRET}}"
+            },
+            {
+              "name": "X-Leadsy-Workflow",
+              "value": "={{$json.workflowKey}}"
+            }
+          ]
+        },
         "sendBody": true,
         "contentType": "json",
         "jsonBody": "{\"workflowKey\":\"={{$json.workflowKey}}\",\"n8nExecutionId\":\"={{$execution.id}}\",\"status\":\"started\",\"metadata\":\"={{$json}}\"}",
@@ -139,338 +150,23 @@
       }
     },
     {
-      "id": "leadsy-router-route-event",
-      "name": "Route Event",
-      "type": "n8n-nodes-base.switch",
-      "typeVersion": 3.2,
+      "id": "leadsy-router-validate-event",
+      "name": "Validate Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
         660,
         0
       ],
       "parameters": {
-        "mode": "rules",
-        "rules": {
-          "values": [
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 2
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{$json.workflowKey}}",
-                    "rightValue": "lead-added",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "Lead Added"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 2
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{$json.workflowKey}}",
-                    "rightValue": "lead-updated",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "Lead Updated"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 2
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{$json.workflowKey}}",
-                    "rightValue": "research-requested",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "Research Requested"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 2
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{$json.workflowKey}}",
-                    "rightValue": "qualification-requested",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "Qualification Requested"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 2
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{$json.workflowKey}}",
-                    "rightValue": "task-generated",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "Task Generated"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 2
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{$json.workflowKey}}",
-                    "rightValue": "approval-requested",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "Approval Requested"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 2
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{$json.workflowKey}}",
-                    "rightValue": "follow-up-due",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "Follow-up Due"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 2
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{$json.workflowKey}}",
-                    "rightValue": "meta-lead-received",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "Meta Lead Received"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 2
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{$json.workflowKey}}",
-                    "rightValue": "whatsapp-message-received",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "WhatsApp Message Received"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 2
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{$json.workflowKey}}",
-                    "rightValue": "worker-retry",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "Worker Retry"
-            }
-          ]
-        },
-        "options": {
-          "fallbackOutput": "extra"
-        }
+        "jsCode": "const routePaths = {\n  \"lead-added\": \"/api/automation/events/lead-added\",\n  \"lead-updated\": \"/api/automation/events/lead-updated\",\n  \"research-requested\": \"/api/automation/events/research-requested\",\n  \"qualification-requested\": \"/api/automation/events/qualification-requested\",\n  \"task-generated\": \"/api/automation/events/task-generated\",\n  \"approval-requested\": \"/api/automation/events/approval-requested\",\n  \"follow-up-due\": \"/api/automation/events/follow-up-due\",\n  \"meta-lead-received\": \"/api/automation/events/meta-lead-received\",\n  \"whatsapp-message-received\": \"/api/automation/events/whatsapp-message-received\",\n  \"worker-retry\": \"/api/automation/events/worker-retry\"\n};\nconst workflowNames = {\n  \"lead-added\": \"Lead Added\",\n  \"lead-updated\": \"Lead Updated\",\n  \"research-requested\": \"Research Requested\",\n  \"qualification-requested\": \"Qualification Requested\",\n  \"task-generated\": \"Task Generated\",\n  \"approval-requested\": \"Approval Requested\",\n  \"follow-up-due\": \"Follow-up Due\",\n  \"meta-lead-received\": \"Meta Lead Received\",\n  \"whatsapp-message-received\": \"WhatsApp Message Received\",\n  \"worker-retry\": \"Worker Retry\"\n};\nconst workflowKey = $json.workflowKey;\nif (typeof workflowKey !== 'string' || !routePaths[workflowKey]) {\n  const supported = Object.keys(routePaths).join(', ');\n  throw new Error(`Unsupported Leadsy workflowKey: ${workflowKey ?? 'missing'}. Supported: ${supported}`);\n}\nreturn [{\n  json: {\n    ...$json,\n    workflowName: workflowNames[workflowKey],\n    actionPath: routePaths[workflowKey],\n    validatedAt: new Date().toISOString()\n  }\n}];"
       },
-      "notes": "One router switch keeps all Leadsy automation routes visible on a single n8n canvas.",
+      "notes": "Validates the workflowKey and computes the Leadsy API path. No visual branch per event type.",
       "notesInFlow": true
     },
     {
-      "id": "leadsy-router-run-lead-added",
-      "name": "Run Lead Added",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        980,
-        -420
-      ],
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 60000,
-      "continueOnFail": false,
-      "parameters": {
-        "method": "POST",
-        "url": "={{$env.LEADSY_API_BASE_URL + '/api/automation/events/lead-added'}}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "contentType": "json",
-        "jsonBody": "{\"workflowKey\":\"lead-added\",\"n8nExecutionId\":\"={{$execution.id}}\",\"idempotencyKey\":\"={{$json.idempotencyKey}}\",\"payload\":\"={{$json.payload}}\"}",
-        "options": {
-          "timeout": 30000
-        }
-      }
-    },
-    {
-      "id": "leadsy-router-run-lead-updated",
-      "name": "Run Lead Updated",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        980,
-        -280
-      ],
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 60000,
-      "continueOnFail": false,
-      "parameters": {
-        "method": "POST",
-        "url": "={{$env.LEADSY_API_BASE_URL + '/api/automation/events/lead-updated'}}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "contentType": "json",
-        "jsonBody": "{\"workflowKey\":\"lead-updated\",\"n8nExecutionId\":\"={{$execution.id}}\",\"idempotencyKey\":\"={{$json.idempotencyKey}}\",\"payload\":\"={{$json.payload}}\"}",
-        "options": {
-          "timeout": 30000
-        }
-      }
-    },
-    {
-      "id": "leadsy-router-run-research-requested",
-      "name": "Run Research Requested",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        980,
-        -140
-      ],
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 60000,
-      "continueOnFail": false,
-      "parameters": {
-        "method": "POST",
-        "url": "={{$env.LEADSY_API_BASE_URL + '/api/automation/events/research-requested'}}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "contentType": "json",
-        "jsonBody": "{\"workflowKey\":\"research-requested\",\"n8nExecutionId\":\"={{$execution.id}}\",\"idempotencyKey\":\"={{$json.idempotencyKey}}\",\"payload\":\"={{$json.payload}}\"}",
-        "options": {
-          "timeout": 30000
-        }
-      }
-    },
-    {
-      "id": "leadsy-router-run-qualification-requested",
-      "name": "Run Qualification Requested",
+      "id": "leadsy-router-dispatch-automation",
+      "name": "Dispatch Automation",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -483,187 +179,27 @@
       "continueOnFail": false,
       "parameters": {
         "method": "POST",
-        "url": "={{$env.LEADSY_API_BASE_URL + '/api/automation/events/qualification-requested'}}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "url": "={{$env.LEADSY_API_BASE_URL + $json.actionPath}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{'Bearer ' + $env.LEADSY_N8N_WEBHOOK_SECRET}}"
+            },
+            {
+              "name": "X-Leadsy-Workflow",
+              "value": "={{$json.workflowKey}}"
+            }
+          ]
+        },
         "sendBody": true,
         "contentType": "json",
-        "jsonBody": "{\"workflowKey\":\"qualification-requested\",\"n8nExecutionId\":\"={{$execution.id}}\",\"idempotencyKey\":\"={{$json.idempotencyKey}}\",\"payload\":\"={{$json.payload}}\"}",
+        "jsonBody": "{\"workflowKey\":\"={{$json.workflowKey}}\",\"workflowName\":\"={{$json.workflowName}}\",\"n8nExecutionId\":\"={{$execution.id}}\",\"idempotencyKey\":\"={{$json.idempotencyKey}}\",\"tenantId\":\"={{$json.tenantId}}\",\"ownerId\":\"={{$json.ownerId}}\",\"leadId\":\"={{$json.leadId}}\",\"taskId\":\"={{$json.taskId}}\",\"conversationId\":\"={{$json.conversationId}}\",\"payload\":\"={{$json.payload}}\"}",
         "options": {
           "timeout": 30000
         }
       }
-    },
-    {
-      "id": "leadsy-router-run-task-generated",
-      "name": "Run Task Generated",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        980,
-        140
-      ],
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 60000,
-      "continueOnFail": false,
-      "parameters": {
-        "method": "POST",
-        "url": "={{$env.LEADSY_API_BASE_URL + '/api/automation/events/task-generated'}}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "contentType": "json",
-        "jsonBody": "{\"workflowKey\":\"task-generated\",\"n8nExecutionId\":\"={{$execution.id}}\",\"idempotencyKey\":\"={{$json.idempotencyKey}}\",\"payload\":\"={{$json.payload}}\"}",
-        "options": {
-          "timeout": 30000
-        }
-      }
-    },
-    {
-      "id": "leadsy-router-run-approval-requested",
-      "name": "Run Approval Requested",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        980,
-        280
-      ],
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 60000,
-      "continueOnFail": false,
-      "parameters": {
-        "method": "POST",
-        "url": "={{$env.LEADSY_API_BASE_URL + '/api/automation/events/approval-requested'}}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "contentType": "json",
-        "jsonBody": "{\"workflowKey\":\"approval-requested\",\"n8nExecutionId\":\"={{$execution.id}}\",\"idempotencyKey\":\"={{$json.idempotencyKey}}\",\"payload\":\"={{$json.payload}}\"}",
-        "options": {
-          "timeout": 30000
-        }
-      }
-    },
-    {
-      "id": "leadsy-router-run-follow-up-due",
-      "name": "Run Follow-up Due",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        980,
-        420
-      ],
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 60000,
-      "continueOnFail": false,
-      "parameters": {
-        "method": "POST",
-        "url": "={{$env.LEADSY_API_BASE_URL + '/api/automation/events/follow-up-due'}}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "contentType": "json",
-        "jsonBody": "{\"workflowKey\":\"follow-up-due\",\"n8nExecutionId\":\"={{$execution.id}}\",\"idempotencyKey\":\"={{$json.idempotencyKey}}\",\"payload\":\"={{$json.payload}}\"}",
-        "options": {
-          "timeout": 30000
-        }
-      }
-    },
-    {
-      "id": "leadsy-router-run-meta-lead-received",
-      "name": "Run Meta Lead Received",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        980,
-        560
-      ],
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 60000,
-      "continueOnFail": false,
-      "parameters": {
-        "method": "POST",
-        "url": "={{$env.LEADSY_API_BASE_URL + '/api/automation/events/meta-lead-received'}}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "contentType": "json",
-        "jsonBody": "{\"workflowKey\":\"meta-lead-received\",\"n8nExecutionId\":\"={{$execution.id}}\",\"idempotencyKey\":\"={{$json.idempotencyKey}}\",\"payload\":\"={{$json.payload}}\"}",
-        "options": {
-          "timeout": 30000
-        }
-      }
-    },
-    {
-      "id": "leadsy-router-run-whatsapp-message-received",
-      "name": "Run WhatsApp Message Received",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        980,
-        700
-      ],
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 60000,
-      "continueOnFail": false,
-      "parameters": {
-        "method": "POST",
-        "url": "={{$env.LEADSY_API_BASE_URL + '/api/automation/events/whatsapp-message-received'}}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "contentType": "json",
-        "jsonBody": "{\"workflowKey\":\"whatsapp-message-received\",\"n8nExecutionId\":\"={{$execution.id}}\",\"idempotencyKey\":\"={{$json.idempotencyKey}}\",\"payload\":\"={{$json.payload}}\"}",
-        "options": {
-          "timeout": 30000
-        }
-      }
-    },
-    {
-      "id": "leadsy-router-run-worker-retry",
-      "name": "Run Worker Retry",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        980,
-        840
-      ],
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 60000,
-      "continueOnFail": false,
-      "parameters": {
-        "method": "POST",
-        "url": "={{$env.LEADSY_API_BASE_URL + '/api/automation/events/worker-retry'}}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "contentType": "json",
-        "jsonBody": "{\"workflowKey\":\"worker-retry\",\"n8nExecutionId\":\"={{$execution.id}}\",\"idempotencyKey\":\"={{$json.idempotencyKey}}\",\"payload\":\"={{$json.payload}}\"}",
-        "options": {
-          "timeout": 30000
-        }
-      }
-    },
-    {
-      "id": "leadsy-router-unsupported-route",
-      "name": "Unsupported Event",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        980,
-        1000
-      ],
-      "parameters": {
-        "jsCode": "throw new Error(`Unsupported Leadsy workflowKey: ${$json.workflowKey ?? 'missing'}`);"
-      },
-      "notes": "Fails fast when Leadsy sends a workflowKey this router does not recognize.",
-      "notesInFlow": true
     },
     {
       "id": "leadsy-router-log-succeeded",
@@ -681,11 +217,22 @@
       "parameters": {
         "method": "POST",
         "url": "={{$env.LEADSY_API_BASE_URL + '/api/automation/executions'}}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{'Bearer ' + $env.LEADSY_N8N_WEBHOOK_SECRET}}"
+            },
+            {
+              "name": "X-Leadsy-Workflow",
+              "value": "={{$json.workflowKey}}"
+            }
+          ]
+        },
         "sendBody": true,
         "contentType": "json",
-        "jsonBody": "{\"workflowKey\":\"={{$json.workflowKey}}\",\"n8nExecutionId\":\"={{$execution.id}}\",\"status\":\"succeeded\",\"metadata\":\"={{$json}}\"}",
+        "jsonBody": "{\"workflowKey\":\"={{$('Validate Event').item.json.workflowKey}}\",\"n8nExecutionId\":\"={{$execution.id}}\",\"status\":\"succeeded\",\"metadata\":{\"event\":\"={{$('Validate Event').item.json}}\",\"dispatchResponse\":\"={{$json}}\"}}",
         "options": {
           "timeout": 30000
         }
@@ -735,7 +282,7 @@
             "index": 0
           },
           {
-            "node": "Route Event",
+            "node": "Validate Event",
             "type": "main",
             "index": 0
           }
@@ -751,7 +298,7 @@
             "index": 0
           },
           {
-            "node": "Route Event",
+            "node": "Validate Event",
             "type": "main",
             "index": 0
           }
@@ -767,194 +314,25 @@
             "index": 0
           },
           {
-            "node": "Route Event",
+            "node": "Validate Event",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Route Event": {
+    "Validate Event": {
       "main": [
         [
           {
-            "node": "Run Lead Added",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Run Lead Updated",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Run Research Requested",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Run Qualification Requested",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Run Task Generated",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Run Approval Requested",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Run Follow-up Due",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Run Meta Lead Received",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Run WhatsApp Message Received",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Run Worker Retry",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Unsupported Event",
+            "node": "Dispatch Automation",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Run Lead Added": {
-      "main": [
-        [
-          {
-            "node": "Log Succeeded",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Run Lead Updated": {
-      "main": [
-        [
-          {
-            "node": "Log Succeeded",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Run Research Requested": {
-      "main": [
-        [
-          {
-            "node": "Log Succeeded",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Run Qualification Requested": {
-      "main": [
-        [
-          {
-            "node": "Log Succeeded",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Run Task Generated": {
-      "main": [
-        [
-          {
-            "node": "Log Succeeded",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Run Approval Requested": {
-      "main": [
-        [
-          {
-            "node": "Log Succeeded",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Run Follow-up Due": {
-      "main": [
-        [
-          {
-            "node": "Log Succeeded",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Run Meta Lead Received": {
-      "main": [
-        [
-          {
-            "node": "Log Succeeded",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Run WhatsApp Message Received": {
-      "main": [
-        [
-          {
-            "node": "Log Succeeded",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Run Worker Retry": {
+    "Dispatch Automation": {
       "main": [
         [
           {

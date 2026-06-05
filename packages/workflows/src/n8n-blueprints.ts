@@ -92,8 +92,19 @@ function httpNode(
     parameters: {
       method: "POST",
       url: pathExpression,
-      authentication: "genericCredentialType",
-      genericAuthType: "httpHeaderAuth",
+      sendHeaders: true,
+      headerParameters: {
+        parameters: [
+          {
+            name: "Authorization",
+            value: "={{'Bearer ' + $env.LEADSY_N8N_WEBHOOK_SECRET}}"
+          },
+          {
+            name: "X-Leadsy-Workflow",
+            value: "={{$json.workflowKey}}"
+          }
+        ]
+      },
       sendBody: true,
       contentType: "json",
       jsonBody: JSON.stringify(body),
@@ -211,87 +222,67 @@ function normalizeSchedule(
   };
 }
 
-function switchNode(): N8nNode {
-  return {
-    id: nodeId("route-event"),
-    name: "Route Event",
-    type: "n8n-nodes-base.switch",
-    typeVersion: 3.2,
-    position: [660, 0],
-    parameters: {
-      mode: "rules",
-      rules: {
-        values: automationWorkflowDefinitions.map((workflow) => ({
-          conditions: {
-            options: {
-              caseSensitive: true,
-              leftValue: "",
-              typeValidation: "strict",
-              version: 2
-            },
-            conditions: [
-              {
-                leftValue: "={{$json.workflowKey}}",
-                rightValue: workflow.key,
-                operator: {
-                  type: "string",
-                  operation: "equals"
-                }
-              }
-            ],
-            combinator: "and"
-          },
-          renameOutput: true,
-          outputKey: workflow.name
-        }))
-      },
-      options: {
-        fallbackOutput: "extra"
-      }
-    },
-    notes: "One router switch keeps all Leadsy automation routes visible on a single n8n canvas.",
-    notesInFlow: true
-  };
-}
-
-function actionNode(workflow: AutomationWorkflowDefinition, index: number): N8nNode {
-  return httpNode(
-    `run-${workflow.key}`,
-    `Run ${workflow.name}`,
-    `={{$env.LEADSY_API_BASE_URL + '${workflowActionPath[workflow.key]}'}}`,
-    {
-      workflowKey: workflow.key,
-      n8nExecutionId: "={{$execution.id}}",
-      idempotencyKey: "={{$json.idempotencyKey}}",
-      payload: "={{$json.payload}}"
-    },
-    [980, -420 + index * 140],
-    { retryOnFail: true }
+function validateEventNode(): N8nNode {
+  const workflowNames = Object.fromEntries(
+    automationWorkflowDefinitions.map((workflow) => [workflow.key, workflow.name])
   );
-}
 
-function unsupportedRouteNode(): N8nNode {
   return {
-    id: nodeId("unsupported-route"),
-    name: "Unsupported Event",
+    id: nodeId("validate-event"),
+    name: "Validate Event",
     type: "n8n-nodes-base.code",
     typeVersion: 2,
-    position: [980, 1000],
+    position: [660, 0],
     parameters: {
       jsCode: [
-        "throw new Error(`Unsupported Leadsy workflowKey: ${$json.workflowKey ?? 'missing'}`);"
+        `const routePaths = ${JSON.stringify(workflowActionPath, null, 2)};`,
+        `const workflowNames = ${JSON.stringify(workflowNames, null, 2)};`,
+        "const workflowKey = $json.workflowKey;",
+        "if (typeof workflowKey !== 'string' || !routePaths[workflowKey]) {",
+        "  const supported = Object.keys(routePaths).join(', ');",
+        "  throw new Error(`Unsupported Leadsy workflowKey: ${workflowKey ?? 'missing'}. Supported: ${supported}`);",
+        "}",
+        "return [{",
+        "  json: {",
+        "    ...$json,",
+        "    workflowName: workflowNames[workflowKey],",
+        "    actionPath: routePaths[workflowKey],",
+        "    validatedAt: new Date().toISOString()",
+        "  }",
+        "}];"
       ].join("\n")
     },
-    notes: "Fails fast when Leadsy sends a workflowKey this router does not recognize.",
+    notes: "Validates the workflowKey and computes the Leadsy API path. No visual branch per event type.",
     notesInFlow: true
   };
+}
+
+function dispatchAutomationNode(): N8nNode {
+  return httpNode(
+    "dispatch-automation",
+    "Dispatch Automation",
+    "={{$env.LEADSY_API_BASE_URL + $json.actionPath}}",
+    {
+      workflowKey: "={{$json.workflowKey}}",
+      workflowName: "={{$json.workflowName}}",
+      n8nExecutionId: "={{$execution.id}}",
+      idempotencyKey: "={{$json.idempotencyKey}}",
+      tenantId: "={{$json.tenantId}}",
+      ownerId: "={{$json.ownerId}}",
+      leadId: "={{$json.leadId}}",
+      taskId: "={{$json.taskId}}",
+      conversationId: "={{$json.conversationId}}",
+      payload: "={{$json.payload}}"
+    },
+    [980, 0],
+    { retryOnFail: true }
+  );
 }
 
 export function n8nAutomationRouterBlueprint(): N8nWorkflowBlueprint {
   const followUpWorkflow = automationWorkflowDefinitions.find((workflow) => workflow.key === "follow-up-due")!;
   const workerRetryWorkflow = automationWorkflowDefinitions.find((workflow) => workflow.key === "worker-retry")!;
   const startedPath = "={{$env.LEADSY_API_BASE_URL + '/api/automation/executions'}}";
-  const actionNodes = automationWorkflowDefinitions.map(actionNode);
 
   const logStarted = httpNode(
     "log-started",
@@ -312,14 +303,20 @@ export function n8nAutomationRouterBlueprint(): N8nWorkflowBlueprint {
     "Log Succeeded",
     startedPath,
     {
-      workflowKey: "={{$json.workflowKey}}",
+      workflowKey: "={{$('Validate Event').item.json.workflowKey}}",
       n8nExecutionId: "={{$execution.id}}",
       status: "succeeded",
-      metadata: "={{$json}}"
+      metadata: {
+        event: "={{$('Validate Event').item.json}}",
+        dispatchResponse: "={{$json}}"
+      }
     },
     [1280, 0],
     { continueOnFail: true, retryOnFail: true }
   );
+
+  const validateEvent = validateEventNode();
+  const dispatchAutomation = dispatchAutomationNode();
 
   return {
     name: "Leadsy - Automation Router",
@@ -332,25 +329,19 @@ export function n8nAutomationRouterBlueprint(): N8nWorkflowBlueprint {
       normalizeSchedule("Normalize Follow-up Due", "normalize-follow-up-due", followUpWorkflow, [300, 220], 15),
       normalizeSchedule("Normalize Worker Retry", "normalize-worker-retry", workerRetryWorkflow, [300, 440], 5),
       logStarted,
-      switchNode(),
-      ...actionNodes,
-      unsupportedRouteNode(),
+      validateEvent,
+      dispatchAutomation,
       logSucceeded
     ],
     connections: {
       "Leadsy Event Webhook": { main: [[connection("Normalize Webhook Event")]] },
       "Follow-up Due Schedule": { main: [[connection("Normalize Follow-up Due")]] },
       "Worker Retry Schedule": { main: [[connection("Normalize Worker Retry")]] },
-      "Normalize Webhook Event": { main: [[connection("Log Started"), connection("Route Event")]] },
-      "Normalize Follow-up Due": { main: [[connection("Log Started"), connection("Route Event")]] },
-      "Normalize Worker Retry": { main: [[connection("Log Started"), connection("Route Event")]] },
-      "Route Event": {
-        main: [
-          ...automationWorkflowDefinitions.map((workflow) => [connection(`Run ${workflow.name}`)]),
-          [connection("Unsupported Event")]
-        ]
-      },
-      ...Object.fromEntries(actionNodes.map((node) => [node.name, { main: [[connection("Log Succeeded")]] }]))
+      "Normalize Webhook Event": { main: [[connection("Log Started"), connection("Validate Event")]] },
+      "Normalize Follow-up Due": { main: [[connection("Log Started"), connection("Validate Event")]] },
+      "Normalize Worker Retry": { main: [[connection("Log Started"), connection("Validate Event")]] },
+      "Validate Event": { main: [[connection("Dispatch Automation")]] },
+      "Dispatch Automation": { main: [[connection("Log Succeeded")]] }
     },
     settings: {
       executionOrder: "v1",

@@ -91,11 +91,13 @@ export async function getAutomationStatus(): Promise<AutomationStatus> {
     internalUrl,
     dashboardUrl: publicUrl,
     health: configured ? probe.health : "unknown",
-    workflowCount: automationWorkflowDefinitions.length,
+    workflowCount: configured ? 1 : 0,
     failedExecutions: 0,
     queueStatus: configured ? (probe.health === "healthy" ? "healthy" : "unknown") : "not_configured",
     checkedAt: new Date().toISOString(),
-    detail: configured ? probe.detail : "Add n8n as a separate Railway service to enable automation orchestration."
+    detail: configured
+      ? `${probe.detail} One router workflow handles ${automationWorkflowDefinitions.length} Leadsy event types.`
+      : "Add n8n as a separate Railway service to enable automation orchestration."
   };
 }
 

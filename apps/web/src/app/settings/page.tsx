@@ -3,5 +3,5 @@ import { requireAgencySession } from "@/lib/auth";
 
 export default async function SettingsRouteAliasPage() {
   await requireAgencySession();
-  redirect("/app/connect?panel=settings");
+  redirect("/app/settings");
 }
