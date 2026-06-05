@@ -27,4 +27,11 @@ assert(background.includes("leadsy:runSelectedTasks"), "background worker should
 assert(background.includes("runSelectedTasks"), "background worker should run only selected task ids");
 assert(!background.includes("type: \"leadsy:approveTaskSend\""), "extension runtime should not expose an approval command");
 
+const preparedSendBlock = content.slice(content.indexOf("async function sendPreparedTask"), content.indexOf("function taskCanBeHandled"));
+assert(
+  preparedSendBlock.includes("Leadsy-approved task sent. Waiting for a real inbound reply before continuing."),
+  "Leadsy-approved sends should pause the content worker after sending"
+);
+assert(!preparedSendBlock.includes("controller.arm("), "Leadsy-approved sends should not immediately re-arm the content worker");
+
 console.log("extension selected batch execution regression passed");

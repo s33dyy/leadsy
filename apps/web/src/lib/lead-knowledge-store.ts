@@ -1363,6 +1363,80 @@ export async function summarizeLeadKnowledgeHealth() {
   };
 }
 
+function normalizedKeepTerm(value: string) {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function recordTextMatches(value: unknown, keepTerms: string[]) {
+  if (!keepTerms.length) return false;
+  const text = JSON.stringify(value ?? "")
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+  return keepTerms.some((term) => text.includes(term));
+}
+
+export async function pruneLeadKnowledgeToTargets(input: Scope & {
+  keepTerms: string[];
+  tenantWide?: boolean;
+  dryRun?: boolean;
+}) {
+  const state = await readState();
+  const keepTerms = input.keepTerms.map(normalizedKeepTerm).filter(Boolean);
+  if (!keepTerms.length) throw new Error("At least one keep term is required.");
+  const inScope = (item: Scope) => item.tenantId === input.tenantId && (input.tenantWide || item.ownerId === input.ownerId);
+
+  const keptLeadIds = new Set<string>();
+  const keptConversationIds = new Set<string>();
+
+  for (const lead of state.leads) {
+    if (inScope(lead) && recordTextMatches(lead, keepTerms)) {
+      keptLeadIds.add(lead.id);
+    }
+  }
+  for (const conversation of state.conversations) {
+    if (inScope(conversation) && recordTextMatches(conversation, keepTerms)) {
+      keptConversationIds.add(conversation.id);
+      keptLeadIds.add(conversation.leadId);
+    }
+  }
+  for (const message of state.messages) {
+    if (inScope(message) && recordTextMatches(message, keepTerms)) {
+      keptLeadIds.add(message.leadId);
+      keptConversationIds.add(message.conversationId);
+    }
+  }
+
+  const nextLeads = state.leads.filter((lead) => !inScope(lead) || keptLeadIds.has(lead.id));
+  const nextConversations = state.conversations.filter(
+    (conversation) => !inScope(conversation) || keptLeadIds.has(conversation.leadId) || keptConversationIds.has(conversation.id)
+  );
+  const nextConversationIds = new Set(nextConversations.map((conversation) => conversation.id));
+  const nextLeadIds = new Set(nextLeads.map((lead) => lead.id));
+  const nextMessages = state.messages.filter(
+    (message) => !inScope(message) || nextLeadIds.has(message.leadId) || nextConversationIds.has(message.conversationId)
+  );
+
+  const result = {
+    dryRun: Boolean(input.dryRun),
+    kept: {
+      leads: nextLeads.filter(inScope).length,
+      conversations: nextConversations.filter(inScope).length,
+      messages: nextMessages.filter(inScope).length
+    },
+    removed: {
+      leads: state.leads.length - nextLeads.length,
+      conversations: state.conversations.length - nextConversations.length,
+      messages: state.messages.length - nextMessages.length
+    }
+  };
+
+  if (!input.dryRun && (result.removed.leads || result.removed.conversations || result.removed.messages)) {
+    await writeState({ leads: nextLeads, conversations: nextConversations, messages: nextMessages });
+  }
+
+  return result;
+}
+
 export async function editLeadKnowledgeRecord(input: Scope & {
   leadId: string;
   contact?: LeadKnowledgeContact;
