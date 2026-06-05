@@ -27,9 +27,13 @@ async function main() {
     "CRM",
     "Workers",
     "Approvals",
-    "Knowledge",
+    "Communications",
+    "Tasks",
     "Integrations",
-    "Settings"
+    "Settings",
+    "ICP & playbooks",
+    "Recent AI findings",
+    "Snippets"
   ];
   for (const label of expectedNavLabels) {
     assert(appShell.includes(`label: "${label}"`), `global sidebar should include ${label}`);
