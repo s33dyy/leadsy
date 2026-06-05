@@ -171,7 +171,8 @@ export function AppShell({
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [logoutPending, setLogoutPending] = useState(false);
   const title = pageTitle(pathname, searchParams);
-  const notificationCount = pendingApprovalCount + (hasMetaConnection ? 0 : 1) + (session.onboardingCompletedAt ? 0 : 1);
+  const onboardingReminder = session.onboardingCompletedAt ? 0 : 1;
+  const notificationCount = pendingApprovalCount + (hasMetaConnection ? 0 : 1) + onboardingReminder;
 
   const notificationItems = useMemo(
     () => [
