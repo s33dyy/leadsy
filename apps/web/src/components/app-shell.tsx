@@ -255,7 +255,7 @@ export function AppShell({
 
   return (
     <ToastProvider>
-      <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+      <div data-layout="lovable-operator" className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
         <aside
           data-testid="global-sidebar"
           data-state={sidebarExpanded ? "expanded" : "collapsed"}

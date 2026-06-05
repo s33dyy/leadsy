@@ -42,6 +42,7 @@ async function main() {
   assert(appShell.includes('"use client"'), "app shell should be interactive for collapse, drawers, and menus");
   assert(appShell.includes("usePathname"), "app shell should derive the page title from the active route");
   assert(appShell.includes("data-testid=\"global-sidebar\""), "app shell should expose the desktop sidebar");
+  assert(appShell.includes('data-layout="lovable-operator"'), "app shell should mark the Lovable operator layout");
   assert(appShell.includes("data-testid=\"sidebar-toggle\""), "app shell should expose a sidebar collapse toggle");
   assert(appShell.includes("aria-expanded={sidebarExpanded}"), "sidebar toggle should expose expanded state");
   assert(appShell.includes("data-testid=\"mobile-nav-drawer\""), "app shell should include a mobile drawer");
