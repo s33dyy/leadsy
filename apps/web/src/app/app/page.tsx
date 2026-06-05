@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Clock, Inbox, ListChecks, MessageCircle, RadioTower, UsersRound, Workflow, type LucideIcon } from "lucide-react";
 import { Badge, EmptyState, Panel, ProgressBar, SectionTitle } from "@/components/ui";
 import { getCurrentSession } from "@/lib/auth";
+import { listCrmFollowUpTasks } from "@/lib/crm-store";
 import { awaitingApprovalTaskStatuses, listExtensionTasks, type ExtensionTask } from "@/lib/extension-store";
 import {
   listLeadKnowledgeRecords,
@@ -28,7 +29,7 @@ function latestDirection(lead: LeadKnowledgeRecord) {
 }
 
 function needsReply(lead: LeadKnowledgeRecord) {
-  return lead.leadStatus === "lead" && latestDirection(lead) === "inbound";
+  return lead.leadStatus === "lead" && (lead.crmStatus === "needs_reply" || latestDirection(lead) === "inbound");
 }
 
 function isMetaLead(lead: LeadKnowledgeRecord) {
@@ -41,6 +42,23 @@ function isExtensionLead(lead: LeadKnowledgeRecord) {
 
 function isManualLead(lead: LeadKnowledgeRecord) {
   return lead.channels.includes("manual") || (!isMetaLead(lead) && !isExtensionLead(lead));
+}
+
+function crmStatusLabel(lead: LeadKnowledgeRecord) {
+  if (lead.leadStatus === "excluded") return "Excluded";
+  if (lead.crmStatus === "new_lead") return "New lead";
+  if (lead.crmStatus === "needs_reply") return "Needs reply";
+  if (lead.crmStatus === "interested") return "Interested";
+  if (lead.crmStatus === "human_review") return "Human review";
+  return "New lead";
+}
+
+function sourceLabelForLead(lead: LeadKnowledgeRecord) {
+  if (lead.leadSource) return lead.leadSource;
+  if (isMetaLead(lead)) return "Meta messaging";
+  if (isExtensionLead(lead)) return "Browser extension";
+  if (isManualLead(lead)) return "Manual";
+  return "Unknown source";
 }
 
 function activeTask(task: ExtensionTask) {
@@ -68,35 +86,65 @@ function maxOrOne(values: number[]) {
   return Math.max(1, ...values);
 }
 
+function countBy<T>(items: T[], labelForItem: (item: T) => string) {
+  return items.reduce<Record<string, number>>((totals, item) => {
+    const label = labelForItem(item);
+    totals[label] = (totals[label] ?? 0) + 1;
+    return totals;
+  }, {});
+}
+
+function breakdownFromCounts(counts: Record<string, number>, tone: "teal" | "amber" | "lime" | "sky" | "violet") {
+  return Object.entries(counts)
+    .sort(([, left], [, right]) => right - left)
+    .slice(0, 5)
+    .map(([label, value]) => ({ label, value, tone }));
+}
+
+function isToday(value?: string) {
+  if (!value) return false;
+  const date = new Date(value);
+  const now = new Date();
+  return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
+}
+
 export default async function WorkspaceIndexPage() {
   const session = await getCurrentSession();
   const tasks = session ? await listExtensionTasks(session.tenantId, session.id) : [];
+  const crmFollowUps = session ? await listCrmFollowUpTasks({ tenantId: session.tenantId, ownerId: session.id }) : [];
   if (session) {
     await syncLeadKnowledgeFromExtensionTasks({ tenantId: session.tenantId, ownerId: session.id }, tasks);
   }
   const leads = session ? await listLeadKnowledgeRecords({ tenantId: session.tenantId, ownerId: session.id }) : [];
 
   const activeLeads = leads.filter((lead) => lead.leadStatus === "lead");
-  const manualLeads = leads.filter(isManualLead);
-  const automatedLeads = leads.filter((lead) => isMetaLead(lead) || isExtensionLead(lead));
   const replyQueue = leads.filter(needsReply);
-  const excludedLeads = leads.filter((lead) => lead.leadStatus === "excluded");
+  const interestedLeads = leads.filter((lead) => lead.crmStatus === "interested");
+  const humanReviewLeads = leads.filter((lead) => lead.crmStatus === "human_review");
+  const dailyLeadVolume = leads.filter((lead) => isToday(lead.lastMessageAt ?? lead.updatedAt)).length;
   const activeTasks = tasks.filter(activeTask);
   const awaitingApprovalTasks = tasks.filter(awaitingApprovalTask);
 
   const metrics: DashboardMetric[] = [
     {
-      label: "Automated leads",
-      value: automatedLeads.length,
-      detail: "Meta and extension sourced",
-      href: "/app/leads?view=meta",
+      label: "Daily lead volume",
+      value: dailyLeadVolume,
+      detail: "Touched today",
+      href: "/app/leads",
       tone: "sky"
     },
     {
-      label: "Manual leads",
-      value: manualLeads.length,
-      detail: "Added by operators",
-      href: "/app/leads?q=manual",
+      label: "Interested",
+      value: interestedLeads.length,
+      detail: "Qualified leads",
+      href: "/app/leads?q=interested",
+      tone: "lime"
+    },
+    {
+      label: "Human review",
+      value: humanReviewLeads.length,
+      detail: "Needs operator judgment",
+      href: "/app/leads?q=human_review",
       tone: "amber"
     },
     {
@@ -114,30 +162,29 @@ export default async function WorkspaceIndexPage() {
       tone: "teal"
     },
     {
-      label: "Active tasks",
-      value: activeTasks.length,
-      detail: "Worker tasks in motion",
-      href: "/app/worker",
+      label: "Follow-up tasks",
+      value: crmFollowUps.length,
+      detail: "CRM follow-ups open",
+      href: "/app/leads?tab=tasks",
       tone: "violet"
     }
   ];
 
-  const sourceBreakdown = [
-    { label: "Automated", value: automatedLeads.length, tone: "sky" as const },
-    { label: "Manual", value: manualLeads.length, tone: "amber" as const },
-    { label: "Excluded", value: excludedLeads.length, tone: "violet" as const }
-  ];
+  const sourceBreakdown = breakdownFromCounts(countBy(activeLeads, sourceLabelForLead), "sky");
   const statusBreakdown = [
-    { label: "Active", value: activeLeads.length, tone: "lime" as const },
-    { label: "Needs reply", value: replyQueue.length, tone: "teal" as const },
-    { label: "Excluded", value: excludedLeads.length, tone: "amber" as const }
+    { label: "New lead", value: activeLeads.filter((lead) => crmStatusLabel(lead) === "New lead").length, tone: "teal" as const },
+    { label: "Interested", value: interestedLeads.length, tone: "lime" as const },
+    { label: "Needs reply", value: replyQueue.length, tone: "amber" as const },
+    { label: "Human review", value: humanReviewLeads.length, tone: "violet" as const }
   ];
+  const assigneeBreakdown = breakdownFromCounts(countBy(activeLeads, (lead) => lead.assigneeName || "Unassigned"), "teal");
   const taskBreakdown = [
     { label: "Active", value: activeTasks.length, tone: "violet" as const },
     { label: "Needs approval", value: awaitingApprovalTasks.length, tone: "amber" as const },
+    { label: "CRM follow-ups", value: crmFollowUps.length, tone: "sky" as const },
     { label: "Completed", value: tasks.filter((task) => task.status === "sent").length, tone: "teal" as const }
   ];
-  const barMax = maxOrOne([...sourceBreakdown, ...statusBreakdown, ...taskBreakdown].map((item) => item.value));
+  const barMax = maxOrOne([...sourceBreakdown, ...statusBreakdown, ...assigneeBreakdown, ...taskBreakdown].map((item) => item.value));
   const recentLeads = [...leads]
     .sort((left, right) => Date.parse(right.lastMessageAt ?? right.updatedAt) - Date.parse(left.lastMessageAt ?? left.updatedAt))
     .slice(0, 6);
@@ -175,10 +222,11 @@ export default async function WorkspaceIndexPage() {
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
         <Panel className="p-5">
-          <SectionTitle eyebrow="Pipeline health" title="Lead and task breakdown" />
-          <div className="mt-5 grid gap-4 lg:grid-cols-3">
-            <BreakdownPanel icon={RadioTower} title="Source mix" items={sourceBreakdown} max={barMax} />
-            <BreakdownPanel icon={UsersRound} title="Lead status" items={statusBreakdown} max={barMax} />
+          <SectionTitle eyebrow="Pipeline health" title="Lead source split, Status pipeline, Assignee workload" />
+          <div className="mt-5 grid gap-4 lg:grid-cols-2 2xl:grid-cols-4">
+            <BreakdownPanel icon={RadioTower} title="Lead source split" items={sourceBreakdown} max={barMax} />
+            <BreakdownPanel icon={UsersRound} title="Status pipeline" items={statusBreakdown} max={barMax} />
+            <BreakdownPanel icon={UsersRound} title="Assignee workload" items={assigneeBreakdown} max={barMax} />
             <BreakdownPanel icon={Workflow} title="Worker tasks" items={taskBreakdown} max={barMax} />
           </div>
         </Panel>

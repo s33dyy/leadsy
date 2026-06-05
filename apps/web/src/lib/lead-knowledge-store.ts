@@ -30,6 +30,10 @@ export type LeadKnowledgeSource = "meta-webhook" | "extension" | "manual";
 export type LeadKnowledgeDirection = "inbound" | "outbound" | "system" | "note";
 export type LeadKnowledgeStatus = "lead" | "excluded";
 export type LeadConversationKnowledgeStatus = "included" | "excluded";
+export type LeadCrmStatus = "new_lead" | "interested" | "needs_reply" | "human_review";
+export type LeadQualificationStage = "new" | "collecting" | "qualified" | "human_review";
+export type LeadQualificationFieldKey = "name" | "phone" | "company" | "need" | "teamOrQueryVolume" | "budget" | "timeline";
+export type LeadQualificationFields = Partial<Record<LeadQualificationFieldKey, string>>;
 
 export type LeadKnowledgeContact = {
   displayName?: string;
@@ -47,6 +51,13 @@ export type LeadKnowledgeLead = {
   identityKeys: string[];
   contact: LeadKnowledgeContact;
   leadStatus: LeadKnowledgeStatus;
+  crmStatus: LeadCrmStatus;
+  leadSource?: string;
+  campaignId?: string;
+  assigneeId?: string;
+  assigneeName?: string;
+  qualificationFields: LeadQualificationFields;
+  qualificationStage: LeadQualificationStage;
   excludedAt?: string;
   deletedAt?: string;
   summary?: string;
@@ -186,6 +197,37 @@ function normalizedMessageBody(body: string) {
   return body.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
+const qualificationFieldOrder: LeadQualificationFieldKey[] = ["name", "phone", "company", "need", "teamOrQueryVolume", "budget", "timeline"];
+const qualificationQuestions: Record<LeadQualificationFieldKey, string> = {
+  name: "Ask for the buyer's name before continuing qualification.",
+  phone: "Confirm the preferred phone number for follow-up.",
+  company: "Ask for the business or company name.",
+  need: "Ask what they want to achieve with Leadsy or WhatsApp automation.",
+  teamOrQueryVolume: "Ask how many queries, leads, or messages they handle each day.",
+  budget: "Ask for budget range if the conversation is warm enough.",
+  timeline: "Ask when they want to start or book the next conversation."
+};
+const humanReviewPattern = /\b(fuck|shit|angry|refund|legal|lawyer|complaint|human|agent|manager|stop|unsubscribe)\b/i;
+
+function businessLikeName(value?: string) {
+  return /\b(pvt|ltd|llp|inc|corp|company|business|mobility|solutions|technologies|tech|systems|agency|homestay|school|college|clinic|restaurant)\b/i.test(value ?? "");
+}
+
+function leadCrmDefaults(): Pick<LeadKnowledgeLead, "crmStatus" | "qualificationFields" | "qualificationStage"> {
+  return {
+    crmStatus: "new_lead",
+    qualificationFields: {},
+    qualificationStage: "new"
+  };
+}
+
+function ensureLeadCrmDefaults(lead: LeadKnowledgeLead) {
+  lead.crmStatus = lead.crmStatus ?? "new_lead";
+  lead.qualificationFields = lead.qualificationFields ?? {};
+  lead.qualificationStage = lead.qualificationStage ?? "new";
+  return lead;
+}
+
 function channelFamily(channel: LeadKnowledgeChannel) {
   if (channel === "whatsapp" || channel === "whatsapp-web") return "whatsapp";
   if (channel === "instagram" || channel === "instagram-web") return "instagram";
@@ -202,8 +244,15 @@ function timestampDeltaMs(left: string, right: string) {
 
 function messageLooksLikeDuplicate(left: LeadKnowledgeMessage, right: Omit<LeadKnowledgeMessage, "id" | "tenantId" | "ownerId">) {
   if (left.leadId !== right.leadId) return false;
-  if (left.direction !== right.direction) return false;
   if (left.direction !== "inbound" && left.direction !== "outbound") return false;
+  if (left.direction !== right.direction) {
+    const leadsyOutboundEcho =
+      left.direction === "outbound" &&
+      left.generatedBy === "leadsy" &&
+      right.direction === "inbound" &&
+      timestampDeltaMs(left.sentAt, right.sentAt) <= 120_000;
+    if (!leadsyOutboundEcho) return false;
+  }
   if (channelFamily(left.channel) !== channelFamily(right.channel)) return false;
   if (normalizedMessageBody(left.body) !== normalizedMessageBody(right.body)) return false;
   return timestampDeltaMs(left.sentAt, right.sentAt) <= 120_000;
@@ -319,6 +368,131 @@ function mergeContacts(current: LeadKnowledgeContact, incoming: LeadKnowledgeCon
   });
 }
 
+function valueAfterLabel(text: string, labels: string[]) {
+  for (const label of labels) {
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const match = text.match(new RegExp(`(?:^|\\n|\\b)${escaped}\\s*[:=-]\\s*([^\\n.]+)`, "i"));
+    if (match?.[1]?.trim()) return match[1].trim();
+  }
+  return undefined;
+}
+
+function firstMatch(text: string, patterns: RegExp[]) {
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match?.[1]?.trim()) return match[1].trim().replace(/[?.!,;:]+$/, "");
+  }
+  return undefined;
+}
+
+function inferNeedFromText(text: string) {
+  const explicit = valueAfterLabel(text, ["Need", "Reason", "Requirement", "Use case", "Goal"]);
+  if (explicit) return explicit;
+  return firstMatch(text, [
+    /\b(?:i\s+want|want|need|looking\s+for|interested\s+in)\s+(?:a\s+|an\s+|to\s+)?([^.\n?]+?)(?:\s+for\s+\d|\s+this\s+week|$|[?.!])/i,
+    /\b(whatsapp\s+(?:crm|automation|ai|follow[- ]?up)[^.\n?]*)/i
+  ]);
+}
+
+function inferQualificationFields(input: {
+  contact: LeadKnowledgeContact;
+  existing?: LeadQualificationFields;
+  facts?: string[];
+  messages: LeadKnowledgeMessage[];
+}) {
+  const text = [
+    ...(input.facts ?? []),
+    ...input.messages.map((message) => message.body)
+  ].join("\n");
+  const displayName = input.contact.displayName;
+  const fields: LeadQualificationFields = {
+    ...(input.existing ?? {})
+  };
+
+  fields.name = fields.name || (displayName && !businessLikeName(displayName) ? displayName : undefined);
+  fields.phone = fields.phone || input.contact.phone || input.contact.waId;
+  fields.company = fields.company || valueAfterLabel(text, ["Company", "Business", "Business name", "Company name"]);
+  fields.need = fields.need || inferNeedFromText(text);
+  fields.teamOrQueryVolume =
+    fields.teamOrQueryVolume ||
+    valueAfterLabel(text, ["Queries per day", "Messages per day", "Team size", "Query volume"]) ||
+    firstMatch(text, [
+      /\b(\d+\s*-\s*\d+\s*(?:queries|messages|leads)(?:\s+per\s+day)?)/i,
+      /\b(more\s+than\s+\d+\s*(?:queries|messages|leads)?)/i,
+      /\b(\d+\s*(?:queries|messages|leads)\s+(?:per\s+day|daily))/i
+    ]);
+  fields.budget = fields.budget || valueAfterLabel(text, ["Budget", "Estimated budget"]) || firstMatch(text, [/\b(?:budget|price range)\s*(?:is|:)?\s*([₹$]?\s*[\d,]+(?:\s*(?:inr|rs|usd))?)/i]);
+  fields.timeline = fields.timeline || valueAfterLabel(text, ["Timeline", "Start date"]) || firstMatch(text, [/\b(this week|next week|tomorrow|today|next month|as soon as possible)\b/i]);
+
+  return Object.fromEntries(Object.entries(fields).filter(([, value]) => value?.trim())) as LeadQualificationFields;
+}
+
+function nextMissingQualificationField(fields: LeadQualificationFields) {
+  return qualificationFieldOrder.find((field) => !fields[field]);
+}
+
+function defaultAssigneeForLeadSource(leadSource?: string) {
+  if (!leadSource) return {};
+  if (/meta|ctwa|whatsapp/i.test(leadSource)) {
+    return { assigneeId: "meta-sales-owner", assigneeName: "Meta sales owner" };
+  }
+  if (/google|website|gads|organic/i.test(leadSource)) {
+    return { assigneeId: "website-sales-owner", assigneeName: "Website sales owner" };
+  }
+  return {};
+}
+
+function qualificationDecisionForLead(input: {
+  lead: LeadKnowledgeLead;
+  messages: LeadKnowledgeMessage[];
+}) {
+  const messages = input.messages.filter((message) => !message.hiddenAt);
+  const latest = messages.at(-1);
+  const fields = inferQualificationFields({
+    contact: input.lead.contact,
+    existing: input.lead.qualificationFields,
+    facts: input.lead.facts,
+    messages
+  });
+  const coreQualified = Boolean(fields.company && fields.need && (fields.name || fields.phone));
+  const missing = nextMissingQualificationField(fields);
+  const latestText = latest?.body ?? "";
+
+  if (input.lead.crmStatus === "human_review" || (latestText && humanReviewPattern.test(latestText))) {
+    return {
+      fields,
+      crmStatus: "human_review" as const,
+      qualificationStage: "human_review" as const,
+      nextAction: "Human review needed before Leadsy or a worker replies again."
+    };
+  }
+
+  if (coreQualified) {
+    return {
+      fields,
+      crmStatus: "interested" as const,
+      qualificationStage: "qualified" as const,
+      nextAction: "Qualified lead. Assign owner and book the next sales conversation."
+    };
+  }
+
+  if (latest?.direction === "inbound") {
+    return {
+      fields,
+      crmStatus: "needs_reply" as const,
+      qualificationStage: "collecting" as const,
+      nextAction: missing ? qualificationQuestions[missing] : "Reply and continue qualifying this lead."
+    };
+  }
+
+  return {
+    fields,
+    crmStatus: "new_lead" as const,
+    qualificationStage: Object.keys(fields).length ? ("collecting" as const) : ("new" as const),
+    nextAction: missing ? qualificationQuestions[missing] : "Review this lead and choose the next action."
+  };
+}
+
 function findLeadByIdentity(state: LeadKnowledgeState, scope: Scope, identityKeys: string[]) {
   if (!identityKeys.length) return undefined;
   return state.leads.find(
@@ -337,6 +511,13 @@ function upsertLead(state: LeadKnowledgeState, scope: Scope, input: {
   nextAction?: string;
   facts?: string[];
   leadId?: string;
+  leadSource?: string;
+  campaignId?: string;
+  assigneeId?: string;
+  assigneeName?: string;
+  crmStatus?: LeadCrmStatus;
+  qualificationFields?: LeadQualificationFields;
+  qualificationStage?: LeadQualificationStage;
 }) {
   const now = nowIso();
   const contact = cleanContact(input.contact);
@@ -344,15 +525,25 @@ function upsertLead(state: LeadKnowledgeState, scope: Scope, input: {
   const existing = input.leadId ? findLeadById(state, scope, input.leadId) : findLeadByIdentity(state, scope, identityKeys);
 
   if (existing) {
+    ensureLeadCrmDefaults(existing);
+    const defaultAssignee = defaultAssigneeForLeadSource(input.leadSource || existing.leadSource);
     existing.identityKeys = uniqueStrings([...existing.identityKeys, ...identityKeys]);
     existing.contact = mergeContacts(existing.contact, contact);
     existing.summary = input.summary || existing.summary;
     existing.nextAction = input.nextAction || existing.nextAction;
     existing.facts = uniqueStrings([...(input.facts ?? []), ...existing.facts]).slice(0, 30);
+    existing.leadSource = input.leadSource || existing.leadSource;
+    existing.campaignId = input.campaignId || existing.campaignId;
+    existing.assigneeId = input.assigneeId || existing.assigneeId || defaultAssignee.assigneeId;
+    existing.assigneeName = input.assigneeName || existing.assigneeName || defaultAssignee.assigneeName;
+    existing.crmStatus = input.crmStatus || existing.crmStatus;
+    existing.qualificationFields = { ...existing.qualificationFields, ...(input.qualificationFields ?? {}) };
+    existing.qualificationStage = input.qualificationStage || existing.qualificationStage;
     existing.updatedAt = now;
     return existing;
   }
 
+  const defaultAssignee = defaultAssigneeForLeadSource(input.leadSource);
   const lead: LeadKnowledgeLead = {
     id: input.leadId || `leadkb_${crypto.randomUUID()}`,
     tenantId: scope.tenantId,
@@ -360,6 +551,14 @@ function upsertLead(state: LeadKnowledgeState, scope: Scope, input: {
     identityKeys,
     contact,
     leadStatus: "lead",
+    ...leadCrmDefaults(),
+    crmStatus: input.crmStatus ?? "new_lead",
+    leadSource: input.leadSource,
+    campaignId: input.campaignId,
+    assigneeId: input.assigneeId ?? defaultAssignee.assigneeId,
+    assigneeName: input.assigneeName ?? defaultAssignee.assigneeName,
+    qualificationFields: input.qualificationFields ?? {},
+    qualificationStage: input.qualificationStage ?? "new",
     summary: input.summary,
     nextAction: input.nextAction,
     facts: uniqueStrings(input.facts ?? []).slice(0, 30),
@@ -462,14 +661,19 @@ function recalculateConversation(state: LeadKnowledgeState, conversationId: stri
 function updateLeadFromConversation(state: LeadKnowledgeState, leadId: string, insight?: ExtensionConversationInsight) {
   const lead = state.leads.find((candidate) => candidate.id === leadId);
   if (!lead) return;
+  ensureLeadCrmDefaults(lead);
   const conversations = state.conversations.filter((conversation) => conversation.leadId === leadId);
   const messages = state.messages
     .filter((message) => message.leadId === leadId)
     .filter((message) => !message.hiddenAt)
     .sort((left, right) => left.sentAt.localeCompare(right.sentAt));
   const lastMessage = messages.at(-1);
+  const qualification = qualificationDecisionForLead({ lead, messages });
+  lead.qualificationFields = qualification.fields;
+  lead.crmStatus = qualification.crmStatus;
+  lead.qualificationStage = qualification.qualificationStage;
   lead.summary = insight?.summary || lead.summary || (lastMessage ? `Latest message: ${cleanPreview(lastMessage.body)}` : undefined);
-  lead.nextAction = insight?.nextAction || nextActionForMessages(messages, lead.leadStatus);
+  lead.nextAction = insight?.nextAction || qualification.nextAction || nextActionForMessages(messages, lead.leadStatus);
   lead.facts = uniqueStrings([
     ...(insight?.qualification ? [insight.qualification] : []),
     ...(lead.facts ?? []),
@@ -521,6 +725,22 @@ function referralForWhatsApp(message: Record<string, unknown>) {
     body: asString(referral.body),
     ctwaClid: asString(referral.ctwa_clid)
   };
+}
+
+function crmMetaSource(normalized: MetaNormalizedMessage) {
+  const raw = asRecord(normalized.raw);
+  const referral = asRecord(raw?.referral);
+  const referralSourceType = asString(referral?.sourceType);
+  if (normalized.channel === "whatsapp" && referralSourceType === "ad") {
+    return {
+      leadSource: "Meta CTWA Ads",
+      campaignId: asString(referral?.sourceId) || asString(referral?.ctwaClid)
+    };
+  }
+  if (normalized.channel === "whatsapp") return { leadSource: "WhatsApp" };
+  if (normalized.channel === "instagram") return { leadSource: "Instagram" };
+  if (normalized.channel === "facebook") return { leadSource: "Facebook" };
+  return {};
 }
 
 function contactForWhatsApp(contacts: unknown[], from?: string) {
@@ -654,11 +874,13 @@ export async function saveUnifiedMetaWebhookMessages(input: Scope & { payload: u
   const state = await readState();
   const saved: LeadKnowledgeMessage[] = [];
   for (const normalized of normalizedMessages) {
+    const crmSource = crmMetaSource(normalized);
     const lead = upsertLead(state, input, {
       identityKeys: normalized.identityKeys,
       contact: normalized.contact,
       facts: [normalized.body],
-      nextAction: normalized.direction === "inbound" ? "Reply in Leadsy-approved channel and qualify intent." : undefined
+      nextAction: normalized.direction === "inbound" ? "Reply in Leadsy-approved channel and qualify intent." : undefined,
+      ...crmSource
     });
     const conversation = upsertConversation(state, input, {
       leadId: lead.id,
@@ -691,6 +913,16 @@ export async function saveUnifiedMetaWebhookMessages(input: Scope & { payload: u
 
 function channelForExtensionPlatform(platform: ExtensionPlatform): LeadKnowledgeChannel {
   return platform;
+}
+
+function channelLabelForSource(channel: LeadKnowledgeChannel) {
+  if (channel === "whatsapp" || channel === "whatsapp-web") return "WhatsApp";
+  if (channel === "instagram" || channel === "instagram-web") return "Instagram";
+  if (channel === "facebook" || channel === "facebook-web") return "Facebook";
+  if (channel === "generic-web-chat") return "Browser Chat";
+  if (channel === "email") return "Email";
+  if (channel === "call") return "Call Notes";
+  return "Manual";
 }
 
 function extensionDirection(direction: ExtensionMessageDirection): LeadKnowledgeDirection {
@@ -829,7 +1061,8 @@ export async function syncLeadKnowledgeFromExtensionTasks(scope: Scope, tasks: E
       contact,
       summary: task.contextSummary || task.resultSummary,
       nextAction: nextActionForExtensionTask(task),
-      facts: [task.contextSummary, task.resultSummary, task.blockedReason, task.postponedReason].filter(Boolean) as string[]
+      facts: [task.contextSummary, task.resultSummary, task.blockedReason, task.postponedReason].filter(Boolean) as string[],
+      leadSource: task.platform === "whatsapp-web" ? "WhatsApp Web" : task.platform.replace(/-/g, " ")
     });
     const conversationKey =
       task.conversationId ||
@@ -950,7 +1183,8 @@ export async function syncLeadsyExtensionConversation(input: Scope & {
     contact,
     summary: input.insight?.summary,
     nextAction: input.insight?.nextAction,
-    facts: [input.insight?.qualification, input.insight?.summary].filter(Boolean) as string[]
+    facts: [input.insight?.qualification, input.insight?.summary].filter(Boolean) as string[],
+    leadSource: input.platform === "whatsapp-web" ? "WhatsApp Web" : input.platform.replace(/-/g, " ")
   });
   const externalKey = extensionConversationExternalKey({
     platform: input.platform,
@@ -1030,7 +1264,8 @@ export async function appendManualLeadMessage(input: Scope & {
     leadId: input.leadId,
     identityKeys: identityKeysForContact(channel, contact),
     contact,
-    facts: [input.body]
+    facts: [input.body],
+    leadSource: channel === "manual" ? "Manual" : channelLabelForSource(channel)
   });
   const conversation = upsertConversation(state, input, {
     leadId: lead.id,
@@ -1064,6 +1299,7 @@ function recordForLead(state: LeadKnowledgeState, scope: Scope, leadId: string):
   if (!lead) {
     throw new Error("Lead knowledge record was not found.");
   }
+  ensureLeadCrmDefaults(lead);
   const conversations = state.conversations
     .filter((conversation) => conversation.leadId === lead.id && scopeMatches(scope, conversation))
     .sort((left, right) => (right.lastMessageAt ?? right.updatedAt).localeCompare(left.lastMessageAt ?? left.updatedAt));
@@ -1099,11 +1335,26 @@ export async function summarizeLeadKnowledgeHealth() {
     .filter((lead) => !lead.deletedAt)
     .map((lead) => recordForLead(state, { tenantId: lead.tenantId, ownerId: lead.ownerId }, lead.id));
   const needsReply = records.filter((lead) => lead.leadStatus === "lead" && lead.messages.at(-1)?.direction === "inbound").length;
+  const statusPipeline = {
+    new_lead: records.filter((lead) => lead.crmStatus === "new_lead").length,
+    interested: records.filter((lead) => lead.crmStatus === "interested").length,
+    needs_reply: records.filter((lead) => lead.crmStatus === "needs_reply").length,
+    human_review: records.filter((lead) => lead.crmStatus === "human_review").length
+  };
+  const assigneeWorkload = records.reduce<Record<string, number>>((totals, lead) => {
+    const assignee = lead.assigneeName || "Unassigned";
+    totals[assignee] = (totals[assignee] ?? 0) + 1;
+    return totals;
+  }, {});
   return {
     records: records.length,
     activeLeads: records.filter((lead) => lead.leadStatus === "lead").length,
     excludedLeads: records.filter((lead) => lead.leadStatus === "excluded").length,
     needsReply,
+    interestedLeads: statusPipeline.interested,
+    humanReviewLeads: statusPipeline.human_review,
+    statusPipeline,
+    assigneeWorkload,
     conversations: records.reduce((total, lead) => total + lead.conversations.length, 0),
     messages: records.reduce((total, lead) => total + lead.messages.length, 0),
     metaSourced: records.filter((lead) => lead.channels.some((channel) => channel === "whatsapp" || channel === "instagram" || channel === "facebook")).length,
@@ -1118,10 +1369,18 @@ export async function editLeadKnowledgeRecord(input: Scope & {
   summary?: string;
   nextAction?: string;
   facts?: string[];
+  crmStatus?: LeadCrmStatus;
+  leadSource?: string;
+  campaignId?: string;
+  assigneeId?: string;
+  assigneeName?: string;
+  qualificationFields?: LeadQualificationFields;
+  qualificationStage?: LeadQualificationStage;
 }) {
   const state = await readState();
   const lead = findLeadById(state, input, input.leadId);
   if (!lead) throw new Error("Lead knowledge record was not found.");
+  ensureLeadCrmDefaults(lead);
   const contact = cleanContact(input.contact);
   lead.contact = mergeContacts(contact, lead.contact);
   lead.identityKeys = uniqueStrings([
@@ -1134,6 +1393,30 @@ export async function editLeadKnowledgeRecord(input: Scope & {
   lead.summary = input.summary?.trim() || undefined;
   lead.nextAction = input.nextAction?.trim() || undefined;
   lead.facts = uniqueStrings(input.facts ?? []).slice(0, 30);
+  lead.leadSource = input.leadSource?.trim() || lead.leadSource;
+  lead.campaignId = input.campaignId?.trim() || lead.campaignId;
+  const defaultAssignee = defaultAssigneeForLeadSource(lead.leadSource);
+  lead.assigneeId = input.assigneeId?.trim() || lead.assigneeId || defaultAssignee.assigneeId;
+  lead.assigneeName = input.assigneeName?.trim() || lead.assigneeName || defaultAssignee.assigneeName;
+  lead.qualificationFields = inferQualificationFields({
+    contact: lead.contact,
+    existing: { ...lead.qualificationFields, ...(input.qualificationFields ?? {}) },
+    facts: lead.facts,
+    messages: state.messages
+      .filter((message) => message.leadId === lead.id && scopeMatches(input, message))
+      .filter((message) => !message.hiddenAt)
+      .sort((left, right) => left.sentAt.localeCompare(right.sentAt))
+  });
+  const qualification = qualificationDecisionForLead({
+    lead,
+    messages: state.messages
+      .filter((message) => message.leadId === lead.id && scopeMatches(input, message))
+      .filter((message) => !message.hiddenAt)
+      .sort((left, right) => left.sentAt.localeCompare(right.sentAt))
+  });
+  lead.crmStatus = input.crmStatus ?? qualification.crmStatus;
+  lead.qualificationStage = input.qualificationStage ?? qualification.qualificationStage;
+  lead.nextAction = input.nextAction?.trim() || qualification.nextAction;
   lead.updatedAt = nowIso();
   await writeState(state);
   return recordForLead(state, input, lead.id);
