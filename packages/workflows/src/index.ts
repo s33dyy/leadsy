@@ -15,6 +15,14 @@ export {
   type AutomationWorkflowKey
 } from "./automation-catalog";
 export {
+  n8nProviderConfigByWorkflowKey,
+  n8nProviderConfigGroups,
+  providerConfigKeysForWorkflow,
+  type N8nProviderConfigField,
+  type N8nProviderConfigGroup,
+  type N8nProviderConfigKey
+} from "./provider-config";
+export {
   n8nAutomationRouterBlueprint,
   n8nWorkflowBlueprints,
   type N8nWorkflowBlueprint

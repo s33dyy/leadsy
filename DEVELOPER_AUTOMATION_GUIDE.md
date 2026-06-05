@@ -36,10 +36,19 @@ Inside n8n, operators should see one compact router:
 - Webhook and schedule triggers
 - Normalize nodes
 - `Validate Event`
+- `Provider Config Check`
 - `Dispatch Automation`
 - Started/succeeded log calls
 
-The only normal configuration points are `LEADSY_API_BASE_URL` and `LEADSY_N8N_WEBHOOK_SECRET` in the n8n service environment.
+The normal configuration points live on the n8n service environment or n8n credentials:
+
+- Leadsy handoff: `LEADSY_API_BASE_URL`, `LEADSY_N8N_WEBHOOK_SECRET`
+- Meta automation: `META_APP_ID`, `META_APP_SECRET`, `META_GRAPH_VERSION`, `META_LEAD_ADS_PAGE_ACCESS_TOKEN`
+- WhatsApp automation: `WHATSAPP_BUSINESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_SEND_MODE`
+- Email automation: `EMAIL_PROVIDER`, `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`, `RESEND_API_KEY`, `POSTMARK_SERVER_TOKEN`
+- OpenRouter automation: `OPENROUTER_API_KEY`, `OPENROUTER_BASE_URL`, `OPENROUTER_FAST_MODEL`, `OPENROUTER_RESEARCH_MODEL`, `OPENROUTER_DOSSIER_MODEL`, `OPENROUTER_SENTIMENT_MODEL`
+
+Leadsy observes whether the n8n router has provider configuration available, but secret values stay in n8n.
 
 Workflow documentation lives in:
 
@@ -81,7 +90,7 @@ Leadsy keeps:
 - Notes.
 - Meta webhook verification.
 - WhatsApp message handling.
-- OpenRouter provider routing.
+- Saved AI outputs, AI approval state, and cost reporting.
 - Browser extension authentication.
 - Audit logs.
 
@@ -89,6 +98,7 @@ Leadsy keeps:
 
 n8n handles:
 
+- Meta, WhatsApp, Email, and OpenRouter provider configuration for automation.
 - Scheduled follow-up checks.
 - Research pipelines.
 - Qualification pipelines.
@@ -157,6 +167,13 @@ Leadsy may later receive additive n8n visibility variables:
 - `N8N_HEALTH_TIMEOUT_MS`
 
 These are for the admin dashboard only.
+
+Provider credentials belong on the n8n service, not in the Leadsy web service, unless you intentionally keep a web fallback while migrating:
+
+- Meta automation variables.
+- WhatsApp automation variables.
+- Email automation variables.
+- OpenRouter automation variables.
 
 ## How Workflows Are Deployed
 

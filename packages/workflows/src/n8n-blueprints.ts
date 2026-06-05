@@ -1,4 +1,10 @@
 import { automationWorkflowDefinitions, type AutomationWorkflowDefinition } from "./automation-catalog";
+import {
+  n8nProviderConfigByWorkflowKey,
+  n8nProviderConfigGroups,
+  type N8nProviderConfigGroup,
+  type N8nProviderConfigKey
+} from "./provider-config";
 
 type N8nConnectionTarget = {
   node: string;
@@ -38,6 +44,8 @@ export type N8nWorkflowBlueprint = {
   pinData: Record<string, never>;
   meta: {
     leadsyWorkflowKey: "automation-router";
+    providerConfigs: N8nProviderConfigGroup[];
+    routeProviderRequirements: Record<AutomationWorkflowDefinition["key"], N8nProviderConfigKey[]>;
     routes: Array<{
       key: AutomationWorkflowDefinition["key"];
       name: string;
@@ -102,6 +110,10 @@ function httpNode(
           {
             name: "X-Leadsy-Workflow",
             value: "={{$json.workflowKey}}"
+          },
+          {
+            name: "X-Leadsy-Config-Source",
+            value: "n8n"
           }
         ]
       },
@@ -222,6 +234,76 @@ function normalizeSchedule(
   };
 }
 
+function providerConfigStatusNode(): N8nNode {
+  const providerGroups = n8nProviderConfigGroups.map((group) => ({
+    key: group.key,
+    label: group.label,
+    purpose: group.purpose,
+    leadsyBoundary: group.leadsyBoundary,
+    fields: group.fields.map((field) => ({
+      key: field.key,
+      label: field.label,
+      env: field.env,
+      secret: field.secret,
+      required: field.required
+    }))
+  }));
+
+  return {
+    id: nodeId("provider-config-check"),
+    name: "Provider Config Check",
+    type: "n8n-nodes-base.code",
+    typeVersion: 2,
+    position: [840, 0],
+    parameters: {
+      jsCode: [
+        `const providerGroups = ${JSON.stringify(providerGroups, null, 2)};`,
+        `const routeProviderRequirements = ${JSON.stringify(n8nProviderConfigByWorkflowKey, null, 2)};`,
+        "const env = typeof $env === 'object' && $env ? $env : process.env;",
+        "function hasValue(name) {",
+        "  return Boolean(String(env[name] ?? '').trim());",
+        "}",
+        "function configured(group) {",
+        "  if (group.key === 'email') {",
+        "    return hasValue('SMTP_HOST') || hasValue('RESEND_API_KEY') || hasValue('POSTMARK_SERVER_TOKEN');",
+        "  }",
+        "  const required = group.fields.filter((field) => field.required);",
+        "  return required.length ? required.every((field) => hasValue(field.env)) : group.fields.some((field) => hasValue(field.env));",
+        "}",
+        "const providerConfig = Object.fromEntries(providerGroups.map((group) => [group.key, {",
+        "  label: group.label,",
+        "  source: 'n8n',",
+        "  configured: configured(group),",
+        "  purpose: group.purpose,",
+        "  leadsyBoundary: group.leadsyBoundary,",
+        "  fields: group.fields.map((field) => ({",
+        "    key: field.key,",
+        "    label: field.label,",
+        "    env: field.env,",
+        "    secret: field.secret,",
+        "    required: field.required,",
+        "    configured: hasValue(field.env),",
+        "    value: field.secret ? undefined : (String(env[field.env] ?? '').trim() || undefined)",
+        "  }))",
+        "}]));",
+        "const requiredProviderConfig = routeProviderRequirements[$json.workflowKey] ?? [];",
+        "const providerConfigMissing = requiredProviderConfig.filter((key) => !providerConfig[key]?.configured);",
+        "return [{",
+        "  json: {",
+        "    ...$json,",
+        "    providerConfigSource: 'n8n',",
+        "    providerConfig,",
+        "    requiredProviderConfig,",
+        "    providerConfigMissing",
+        "  }",
+        "}];"
+      ].join("\n")
+    },
+    notes: "Reads Meta, WhatsApp, Email, and OpenRouter provider configuration from the n8n service environment. It reports only configured/missing status to Leadsy, never secret values.",
+    notesInFlow: true
+  };
+}
+
 function validateEventNode(): N8nNode {
   const workflowNames = Object.fromEntries(
     automationWorkflowDefinitions.map((workflow) => [workflow.key, workflow.name])
@@ -272,9 +354,13 @@ function dispatchAutomationNode(): N8nNode {
       leadId: "={{$json.leadId}}",
       taskId: "={{$json.taskId}}",
       conversationId: "={{$json.conversationId}}",
+      providerConfigSource: "={{$json.providerConfigSource}}",
+      requiredProviderConfig: "={{$json.requiredProviderConfig}}",
+      providerConfigMissing: "={{$json.providerConfigMissing}}",
+      providerConfig: "={{$json.providerConfig}}",
       payload: "={{$json.payload}}"
     },
-    [980, 0],
+    [1160, 0],
     { retryOnFail: true }
   );
 }
@@ -311,11 +397,12 @@ export function n8nAutomationRouterBlueprint(): N8nWorkflowBlueprint {
         dispatchResponse: "={{$json}}"
       }
     },
-    [1280, 0],
+    [1480, 0],
     { continueOnFail: true, retryOnFail: true }
   );
 
   const validateEvent = validateEventNode();
+  const providerConfig = providerConfigStatusNode();
   const dispatchAutomation = dispatchAutomationNode();
 
   return {
@@ -330,6 +417,7 @@ export function n8nAutomationRouterBlueprint(): N8nWorkflowBlueprint {
       normalizeSchedule("Normalize Worker Retry", "normalize-worker-retry", workerRetryWorkflow, [300, 440], 5),
       logStarted,
       validateEvent,
+      providerConfig,
       dispatchAutomation,
       logSucceeded
     ],
@@ -340,7 +428,8 @@ export function n8nAutomationRouterBlueprint(): N8nWorkflowBlueprint {
       "Normalize Webhook Event": { main: [[connection("Log Started"), connection("Validate Event")]] },
       "Normalize Follow-up Due": { main: [[connection("Log Started"), connection("Validate Event")]] },
       "Normalize Worker Retry": { main: [[connection("Log Started"), connection("Validate Event")]] },
-      "Validate Event": { main: [[connection("Dispatch Automation")]] },
+      "Validate Event": { main: [[connection("Provider Config Check")]] },
+      "Provider Config Check": { main: [[connection("Dispatch Automation")]] },
       "Dispatch Automation": { main: [[connection("Log Succeeded")]] }
     },
     settings: {
@@ -354,8 +443,10 @@ export function n8nAutomationRouterBlueprint(): N8nWorkflowBlueprint {
     pinData: {},
     meta: {
       leadsyWorkflowKey: "automation-router",
+      providerConfigs: n8nProviderConfigGroups,
+      routeProviderRequirements: n8nProviderConfigByWorkflowKey,
       purpose: "Route every Leadsy automation event through one configurable n8n workflow.",
-      preserves: "Leadsy remains the application backend, auth/RBAC boundary, and Postgres source of truth.",
+      preserves: "n8n owns automation provider config; Leadsy remains the application backend, auth/RBAC boundary, and Postgres source of truth.",
       routes: automationWorkflowDefinitions.map((workflow) => ({
         key: workflow.key,
         name: workflow.name,

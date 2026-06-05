@@ -138,6 +138,10 @@
             {
               "name": "X-Leadsy-Workflow",
               "value": "={{$json.workflowKey}}"
+            },
+            {
+              "name": "X-Leadsy-Config-Source",
+              "value": "n8n"
             }
           ]
         },
@@ -165,12 +169,27 @@
       "notesInFlow": true
     },
     {
+      "id": "leadsy-router-provider-config-check",
+      "name": "Provider Config Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        840,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const providerGroups = [\n  {\n    \"key\": \"meta\",\n    \"label\": \"Meta\",\n    \"purpose\": \"Provider credentials for automation calls against Meta Graph APIs after Leadsy stores the event.\",\n    \"leadsyBoundary\": \"Leadsy keeps Meta OAuth, webhook verification, tenant routing, and stored communications.\",\n    \"fields\": [\n      {\n        \"key\": \"appId\",\n        \"label\": \"App ID\",\n        \"env\": \"META_APP_ID\",\n        \"secret\": false,\n        \"required\": true\n      },\n      {\n        \"key\": \"appSecret\",\n        \"label\": \"App secret\",\n        \"env\": \"META_APP_SECRET\",\n        \"secret\": true,\n        \"required\": true\n      },\n      {\n        \"key\": \"graphVersion\",\n        \"label\": \"Graph API version\",\n        \"env\": \"META_GRAPH_VERSION\",\n        \"secret\": false,\n        \"required\": false\n      },\n      {\n        \"key\": \"leadAdsPageAccessToken\",\n        \"label\": \"Lead Ads page access token\",\n        \"env\": \"META_LEAD_ADS_PAGE_ACCESS_TOKEN\",\n        \"secret\": true,\n        \"required\": false\n      }\n    ]\n  },\n  {\n    \"key\": \"whatsapp\",\n    \"label\": \"WhatsApp\",\n    \"purpose\": \"Provider credentials for approved WhatsApp follow-up and reply automation.\",\n    \"leadsyBoundary\": \"Leadsy keeps inbound WhatsApp webhook handling, storage, qualification state, and approvals.\",\n    \"fields\": [\n      {\n        \"key\": \"businessToken\",\n        \"label\": \"Business API token\",\n        \"env\": \"WHATSAPP_BUSINESS_TOKEN\",\n        \"secret\": true,\n        \"required\": true\n      },\n      {\n        \"key\": \"phoneNumberId\",\n        \"label\": \"Phone number ID\",\n        \"env\": \"WHATSAPP_PHONE_NUMBER_ID\",\n        \"secret\": false,\n        \"required\": true\n      },\n      {\n        \"key\": \"sendMode\",\n        \"label\": \"Send mode\",\n        \"env\": \"WHATSAPP_SEND_MODE\",\n        \"secret\": false,\n        \"required\": false\n      }\n    ]\n  },\n  {\n    \"key\": \"email\",\n    \"label\": \"Email\",\n    \"purpose\": \"Provider credentials for outbound email notifications, alerts, and approved outreach.\",\n    \"leadsyBoundary\": \"Leadsy keeps communication records, approvals, and audit history.\",\n    \"fields\": [\n      {\n        \"key\": \"provider\",\n        \"label\": \"Email provider\",\n        \"env\": \"EMAIL_PROVIDER\",\n        \"secret\": false,\n        \"required\": false\n      },\n      {\n        \"key\": \"smtpHost\",\n        \"label\": \"SMTP host\",\n        \"env\": \"SMTP_HOST\",\n        \"secret\": false,\n        \"required\": false\n      },\n      {\n        \"key\": \"smtpUser\",\n        \"label\": \"SMTP user\",\n        \"env\": \"SMTP_USER\",\n        \"secret\": false,\n        \"required\": false\n      },\n      {\n        \"key\": \"smtpPassword\",\n        \"label\": \"SMTP password\",\n        \"env\": \"SMTP_PASSWORD\",\n        \"secret\": true,\n        \"required\": false\n      },\n      {\n        \"key\": \"resendApiKey\",\n        \"label\": \"Resend API key\",\n        \"env\": \"RESEND_API_KEY\",\n        \"secret\": true,\n        \"required\": false\n      },\n      {\n        \"key\": \"postmarkServerToken\",\n        \"label\": \"Postmark server token\",\n        \"env\": \"POSTMARK_SERVER_TOKEN\",\n        \"secret\": true,\n        \"required\": false\n      }\n    ]\n  },\n  {\n    \"key\": \"openrouter\",\n    \"label\": \"OpenRouter\",\n    \"purpose\": \"Provider credentials and model routing for automation research, qualification, summaries, and drafts.\",\n    \"leadsyBoundary\": \"Leadsy keeps AI approvals, saved outputs, cost records, and deterministic fallbacks.\",\n    \"fields\": [\n      {\n        \"key\": \"apiKey\",\n        \"label\": \"API key\",\n        \"env\": \"OPENROUTER_API_KEY\",\n        \"secret\": true,\n        \"required\": true\n      },\n      {\n        \"key\": \"baseUrl\",\n        \"label\": \"Base URL\",\n        \"env\": \"OPENROUTER_BASE_URL\",\n        \"secret\": false,\n        \"required\": false\n      },\n      {\n        \"key\": \"fastModel\",\n        \"label\": \"Fast model\",\n        \"env\": \"OPENROUTER_FAST_MODEL\",\n        \"secret\": false,\n        \"required\": false\n      },\n      {\n        \"key\": \"researchModel\",\n        \"label\": \"Research model\",\n        \"env\": \"OPENROUTER_RESEARCH_MODEL\",\n        \"secret\": false,\n        \"required\": false\n      },\n      {\n        \"key\": \"dossierModel\",\n        \"label\": \"Dossier model\",\n        \"env\": \"OPENROUTER_DOSSIER_MODEL\",\n        \"secret\": false,\n        \"required\": false\n      },\n      {\n        \"key\": \"sentimentModel\",\n        \"label\": \"Sentiment model\",\n        \"env\": \"OPENROUTER_SENTIMENT_MODEL\",\n        \"secret\": false,\n        \"required\": false\n      }\n    ]\n  }\n];\nconst routeProviderRequirements = {\n  \"lead-added\": [\n    \"openrouter\"\n  ],\n  \"lead-updated\": [\n    \"openrouter\"\n  ],\n  \"research-requested\": [\n    \"openrouter\"\n  ],\n  \"qualification-requested\": [\n    \"openrouter\"\n  ],\n  \"task-generated\": [\n    \"email\"\n  ],\n  \"approval-requested\": [\n    \"email\"\n  ],\n  \"follow-up-due\": [\n    \"whatsapp\",\n    \"email\",\n    \"openrouter\"\n  ],\n  \"meta-lead-received\": [\n    \"meta\",\n    \"openrouter\"\n  ],\n  \"whatsapp-message-received\": [\n    \"whatsapp\",\n    \"openrouter\"\n  ],\n  \"worker-retry\": [\n    \"email\"\n  ]\n};\nconst env = typeof $env === 'object' && $env ? $env : process.env;\nfunction hasValue(name) {\n  return Boolean(String(env[name] ?? '').trim());\n}\nfunction configured(group) {\n  if (group.key === 'email') {\n    return hasValue('SMTP_HOST') || hasValue('RESEND_API_KEY') || hasValue('POSTMARK_SERVER_TOKEN');\n  }\n  const required = group.fields.filter((field) => field.required);\n  return required.length ? required.every((field) => hasValue(field.env)) : group.fields.some((field) => hasValue(field.env));\n}\nconst providerConfig = Object.fromEntries(providerGroups.map((group) => [group.key, {\n  label: group.label,\n  source: 'n8n',\n  configured: configured(group),\n  purpose: group.purpose,\n  leadsyBoundary: group.leadsyBoundary,\n  fields: group.fields.map((field) => ({\n    key: field.key,\n    label: field.label,\n    env: field.env,\n    secret: field.secret,\n    required: field.required,\n    configured: hasValue(field.env),\n    value: field.secret ? undefined : (String(env[field.env] ?? '').trim() || undefined)\n  }))\n}]));\nconst requiredProviderConfig = routeProviderRequirements[$json.workflowKey] ?? [];\nconst providerConfigMissing = requiredProviderConfig.filter((key) => !providerConfig[key]?.configured);\nreturn [{\n  json: {\n    ...$json,\n    providerConfigSource: 'n8n',\n    providerConfig,\n    requiredProviderConfig,\n    providerConfigMissing\n  }\n}];"
+      },
+      "notes": "Reads Meta, WhatsApp, Email, and OpenRouter provider configuration from the n8n service environment. It reports only configured/missing status to Leadsy, never secret values.",
+      "notesInFlow": true
+    },
+    {
       "id": "leadsy-router-dispatch-automation",
       "name": "Dispatch Automation",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        980,
+        1160,
         0
       ],
       "retryOnFail": true,
@@ -190,12 +209,16 @@
             {
               "name": "X-Leadsy-Workflow",
               "value": "={{$json.workflowKey}}"
+            },
+            {
+              "name": "X-Leadsy-Config-Source",
+              "value": "n8n"
             }
           ]
         },
         "sendBody": true,
         "contentType": "json",
-        "jsonBody": "{\"workflowKey\":\"={{$json.workflowKey}}\",\"workflowName\":\"={{$json.workflowName}}\",\"n8nExecutionId\":\"={{$execution.id}}\",\"idempotencyKey\":\"={{$json.idempotencyKey}}\",\"tenantId\":\"={{$json.tenantId}}\",\"ownerId\":\"={{$json.ownerId}}\",\"leadId\":\"={{$json.leadId}}\",\"taskId\":\"={{$json.taskId}}\",\"conversationId\":\"={{$json.conversationId}}\",\"payload\":\"={{$json.payload}}\"}",
+        "jsonBody": "{\"workflowKey\":\"={{$json.workflowKey}}\",\"workflowName\":\"={{$json.workflowName}}\",\"n8nExecutionId\":\"={{$execution.id}}\",\"idempotencyKey\":\"={{$json.idempotencyKey}}\",\"tenantId\":\"={{$json.tenantId}}\",\"ownerId\":\"={{$json.ownerId}}\",\"leadId\":\"={{$json.leadId}}\",\"taskId\":\"={{$json.taskId}}\",\"conversationId\":\"={{$json.conversationId}}\",\"providerConfigSource\":\"={{$json.providerConfigSource}}\",\"requiredProviderConfig\":\"={{$json.requiredProviderConfig}}\",\"providerConfigMissing\":\"={{$json.providerConfigMissing}}\",\"providerConfig\":\"={{$json.providerConfig}}\",\"payload\":\"={{$json.payload}}\"}",
         "options": {
           "timeout": 30000
         }
@@ -207,7 +230,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1280,
+        1480,
         0
       ],
       "retryOnFail": true,
@@ -227,6 +250,10 @@
             {
               "name": "X-Leadsy-Workflow",
               "value": "={{$json.workflowKey}}"
+            },
+            {
+              "name": "X-Leadsy-Config-Source",
+              "value": "n8n"
             }
           ]
         },
@@ -325,6 +352,17 @@
       "main": [
         [
           {
+            "node": "Provider Config Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Provider Config Check": {
+      "main": [
+        [
+          {
             "node": "Dispatch Automation",
             "type": "main",
             "index": 0
@@ -355,8 +393,234 @@
   "pinData": {},
   "meta": {
     "leadsyWorkflowKey": "automation-router",
+    "providerConfigs": [
+      {
+        "key": "meta",
+        "label": "Meta",
+        "owner": "n8n",
+        "purpose": "Provider credentials for automation calls against Meta Graph APIs after Leadsy stores the event.",
+        "leadsyBoundary": "Leadsy keeps Meta OAuth, webhook verification, tenant routing, and stored communications.",
+        "fields": [
+          {
+            "key": "appId",
+            "label": "App ID",
+            "env": "META_APP_ID",
+            "secret": false,
+            "required": true,
+            "purpose": "Identifies the Meta app used by automation calls."
+          },
+          {
+            "key": "appSecret",
+            "label": "App secret",
+            "env": "META_APP_SECRET",
+            "secret": true,
+            "required": true,
+            "purpose": "Signs and validates Meta app-level automation requests."
+          },
+          {
+            "key": "graphVersion",
+            "label": "Graph API version",
+            "env": "META_GRAPH_VERSION",
+            "secret": false,
+            "required": false,
+            "purpose": "Pins Graph API calls made by n8n provider steps."
+          },
+          {
+            "key": "leadAdsPageAccessToken",
+            "label": "Lead Ads page access token",
+            "env": "META_LEAD_ADS_PAGE_ACCESS_TOKEN",
+            "secret": true,
+            "required": false,
+            "purpose": "Lets n8n enrich stored Meta Lead Ads records when needed."
+          }
+        ]
+      },
+      {
+        "key": "whatsapp",
+        "label": "WhatsApp",
+        "owner": "n8n",
+        "purpose": "Provider credentials for approved WhatsApp follow-up and reply automation.",
+        "leadsyBoundary": "Leadsy keeps inbound WhatsApp webhook handling, storage, qualification state, and approvals.",
+        "fields": [
+          {
+            "key": "businessToken",
+            "label": "Business API token",
+            "env": "WHATSAPP_BUSINESS_TOKEN",
+            "secret": true,
+            "required": true,
+            "purpose": "Authorizes n8n to call the WhatsApp Business Cloud API after approval."
+          },
+          {
+            "key": "phoneNumberId",
+            "label": "Phone number ID",
+            "env": "WHATSAPP_PHONE_NUMBER_ID",
+            "secret": false,
+            "required": true,
+            "purpose": "Selects the sending phone number for approved WhatsApp actions."
+          },
+          {
+            "key": "sendMode",
+            "label": "Send mode",
+            "env": "WHATSAPP_SEND_MODE",
+            "secret": false,
+            "required": false,
+            "purpose": "Keeps automation in approval-only mode until outbound sends are intentionally enabled."
+          }
+        ]
+      },
+      {
+        "key": "email",
+        "label": "Email",
+        "owner": "n8n",
+        "purpose": "Provider credentials for outbound email notifications, alerts, and approved outreach.",
+        "leadsyBoundary": "Leadsy keeps communication records, approvals, and audit history.",
+        "fields": [
+          {
+            "key": "provider",
+            "label": "Email provider",
+            "env": "EMAIL_PROVIDER",
+            "secret": false,
+            "required": false,
+            "purpose": "Selects smtp, resend, or postmark in n8n branches."
+          },
+          {
+            "key": "smtpHost",
+            "label": "SMTP host",
+            "env": "SMTP_HOST",
+            "secret": false,
+            "required": false,
+            "purpose": "SMTP host when n8n uses direct SMTP."
+          },
+          {
+            "key": "smtpUser",
+            "label": "SMTP user",
+            "env": "SMTP_USER",
+            "secret": false,
+            "required": false,
+            "purpose": "SMTP username for n8n email sends."
+          },
+          {
+            "key": "smtpPassword",
+            "label": "SMTP password",
+            "env": "SMTP_PASSWORD",
+            "secret": true,
+            "required": false,
+            "purpose": "SMTP password for n8n email sends."
+          },
+          {
+            "key": "resendApiKey",
+            "label": "Resend API key",
+            "env": "RESEND_API_KEY",
+            "secret": true,
+            "required": false,
+            "purpose": "Alternative Resend credential for n8n email sends."
+          },
+          {
+            "key": "postmarkServerToken",
+            "label": "Postmark server token",
+            "env": "POSTMARK_SERVER_TOKEN",
+            "secret": true,
+            "required": false,
+            "purpose": "Alternative Postmark credential for n8n email sends."
+          }
+        ]
+      },
+      {
+        "key": "openrouter",
+        "label": "OpenRouter",
+        "owner": "n8n",
+        "purpose": "Provider credentials and model routing for automation research, qualification, summaries, and drafts.",
+        "leadsyBoundary": "Leadsy keeps AI approvals, saved outputs, cost records, and deterministic fallbacks.",
+        "fields": [
+          {
+            "key": "apiKey",
+            "label": "API key",
+            "env": "OPENROUTER_API_KEY",
+            "secret": true,
+            "required": true,
+            "purpose": "Authorizes n8n automation steps that call OpenRouter."
+          },
+          {
+            "key": "baseUrl",
+            "label": "Base URL",
+            "env": "OPENROUTER_BASE_URL",
+            "secret": false,
+            "required": false,
+            "purpose": "Overrides the default OpenRouter API base URL."
+          },
+          {
+            "key": "fastModel",
+            "label": "Fast model",
+            "env": "OPENROUTER_FAST_MODEL",
+            "secret": false,
+            "required": false,
+            "purpose": "Low-latency model for routine routing and summaries."
+          },
+          {
+            "key": "researchModel",
+            "label": "Research model",
+            "env": "OPENROUTER_RESEARCH_MODEL",
+            "secret": false,
+            "required": false,
+            "purpose": "Research model for lead intelligence jobs."
+          },
+          {
+            "key": "dossierModel",
+            "label": "Dossier model",
+            "env": "OPENROUTER_DOSSIER_MODEL",
+            "secret": false,
+            "required": false,
+            "purpose": "Model for heavier dossier generation."
+          },
+          {
+            "key": "sentimentModel",
+            "label": "Sentiment model",
+            "env": "OPENROUTER_SENTIMENT_MODEL",
+            "secret": false,
+            "required": false,
+            "purpose": "Model for conversation sentiment and intent analysis."
+          }
+        ]
+      }
+    ],
+    "routeProviderRequirements": {
+      "lead-added": [
+        "openrouter"
+      ],
+      "lead-updated": [
+        "openrouter"
+      ],
+      "research-requested": [
+        "openrouter"
+      ],
+      "qualification-requested": [
+        "openrouter"
+      ],
+      "task-generated": [
+        "email"
+      ],
+      "approval-requested": [
+        "email"
+      ],
+      "follow-up-due": [
+        "whatsapp",
+        "email",
+        "openrouter"
+      ],
+      "meta-lead-received": [
+        "meta",
+        "openrouter"
+      ],
+      "whatsapp-message-received": [
+        "whatsapp",
+        "openrouter"
+      ],
+      "worker-retry": [
+        "email"
+      ]
+    },
     "purpose": "Route every Leadsy automation event through one configurable n8n workflow.",
-    "preserves": "Leadsy remains the application backend, auth/RBAC boundary, and Postgres source of truth.",
+    "preserves": "n8n owns automation provider config; Leadsy remains the application backend, auth/RBAC boundary, and Postgres source of truth.",
     "routes": [
       {
         "key": "lead-added",
@@ -377,7 +641,7 @@
         "name": "Research Requested",
         "purpose": "Coordinate research while keeping evidence, spend, and saved records inside Leadsy.",
         "trigger": "Operator or schedule asks Leadsy to research a lead or research request.",
-        "preserves": "OpenRouter calls stay behind the Leadsy provider abstraction."
+        "preserves": "OpenRouter automation config lives in n8n while saved outputs and cost state stay in Leadsy."
       },
       {
         "key": "qualification-requested",

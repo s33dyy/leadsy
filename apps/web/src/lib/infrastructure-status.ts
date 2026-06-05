@@ -1,6 +1,6 @@
 import "server-only";
 
-import { automationWorkflowDefinitions } from "./automation-workflows";
+import { automationWorkflowDefinitions, n8nProviderConfigGroups, n8nProviderConfigByWorkflowKey } from "./automation-workflows";
 import { summarizeCrmHealth } from "./crm-store";
 import { summarizeExtensionHealth } from "./extension-store";
 import { summarizeLeadKnowledgeHealth } from "./lead-knowledge-store";
@@ -29,6 +29,18 @@ export type AutomationStatus = {
   failedExecutions: number;
   queueStatus: "not_configured" | "unknown" | "healthy" | "warning";
   checkedAt: string;
+  detail: string;
+};
+
+export type ProviderConfigHubStatus = {
+  key: string;
+  label: string;
+  source: "n8n";
+  status: HealthTone;
+  managedByN8n: boolean;
+  fieldCount: number;
+  secretFieldCount: number;
+  workflowCount: number;
   detail: string;
 };
 
@@ -101,6 +113,27 @@ export async function getAutomationStatus(): Promise<AutomationStatus> {
   };
 }
 
+function getProviderConfigHubStatus(automation: AutomationStatus): ProviderConfigHubStatus[] {
+  return n8nProviderConfigGroups.map((group) => {
+    const workflowCount = Object.values(n8nProviderConfigByWorkflowKey).filter((requirements) =>
+      requirements.includes(group.key)
+    ).length;
+    return {
+      key: group.key,
+      label: group.label,
+      source: "n8n",
+      status: automation.configured ? automation.health : "warning",
+      managedByN8n: automation.configured,
+      fieldCount: group.fields.length,
+      secretFieldCount: group.fields.filter((field) => field.secret).length,
+      workflowCount,
+      detail: automation.configured
+        ? `${group.label} automation config is managed in n8n. ${group.leadsyBoundary}`
+        : `Connect the n8n service before ${group.label} automation config can be managed there.`
+    };
+  });
+}
+
 export async function getInfrastructureStatus() {
   const [leadKnowledge, extension, crm, automation] = await Promise.all([
     summarizeLeadKnowledgeHealth(),
@@ -110,6 +143,11 @@ export async function getInfrastructureStatus() {
   ]);
   const sources = sourceHealth();
   const now = new Date().toISOString();
+  const providerConfigs = getProviderConfigHubStatus(automation);
+  const n8nManagedProviders = automation.configured;
+  const emailFallbackConfigured = Boolean(
+    process.env.SMTP_HOST || process.env.EMAIL_SERVER || process.env.RESEND_API_KEY || process.env.POSTMARK_SERVER_TOKEN
+  );
 
   const services: InfrastructureServiceStatus[] = [
     {
@@ -139,26 +177,48 @@ export async function getInfrastructureStatus() {
     {
       key: "meta",
       label: "Meta",
-      status: process.env.META_APP_ID || process.env.META_EMBEDDED_SIGNUP_URL ? "healthy" : "warning",
+      status: n8nManagedProviders || process.env.META_APP_ID || process.env.META_EMBEDDED_SIGNUP_URL ? "healthy" : "warning",
       errors: 0,
       lastSync: now,
-      detail: process.env.META_APP_ID || process.env.META_EMBEDDED_SIGNUP_URL ? "Meta configuration is present." : "Meta app configuration is pending."
+      detail: n8nManagedProviders
+        ? "Meta automation provider config is managed in n8n; Leadsy keeps OAuth and webhook intake."
+        : process.env.META_APP_ID || process.env.META_EMBEDDED_SIGNUP_URL
+          ? "Meta web configuration is present."
+          : "Meta app configuration is pending."
     },
     {
       key: "whatsapp",
       label: "WhatsApp",
-      status: process.env.META_WHATSAPP_WEBHOOK_VERIFY_TOKEN || process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN ? "healthy" : "warning",
+      status: n8nManagedProviders || process.env.META_WHATSAPP_WEBHOOK_VERIFY_TOKEN || process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN ? "healthy" : "warning",
       errors: 0,
       lastSync: now,
-      detail: `${leadKnowledge.metaSourced ?? 0} Meta-sourced leads; ${leadKnowledge.conversations ?? 0} conversations tracked.`
+      detail: n8nManagedProviders
+        ? `${leadKnowledge.metaSourced ?? 0} Meta-sourced leads; ${leadKnowledge.conversations ?? 0} conversations tracked. WhatsApp automation config is managed in n8n.`
+        : `${leadKnowledge.metaSourced ?? 0} Meta-sourced leads; ${leadKnowledge.conversations ?? 0} conversations tracked.`
     },
     {
       key: "openrouter",
       label: "OpenRouter",
-      status: sources.openrouter ? "healthy" : "warning",
+      status: n8nManagedProviders || sources.openrouter ? "healthy" : "warning",
       errors: 0,
       lastSync: now,
-      detail: sources.openrouter ? "OpenRouter API key is configured." : "OpenRouter key is not configured; deterministic/free paths remain available."
+      detail: n8nManagedProviders
+        ? "OpenRouter automation config is managed in n8n; Leadsy keeps saved outputs and cost reporting."
+        : sources.openrouter
+          ? "OpenRouter web fallback configuration is present."
+          : "OpenRouter key is not configured; deterministic/free paths remain available."
+    },
+    {
+      key: "email",
+      label: "Email",
+      status: n8nManagedProviders || emailFallbackConfigured ? "healthy" : "warning",
+      errors: 0,
+      lastSync: now,
+      detail: n8nManagedProviders
+        ? "Email automation config is managed in n8n for notifications and approved outreach."
+        : emailFallbackConfigured
+          ? "Email fallback configuration is present on the web service."
+          : "Email automation config should be added to n8n."
     },
     {
       key: "extension",
@@ -173,6 +233,7 @@ export async function getInfrastructureStatus() {
   return {
     checkedAt: now,
     automation,
+    providerConfigs,
     services
   };
 }

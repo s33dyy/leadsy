@@ -120,6 +120,43 @@ Runtime note:
 
 - Railway Postgres currently presents a self-signed certificate chain to n8n. `DB_POSTGRESDB_SSL_ENABLED=true` and `DB_POSTGRESDB_SSL_REJECT_UNAUTHORIZED=false` were required for n8n startup. Replace this with a CA-backed configuration if Railway exposes the CA certificate cleanly.
 
+## n8n Provider Configuration Variables
+
+Add automation provider configuration to the `n8n` service, not the existing `@leadsy/web` service. Leadsy keeps webhook intake, auth, tenant isolation, Postgres records, approvals, and audit state; n8n owns automation provider credentials.
+
+Meta automation:
+
+- `META_APP_ID`
+- `META_APP_SECRET`
+- `META_GRAPH_VERSION`
+- `META_LEAD_ADS_PAGE_ACCESS_TOKEN`
+
+WhatsApp automation:
+
+- `WHATSAPP_BUSINESS_TOKEN`
+- `WHATSAPP_PHONE_NUMBER_ID`
+- `WHATSAPP_SEND_MODE`
+
+Email automation:
+
+- `EMAIL_PROVIDER`
+- `SMTP_HOST`
+- `SMTP_USER`
+- `SMTP_PASSWORD`
+- `RESEND_API_KEY`
+- `POSTMARK_SERVER_TOKEN`
+
+OpenRouter automation:
+
+- `OPENROUTER_API_KEY`
+- `OPENROUTER_BASE_URL`
+- `OPENROUTER_FAST_MODEL`
+- `OPENROUTER_RESEARCH_MODEL`
+- `OPENROUTER_DOSSIER_MODEL`
+- `OPENROUTER_SENTIMENT_MODEL`
+
+Use n8n credentials for any provider where the built-in credential type is more ergonomic than service variables. Do not commit literal provider secrets into workflow JSON.
+
 ## Optional Web Service Variables
 
 Add only when implementing the Leadsy admin automation visibility UI:

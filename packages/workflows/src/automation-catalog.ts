@@ -52,9 +52,9 @@ export const automationWorkflowDefinitions: AutomationWorkflowDefinition[] = [
     purpose: "Coordinate research while keeping evidence, spend, and saved records inside Leadsy.",
     inputs: ["tenantId", "ownerId", "leadId", "researchRequestId", "sourceTypes", "budgetCap", "idempotencyKey"],
     outputs: ["research summary", "evidence URLs", "cost metadata", "approval items"],
-    dependencies: ["Leadsy research endpoint", "OpenRouter through Leadsy", "Leadsy audit endpoint"],
+    dependencies: ["n8n OpenRouter provider config", "Leadsy research persistence endpoint", "Leadsy audit endpoint"],
     retryPolicy: "Retry transient provider failures; stop when spend cap or validation blocks execution.",
-    preserves: "OpenRouter calls stay behind the Leadsy provider abstraction."
+    preserves: "OpenRouter automation config lives in n8n while saved outputs and cost state stay in Leadsy."
   },
   {
     key: "qualification-requested",
@@ -63,7 +63,7 @@ export const automationWorkflowDefinitions: AutomationWorkflowDefinition[] = [
     purpose: "Score fit/urgency and decide whether task or approval routing is needed.",
     inputs: ["tenantId", "ownerId", "leadId", "conversationId", "qualificationProfileId", "idempotencyKey"],
     outputs: ["qualification stage", "scores", "recommended action", "optional task/approval trigger"],
-    dependencies: ["Leadsy qualification profile API", "Leadsy AI provider abstraction"],
+    dependencies: ["n8n OpenRouter provider config", "Leadsy qualification profile API"],
     retryPolicy: "Retry transient AI/API failures; route missing profile to setup or approval.",
     preserves: "Qualification result storage stays in Leadsy."
   },
@@ -96,7 +96,7 @@ export const automationWorkflowDefinitions: AutomationWorkflowDefinition[] = [
     purpose: "Surface due follow-ups and create approved draft paths when useful.",
     inputs: ["tenantId", "ownerId", "followUpTaskId", "leadId", "dueAt", "idempotencyKey"],
     outputs: ["reminder item", "optional draft metadata", "execution metadata"],
-    dependencies: ["Leadsy CRM follow-up API", "Leadsy AI provider abstraction"],
+    dependencies: ["n8n WhatsApp/email/OpenRouter provider config", "Leadsy CRM follow-up API"],
     retryPolicy: "No-op completed/excluded leads; create manual review task on draft failure.",
     preserves: "Follow-up task state stays in Leadsy."
   },

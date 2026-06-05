@@ -11,9 +11,10 @@ export const dynamic = "force-dynamic";
 type IntegrationItem = {
   name: string;
   desc: string;
-  status: "Connected" | "Available" | "Needs config" | "Warning";
+  status: "Connected" | "Available" | "Needs config" | "Warning" | "Managed in n8n";
   scope?: string;
   href: string;
+  externalHref?: string;
 };
 
 function serviceTone(status: HealthTone): "lime" | "amber" | "rose" | "neutral" {
@@ -37,30 +38,43 @@ export default async function IntegrationsPage() {
   const latestMeta = metaConnections[0];
   const openRouter = infrastructure.services.find((service) => service.key === "openrouter");
   const n8n = infrastructure.services.find((service) => service.key === "n8n");
+  const providerConfigs = new Map(infrastructure.providerConfigs.map((provider) => [provider.key, provider]));
+  const metaConfig = providerConfigs.get("meta");
+  const whatsappConfig = providerConfigs.get("whatsapp");
+  const openRouterConfig = providerConfigs.get("openrouter");
+  const emailConfig = providerConfigs.get("email");
+  const n8nHref = infrastructure.automation.dashboardUrl || "/app/settings";
   const whatsappConnected = latestMeta?.channels.whatsapp.status === "connected";
   const emailConfigured = configured(process.env.SMTP_HOST, process.env.EMAIL_SERVER, process.env.RESEND_API_KEY, process.env.POSTMARK_SERVER_TOKEN);
 
   const items: IntegrationItem[] = [
     {
       name: "Meta - Instagram & Messenger",
-      desc: "OAuth, webhook intake, Lead Ads context, Instagram, and Messenger stay in Leadsy.",
+      desc: "OAuth and webhook intake stay in Leadsy; automation provider config is managed in n8n.",
       status: metaConnections.length ? "Connected" : "Needs config",
-      scope: latestMeta?.facebookPageId || latestMeta?.instagramBusinessAccountId || "Meta app credentials and assets",
-      href: "/app/connect"
+      scope: metaConfig?.managedByN8n
+        ? "n8n provider config hub"
+        : latestMeta?.facebookPageId || latestMeta?.instagramBusinessAccountId || "Connect Meta, then add automation config in n8n",
+      href: "/app/connect",
+      externalHref: metaConfig?.managedByN8n ? n8nHref : undefined
     },
     {
       name: "WhatsApp Business API",
-      desc: "Official Meta webhook messages are stored in Postgres; workers only orchestrate follow-up.",
-      status: whatsappConnected ? "Connected" : "Needs config",
-      scope: latestMeta?.phoneNumberId || latestMeta?.whatsappBusinessAccountId || "WABA and phone number asset",
-      href: "/app/connect"
+      desc: "Inbound messages are stored by Leadsy; approved reply/follow-up provider config is managed in n8n.",
+      status: whatsappConfig?.managedByN8n ? "Managed in n8n" : whatsappConnected ? "Connected" : "Needs config",
+      scope: whatsappConfig?.managedByN8n
+        ? `${whatsappConfig.workflowCount} workflows use n8n WhatsApp config`
+        : latestMeta?.phoneNumberId || latestMeta?.whatsappBusinessAccountId || "Add WhatsApp assets, then configure automation in n8n",
+      href: "/app/connect",
+      externalHref: whatsappConfig?.managedByN8n ? n8nHref : undefined
     },
     {
       name: "OpenRouter",
-      desc: "Model routing for research, qualification, drafting, and AI cost reporting.",
-      status: openRouter?.status === "healthy" ? "Connected" : "Needs config",
-      scope: openRouter?.detail,
-      href: "/app/settings"
+      desc: "Model routing for automation research, qualification, drafting, and summaries is configured in n8n.",
+      status: openRouterConfig?.managedByN8n ? "Managed in n8n" : openRouter?.status === "healthy" ? "Connected" : "Needs config",
+      scope: openRouterConfig?.managedByN8n ? `${openRouterConfig.workflowCount} workflows use n8n model config` : openRouter?.detail,
+      href: "/app/settings",
+      externalHref: openRouterConfig?.managedByN8n ? n8nHref : undefined
     },
     {
       name: "Browser Extension",
@@ -78,10 +92,11 @@ export default async function IntegrationsPage() {
     },
     {
       name: "Email",
-      desc: "Outbound email channel for outreach and operator notifications.",
-      status: emailConfigured ? "Connected" : "Available",
-      scope: emailConfigured ? "SMTP/provider variables configured" : "Configure SMTP, Resend, or Postmark variables",
-      href: "/app/settings"
+      desc: "Outbound notifications and approved outreach email config are managed in n8n.",
+      status: emailConfig?.managedByN8n ? "Managed in n8n" : emailConfigured ? "Connected" : "Available",
+      scope: emailConfig?.managedByN8n ? `${emailConfig.workflowCount} workflows use n8n email config` : emailConfigured ? "Web fallback configured" : "Add email provider config in n8n",
+      href: "/app/settings",
+      externalHref: emailConfig?.managedByN8n ? n8nHref : undefined
     },
     {
       name: "Webhooks",
@@ -121,9 +136,9 @@ export default async function IntegrationsPage() {
                     <div className="text-[11.5px] text-muted-foreground">{item.desc}</div>
                   </div>
                 </div>
-                {item.status === "Connected" ? (
+                {item.status === "Connected" || item.status === "Managed in n8n" ? (
                   <span className="inline-flex items-center gap-1 rounded-[3px] bg-primary/10 px-1.5 py-0.5 font-mono text-[10.5px] text-primary">
-                    <Check className="h-3 w-3" /> Connected
+                    <Check className="h-3 w-3" /> {item.status}
                   </span>
                 ) : (
                   <Badge tone={item.status === "Warning" ? "rose" : item.status === "Needs config" ? "amber" : "neutral"}>{item.status}</Badge>
@@ -135,6 +150,11 @@ export default async function IntegrationsPage() {
                   <Link href={item.href} className="ml-auto inline-flex items-center gap-1 hover:text-foreground">
                     manage <ExternalLink className="h-3 w-3" />
                   </Link>
+                  {item.externalHref ? (
+                    <a href={item.externalHref} className="inline-flex items-center gap-1 hover:text-foreground">
+                      n8n <ExternalLink className="h-3 w-3" />
+                    </a>
+                  ) : null}
                 </div>
               ) : null}
             </div>
