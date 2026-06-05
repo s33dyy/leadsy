@@ -37,6 +37,7 @@ type TaskComposerControls = {
   sendButton: HTMLElement;
 };
 const outboundEchoWindowMs = 1000 * 60 * 2;
+const outboundHistoryLimit = 25;
 
 export interface AutomationModelClient {
   detectProfile(snapshot: DomSnapshot, messages: ChatMessage[]): Promise<ChatSiteProfile>;
@@ -386,7 +387,7 @@ export class ChatAutomationController {
 
     const visibleMessages = extractMessagesFromDocument(this.profile);
     const merged = mergeNewMessages(this.log.messages, visibleMessages);
-    const messages = merged.filter((message) => !this.isLeadsyOutboundEcho(message));
+    const messages = this.filterLeadsyOutboundEchoes(merged);
     this.log.messages = messages;
     this.log.updatedAt = Date.now();
     await this.store.saveLog(this.log);
@@ -394,7 +395,13 @@ export class ChatAutomationController {
 
     const unansweredIncoming = getUnansweredIncomingTurn(messages);
     const latestIncoming = unansweredIncoming.at(-1);
-    if (!latestIncoming || latestIncoming.id === this.log.lastHandledIncomingId || this.pendingDecision) {
+    const incomingTurnKey = createIncomingTurnKey(unansweredIncoming);
+    if (
+      !latestIncoming ||
+      latestIncoming.id === this.log.lastHandledIncomingId ||
+      incomingTurnKey === this.log.lastHandledIncomingTurnKey ||
+      this.pendingDecision
+    ) {
       if (this.mode === "detecting") {
         const incomingCount = messages.filter((message) => message.direction === "incoming").length;
         this.setState({
@@ -412,6 +419,7 @@ export class ChatAutomationController {
       unansweredIncoming.map((message) => message.text)
     );
     this.log.lastHandledIncomingId = latestIncoming.id;
+    this.log.lastHandledIncomingTurnKey = incomingTurnKey;
     await this.store.saveLog(this.log);
 
     if (decision.action === "pause") {
@@ -472,12 +480,42 @@ export class ChatAutomationController {
       sourceUrl: window.location.href
     };
     this.log.messages = mergeNewMessages(this.log.messages, [outgoing]);
+    const normalizedText = normalizeMessageText(text);
     this.log.lastLeadsyOutbound = {
-      normalizedText: normalizeMessageText(text),
+      normalizedText,
       sentAt,
       externalId
     };
+    this.log.leadsyOutboundHistory = [
+      ...(this.log.leadsyOutboundHistory || []),
+      {
+        normalizedText,
+        sentAt,
+        externalId
+      }
+    ].slice(-outboundHistoryLimit);
     this.log.updatedAt = sentAt;
+  }
+
+  private filterLeadsyOutboundEchoes(messages: ChatMessage[]): ChatMessage[] {
+    const outboundTexts = new Set<string>();
+    for (const message of messages) {
+      if (message.direction === "outgoing") {
+        outboundTexts.add(normalizeMessageText(message.text));
+      }
+    }
+    if (this.log?.lastLeadsyOutbound) {
+      outboundTexts.add(this.log.lastLeadsyOutbound.normalizedText);
+    }
+    for (const item of this.log?.leadsyOutboundHistory || []) {
+      outboundTexts.add(item.normalizedText);
+    }
+
+    return messages.filter((message) => {
+      if (message.direction !== "incoming") return true;
+      if (this.isLeadsyOutboundEcho(message)) return false;
+      return !outboundTexts.has(normalizeMessageText(message.text));
+    });
   }
 
   private isLeadsyOutboundEcho(message: ChatMessage): boolean {
@@ -497,6 +535,14 @@ export class ChatAutomationController {
       }
     });
   }
+}
+
+function createIncomingTurnKey(messages: ChatMessage[]): string {
+  return messages.map((message) => normalizeMessageText(message.text)).filter(Boolean).join("\n");
+}
+
+function normalizeMessageText(value: string) {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
 async function findElementWithRetry(selector: string, timeoutMs: number): Promise<HTMLElement | undefined> {
@@ -590,10 +636,6 @@ function taskSendButtonSelectors(task: ExtensionTask, profile?: ChatSiteProfile)
 
 function uniqueSelectors(selectors: string[]) {
   return [...new Set(selectors.map((selector) => selector.trim()).filter(Boolean))];
-}
-
-function normalizeMessageText(value: string) {
-  return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
 function clickSendControl(element: HTMLElement): void {

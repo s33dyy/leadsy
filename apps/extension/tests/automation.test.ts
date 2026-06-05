@@ -117,6 +117,58 @@ describe("ChatAutomationController", () => {
     controller.pause("test cleanup");
   });
 
+  it("does not re-answer a handled inbound turn when ids churn and its own reply is misread as incoming", async () => {
+    document.body.innerHTML = `
+      <section data-message-list>
+        <p data-message data-id="incoming-old" data-direction="incoming">Okay and?</p>
+      </section>
+      <div data-composer contenteditable="true"></div>
+      <button data-send>Send</button>
+    `;
+
+    let sendClicks = 0;
+    document.querySelector("[data-send]")?.addEventListener("click", () => {
+      sendClicks += 1;
+    });
+
+    const firstDecision: ResponderDecision = {
+      action: "send",
+      replyText: "Hi there, yes, I can help. To guide you properly, what result are you trying to improve first?",
+      confidence: 0.9,
+      reason: "first response",
+      tags: ["lead"]
+    };
+    const loopDecision: ResponderDecision = {
+      action: "send",
+      replyText: "Loop reply that should never be sent.",
+      confidence: 0.9,
+      reason: "duplicate turn",
+      tags: ["loop"]
+    };
+    const decideReply = vi.fn(async () => firstDecision).mockResolvedValueOnce(firstDecision).mockResolvedValueOnce(loopDecision);
+    const controller = new ChatAutomationController(() => undefined, {
+      store: new ConversationStore("leadsy-inbound-id-churn-guard-test"),
+      openRouter: {
+        detectProfile: vi.fn(async () => profile),
+        decideReply
+      }
+    });
+
+    await controller.arm();
+    expect(sendClicks).toBe(1);
+    expect(decideReply).toHaveBeenCalledTimes(1);
+
+    document.querySelector("[data-message-list]")!.innerHTML = `
+      <p data-message data-id="incoming-new" data-direction="incoming">Okay and?</p>
+      <p data-message data-id="leadsy-echo-new" data-direction="incoming">${firstDecision.replyText}</p>
+    `;
+    await new Promise((resolve) => setTimeout(resolve, 850));
+
+    expect(decideReply).toHaveBeenCalledTimes(1);
+    expect(sendClicks).toBe(1);
+    controller.pause("test cleanup");
+  });
+
   it("prepares and sends an initiation task on an empty WhatsApp compose page", async () => {
     document.body.innerHTML = `
       <main>
