@@ -388,7 +388,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
   }));
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-12 gap-px bg-border">
+    <div className="grid h-full min-h-0 grid-cols-12 gap-px overflow-hidden bg-border">
       <LeadScrollKeeper />
       <div className="sr-only">Lead Intelligence {activePanel === "knowledge" ? "Knowledge workspace" : "CRM workspace"}</div>
       <div className="sr-only">
@@ -400,7 +400,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
         </div>
       ) : null}
 
-        <section className="col-span-12 flex min-h-0 flex-col bg-background md:col-span-4 xl:col-span-3" data-testid="lead-list-pane">
+        <section className="col-span-12 flex min-h-0 flex-col overflow-hidden bg-background md:col-span-4 xl:col-span-3" data-testid="lead-list-pane">
           <LeadListPane
             leads={filteredLeads}
             selectedLead={selectedLead}
@@ -413,7 +413,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
           />
         </section>
 
-        <section className="col-span-12 flex min-h-0 flex-col bg-background md:col-span-8 xl:col-span-6" data-testid="lead-workspace-pane">
+        <section className="col-span-12 flex min-h-0 flex-col overflow-y-auto overflow-x-hidden bg-background md:col-span-8 xl:col-span-6" data-testid="lead-workspace-pane">
           {selectedLead ? (
             <LeadRecordWorkspace
               lead={selectedLead}
@@ -471,7 +471,7 @@ function LeadListPane({
   commChannel: CommChannelFilter;
 }) {
   return (
-    <div className="flex h-full min-w-0 flex-col">
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-sm font-semibold text-white">
           <ListChecks size={17} className="text-[var(--teal)]" />
@@ -517,7 +517,7 @@ function LeadListPane({
       </div>
 
       {leads.length ? (
-        <div className="mt-4 grid flex-1 auto-rows-min gap-2 overflow-y-auto pr-1">
+        <div className="mt-4 grid min-h-0 flex-1 auto-rows-min gap-2 overflow-y-auto overflow-x-hidden pr-1">
           {leads.map((lead) => {
             const selected = selectedLead?.id === lead.id;
             const stage = crmStage(lead);
@@ -668,7 +668,7 @@ function LeadRecordWorkspace({
 }) {
   const href = openHref(lead);
   return (
-    <div className="space-y-5">
+    <div className="min-h-full space-y-5 p-4">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="mono text-[11px] uppercase text-[var(--teal)]">Selected lead</div>
@@ -925,7 +925,7 @@ function LeadCommsTab({
   const orderedMessages = [...messages].sort((a, b) => messageTime(a) - messageTime(b));
   const conversations = conversationsForCommChannel(lead, commChannel);
   return (
-    <div className="space-y-4">
+    <div className="min-h-0 space-y-4">
       <div className="flex max-w-full gap-2 overflow-x-auto pb-1">
         {commFilters.map((filter) => (
           <Link
@@ -943,7 +943,7 @@ function LeadCommsTab({
         ))}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="order-2 space-y-4 xl:order-2">
           <LeadCrmSummaryCard lead={lead} />
           <ManualReplyHandoff lead={lead} />
@@ -965,7 +965,7 @@ function LeadCommsTab({
           </div>
         </div>
 
-        <div data-testid="lead-comms-chat" className="order-1 flex min-h-[620px] flex-col overflow-hidden rounded-[8px] border border-[var(--line)] bg-black/20 xl:order-1">
+        <div data-testid="lead-comms-chat" className="order-1 flex min-h-[520px] flex-col overflow-hidden rounded-[8px] border border-[var(--line)] bg-black/20 xl:order-1 xl:max-h-[calc(100dvh-230px)]">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] bg-white/[0.03] px-4 py-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-sm font-semibold text-white">

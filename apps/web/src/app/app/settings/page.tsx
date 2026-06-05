@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { LucideIcon } from "lucide-react";
 import {
   Bell,
   BadgeCheck,
@@ -21,7 +22,23 @@ import { getAiCostDashboard, getInfrastructureStatus, type HealthTone } from "@/
 
 export const dynamic = "force-dynamic";
 
-const groups = [
+type SettingsPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+type SettingsSection =
+  | "profile"
+  | "workspace"
+  | "integrations"
+  | "ai"
+  | "workers"
+  | "notifications"
+  | "meta"
+  | "whatsapp"
+  | "extension"
+  | "infrastructure";
+
+const groups: Array<{ id: SettingsSection; label: string; icon: LucideIcon }> = [
   { id: "profile", label: "Profile", icon: User },
   { id: "workspace", label: "Workspace", icon: Building2 },
   { id: "integrations", label: "Integrations", icon: Plug },
@@ -33,6 +50,137 @@ const groups = [
   { id: "extension", label: "Extension", icon: Monitor },
   { id: "infrastructure", label: "Infrastructure", icon: Server }
 ];
+
+const sectionSummaries: Record<SettingsSection, {
+  eyebrow: string;
+  title: string;
+  detail: string;
+  primaryHref?: string;
+  primaryLabel?: string;
+  rows: Array<{ label: string; value: string }>;
+}> = {
+  profile: {
+    eyebrow: "Settings / Profile",
+    title: "Operator profile",
+    detail: "Identity, role, and account context for the person running Leadsy.",
+    primaryHref: "/app/connect?panel=profile",
+    primaryLabel: "Open profile setup",
+    rows: [
+      { label: "Account", value: "Managed by Leadsy auth" },
+      { label: "Access", value: "Workspace session and role based" },
+      { label: "Personalization", value: "Used by workers for operator context" }
+    ]
+  },
+  workspace: {
+    eyebrow: "Settings / Workspace",
+    title: "Workspace",
+    detail: "Business context, team defaults, and tenant-level operating rules.",
+    primaryHref: "/app/connect?panel=settings",
+    primaryLabel: "Open workspace setup",
+    rows: [
+      { label: "Tenant isolation", value: "Next.js gateway + Postgres" },
+      { label: "Business state", value: "Stored in Leadsy" },
+      { label: "Automation", value: "Orchestrated by n8n" }
+    ]
+  },
+  integrations: {
+    eyebrow: "Settings / Integrations",
+    title: "Integration surfaces",
+    detail: "Meta, WhatsApp, email, extension, and provider connections in one place.",
+    primaryHref: "/app/integrations",
+    primaryLabel: "Open integrations",
+    rows: [
+      { label: "Meta", value: "OAuth and webhook intake stay in Leadsy" },
+      { label: "WhatsApp", value: "Provider actions are orchestrated by n8n" },
+      { label: "Extension", value: "Browser capture remains the capture layer" }
+    ]
+  },
+  ai: {
+    eyebrow: "Settings / AI",
+    title: "AI configuration",
+    detail: "OpenRouter usage and model cost visibility for automation decisions.",
+    primaryHref: "/app/settings?section=infrastructure",
+    primaryLabel: "Open cost dashboard",
+    rows: [
+      { label: "Provider", value: "OpenRouter" },
+      { label: "Secrets", value: "Configured in Railway and n8n environment variables" },
+      { label: "Cost tracking", value: "Recorded through Leadsy automation metadata" }
+    ]
+  },
+  workers: {
+    eyebrow: "Settings / Workers",
+    title: "Workers",
+    detail: "AI operator task queues, approval routing, and retry behavior.",
+    primaryHref: "/app/worker",
+    primaryLabel: "Open workers",
+    rows: [
+      { label: "Queue ownership", value: "Leadsy stores task state" },
+      { label: "Execution", value: "n8n backend agent coordinates automation" },
+      { label: "Approval", value: "Operators approve before send actions" }
+    ]
+  },
+  notifications: {
+    eyebrow: "Settings / Notifications",
+    title: "Notifications",
+    detail: "Operator alerts for approvals, failed executions, and follow-up reminders.",
+    rows: [
+      { label: "Approvals", value: "Visible in the top bar and approval center" },
+      { label: "Failures", value: "Routed through backend-agent failure handling" },
+      { label: "Follow-ups", value: "Driven by n8n schedules, stored in Leadsy" }
+    ]
+  },
+  meta: {
+    eyebrow: "Settings / Meta",
+    title: "Meta",
+    detail: "Meta OAuth, webhook intake, Lead Ads, Instagram, and Messenger stay preserved.",
+    primaryHref: "/app/connect",
+    primaryLabel: "Connect Meta",
+    rows: [
+      { label: "OAuth", value: "Leadsy-owned" },
+      { label: "Webhook intake", value: "Leadsy-owned" },
+      { label: "Provider actions", value: "n8n backend agent" }
+    ]
+  },
+  whatsapp: {
+    eyebrow: "Settings / WhatsApp",
+    title: "WhatsApp",
+    detail: "WhatsApp message storage stays in Leadsy while reply automation is configured through n8n.",
+    primaryHref: "/app/connect",
+    primaryLabel: "Open WhatsApp setup",
+    rows: [
+      { label: "Inbound storage", value: "Leadsy" },
+      { label: "Cloud provider", value: "Configured in n8n env vars" },
+      { label: "Browser handoff", value: "Extension waits for WhatsApp readiness" }
+    ]
+  },
+  extension: {
+    eyebrow: "Settings / Extension",
+    title: "Browser extension",
+    detail: "The extension captures and prepares browser-channel work. It is not the workflow engine.",
+    primaryHref: "/app/worker",
+    primaryLabel: "Open extension workers",
+    rows: [
+      { label: "Role", value: "Capture layer" },
+      { label: "Task source", value: "Leadsy task queue" },
+      { label: "WhatsApp timing", value: "Composer and send button readiness checks enabled" }
+    ]
+  },
+  infrastructure: {
+    eyebrow: "Settings / Infrastructure",
+    title: "Automation",
+    detail: "n8n is the orchestration layer. Leadsy keeps auth, tenant isolation, APIs, and business state in Next.js and Postgres.",
+    rows: []
+  }
+};
+
+function paramValue(params: Record<string, string | string[] | undefined>, key: string) {
+  const value = params[key];
+  return Array.isArray(value) ? value[0] ?? "" : value ?? "";
+}
+
+function sectionFromValue(value: string): SettingsSection {
+  return groups.some((group) => group.id === value) ? (value as SettingsSection) : "infrastructure";
+}
 
 function toneForHealth(status: HealthTone): "lime" | "amber" | "rose" | "neutral" {
   if (status === "healthy") return "lime";
@@ -54,7 +202,10 @@ function formatInr(value: number) {
   }).format(value);
 }
 
-export default async function SettingsPage() {
+export default async function SettingsPage({ searchParams }: SettingsPageProps) {
+  const params = searchParams ? await searchParams : {};
+  const activeSection = sectionFromValue(paramValue(params, "section"));
+  const section = sectionSummaries[activeSection];
   const [infrastructure, aiCosts] = await Promise.all([getInfrastructureStatus(), getAiCostDashboard()]);
   const automation = infrastructure.automation;
   const backendLogic = infrastructure.backendLogic;
@@ -75,9 +226,9 @@ export default async function SettingsPage() {
         <nav className="p-2">
           {groups.map((group) => {
             const Icon = group.icon;
-            const active = group.id === "infrastructure";
+            const active = group.id === activeSection;
             return (
-              <Link key={group.id} href={group.id === "integrations" ? "/app/integrations" : "/app/settings"} className={`nav-item w-full ${active ? "bg-sidebar-accent text-foreground" : ""}`}>
+              <Link key={group.id} href={`/app/settings?section=${group.id}`} className={`nav-item w-full ${active ? "bg-sidebar-accent text-foreground" : ""}`}>
                 <Icon className="nav-icon" />
                 <span className="flex-1 text-left">{group.label}</span>
               </Link>
@@ -88,17 +239,21 @@ export default async function SettingsPage() {
 
       <section className="col-span-12 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden bg-background md:col-span-9 xl:col-span-10">
         <div className="mx-auto w-full min-w-0 max-w-4xl p-6">
-          <div className="caption">Settings / Infrastructure</div>
+          <div className="caption">{section.eyebrow}</div>
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
-              <h1 className="mt-1 text-[22px] tracking-tight">Automation</h1>
+              <h1 className="mt-1 text-[22px] tracking-tight">{section.title}</h1>
               <p className="mt-0.5 text-[12.5px] text-muted-foreground">
-                n8n is the orchestration layer. Leadsy keeps auth, tenant isolation, APIs, and business state in Next.js and Postgres.
+                {section.detail}
               </p>
             </div>
-            <Badge tone={toneForHealth(automation.health)}>n8n: {automation.health}</Badge>
+            {activeSection === "infrastructure" ? <Badge tone={toneForHealth(automation.health)}>n8n: {automation.health}</Badge> : null}
           </div>
 
+          {activeSection !== "infrastructure" ? <SettingsSectionPanel section={section} /> : null}
+
+          {activeSection === "infrastructure" ? (
+          <>
           <div className="mt-6 grid min-w-0 grid-cols-2 gap-px overflow-hidden rounded-[8px] border border-border bg-border md:grid-cols-3">
             {[
               {
@@ -249,8 +404,40 @@ export default async function SettingsPage() {
               Edit the backend agent in n8n, keep payload storage and decisions in Leadsy, and use the Next.js APIs as the only state boundary.
             </p>
           </section>
+          </>
+          ) : null}
         </div>
       </section>
+    </div>
+  );
+}
+
+function SettingsSectionPanel({
+  section
+}: {
+  section: (typeof sectionSummaries)[SettingsSection];
+}) {
+  return (
+    <div className="mt-6 grid gap-5">
+      <div className="grid min-w-0 gap-px overflow-hidden rounded-[8px] border border-border bg-border md:grid-cols-3">
+        {section.rows.map((row) => (
+          <div key={row.label} className="min-w-0 overflow-hidden bg-background p-4">
+            <div className="caption">{row.label}</div>
+            <div className="mt-2 text-[13px] leading-5 text-foreground">{row.value}</div>
+          </div>
+        ))}
+      </div>
+      {section.primaryHref && section.primaryLabel ? (
+        <Link href={section.primaryHref} className="inline-flex h-8 w-fit items-center gap-1.5 rounded-[5px] border border-border bg-surface-2 px-3 text-[12px] font-medium hover:bg-surface-3">
+          {section.primaryLabel} <ChevronRight className="h-3 w-3" />
+        </Link>
+      ) : null}
+      <div className="rounded-[8px] border border-border bg-black/20 p-4">
+        <div className="flex items-center gap-2 text-[12.5px]">
+          <Check className="h-3.5 w-3.5 text-primary" />
+          <span>Configuration here preserves Leadsy as the secure app boundary while n8n handles operational automation.</span>
+        </div>
+      </div>
     </div>
   );
 }

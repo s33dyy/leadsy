@@ -29,6 +29,14 @@ async function main() {
   assert(leadsPage.includes("panel?: LeadPanel"), "CRM links should preserve the selected panel");
   assert(!leadsPage.includes("leads.find((lead) => lead.id === selectedLeadId)"), "selected lead should not fall back to records hidden by current filters");
   assert(!leadsPage.includes('name="contact" value={selectedLead.id}'), "search forms should not preserve stale selected contacts across a new query");
+  assert(leadsPage.includes('data-testid="lead-list-pane"') && leadsPage.includes("overflow-hidden"), "lead list pane should create a bounded scroll container instead of clipping long rows");
+  assert(leadsPage.includes('data-testid="lead-workspace-pane"') && leadsPage.includes("overflow-y-auto"), "selected lead workspace should scroll its own long content instead of disappearing under the app shell");
+
+  const settingsPage = await read("apps/web/src/app/app/settings/page.tsx");
+  assert(settingsPage.includes("type SettingsSection"), "settings page should model selectable settings sections");
+  assert(settingsPage.includes("sectionFromValue"), "settings page should parse the selected section from query params");
+  assert(settingsPage.includes("activeSection"), "settings sidebar should not hardcode Infrastructure as the active item");
+  assert(settingsPage.includes("`/app/settings?section=${group.id}`"), "settings sidebar links should navigate to their own settings section");
 
   const workerPage = await read("apps/web/src/app/app/worker/page.tsx");
   assert(workerPage.includes("type WorkerPageProps"), "worker page should accept search params");
