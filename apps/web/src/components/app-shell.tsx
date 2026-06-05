@@ -252,7 +252,7 @@ export function AppShell({
 
   return (
     <ToastProvider>
-      <div data-layout="lovable-operator" className="flex h-screen w-full overflow-hidden bg-background text-foreground">
+      <div data-layout="lovable-operator" className="flex h-[100dvh] max-h-[100dvh] w-full overflow-hidden bg-background text-foreground">
         <aside
           data-testid="global-sidebar"
           data-state={collapsed ? "collapsed" : "expanded"}
@@ -352,8 +352,8 @@ export function AppShell({
           </div>
         </aside>
 
-        <main className="flex h-full min-w-0 flex-1 flex-col">
-          <div className="flex h-11 shrink-0 items-center justify-between border-b border-border/80 bg-background px-3">
+        <main className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <div className="flex h-11 min-w-0 shrink-0 items-center justify-between border-b border-border/80 bg-background px-3">
             <div className="flex min-w-0 items-center gap-2 text-[12.5px] text-muted-foreground">
               <button
                 type="button"
@@ -440,7 +440,7 @@ export function AppShell({
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
+          <div className="min-h-0 min-w-0 flex-1 overflow-hidden">{children}</div>
         </main>
 
         {mobileOpen ? (
