@@ -49,7 +49,9 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     ok: true,
     saved: result.saved.length,
+    tracked: result.tracked.length,
     ignored: result.ignored,
+    trackingIgnored: result.trackingIgnored,
     unmatched: result.unmatched,
     ambiguous: result.ambiguous
   });

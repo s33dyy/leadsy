@@ -1,15 +1,18 @@
 import { saveUnifiedMetaWebhookMessages, type LeadKnowledgeMessage } from "./lead-knowledge-store";
 import { findMetaOAuthConnectionForAssets, type MetaOAuthAssetLookup } from "./meta-oauth-store";
+import { saveMetaWhatsAppInboundMessages, type MetaWhatsAppInboundMessage } from "./meta-whatsapp-webhook-store";
 
 export type RoutedMetaWebhookResult = {
   saved: LeadKnowledgeMessage[];
+  tracked: MetaWhatsAppInboundMessage[];
   ignored: number;
+  trackingIgnored: number;
   unmatched: number;
   ambiguous: number;
 };
 
 function emptyResult(): RoutedMetaWebhookResult {
-  return { saved: [], ignored: 0, unmatched: 0, ambiguous: 0 };
+  return { saved: [], tracked: [], ignored: 0, trackingIgnored: 0, unmatched: 0, ambiguous: 0 };
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -27,7 +30,9 @@ function asString(value: unknown) {
 function addResult(left: RoutedMetaWebhookResult, right: RoutedMetaWebhookResult): RoutedMetaWebhookResult {
   return {
     saved: [...left.saved, ...right.saved],
+    tracked: [...left.tracked, ...right.tracked],
     ignored: left.ignored + right.ignored,
+    trackingIgnored: left.trackingIgnored + right.trackingIgnored,
     unmatched: left.unmatched + right.unmatched,
     ambiguous: left.ambiguous + right.ambiguous
   };
@@ -57,6 +62,7 @@ async function saveForAssets(input: {
   const resolved = await findMetaOAuthConnectionForAssets(input.assets);
   if (!resolved.ok) {
     return {
+      ...emptyResult(),
       saved: [],
       ignored: 0,
       unmatched: resolved.reason === "ambiguous" ? 0 : 1,
@@ -82,24 +88,37 @@ async function saveWhatsAppEntry(input: {
   const changes = asArray(input.entry.changes).map(asRecord).filter(Boolean) as Record<string, unknown>[];
 
   if (!changes.length) {
-    return saveForAssets({
+    const payload = payloadForEntry(input.root, input.entry);
+    const tracked = await saveMetaWhatsAppInboundMessages(payload, input.receivedAt);
+    const routed = await saveForAssets({
       assets: { whatsappBusinessAccountId },
-      payload: payloadForEntry(input.root, input.entry),
+      payload,
       receivedAt: input.receivedAt
     });
+    return {
+      ...routed,
+      tracked: tracked.saved,
+      trackingIgnored: tracked.ignored
+    };
   }
 
   let total = emptyResult();
   for (const change of changes) {
+    const payload = payloadForWhatsAppChange(input.root, input.entry, change);
+    const tracked = await saveMetaWhatsAppInboundMessages(payload, input.receivedAt);
     const value = asRecord(change.value);
     const metadata = asRecord(value?.metadata);
     const phoneNumberId = asString(metadata?.phone_number_id);
-    const result = await saveForAssets({
+    const routed = await saveForAssets({
       assets: { whatsappBusinessAccountId, phoneNumberId },
-      payload: payloadForWhatsAppChange(input.root, input.entry, change),
+      payload,
       receivedAt: input.receivedAt
     });
-    total = addResult(total, result);
+    total = addResult(total, {
+      ...routed,
+      tracked: tracked.saved,
+      trackingIgnored: tracked.ignored
+    });
   }
   return total;
 }

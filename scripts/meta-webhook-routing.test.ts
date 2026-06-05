@@ -14,6 +14,7 @@ async function main() {
   try {
     const { saveMetaOAuthConnection } = await import("../apps/web/src/lib/meta-oauth-store");
     const { listLeadKnowledgeRecords } = await import("../apps/web/src/lib/lead-knowledge-store");
+    const { listMetaWhatsAppConversations } = await import("../apps/web/src/lib/meta-whatsapp-webhook-store");
     const { POST } = await import("../apps/web/src/app/api/meta/whatsapp/webhook/route");
 
     await saveMetaOAuthConnection({
@@ -102,6 +103,9 @@ async function main() {
       }) as never
     );
     assert.equal(response.status, 200);
+    const responseBody = await response.json();
+    assert.equal(responseBody.saved, 1);
+    assert.equal(responseBody.tracked, 1, "webhook response should report dedicated WhatsApp tracking writes");
 
     const ownerXLeads = await listLeadKnowledgeRecords({ tenantId: "tenant_owner_x", ownerId: "owner_x" });
     const ownerYLeads = await listLeadKnowledgeRecords({ tenantId: "tenant_owner_y", ownerId: "owner_y" });
@@ -112,6 +116,15 @@ async function main() {
     assert.equal(ownerXLeads[0].lastMessagePreview, "Owner X private message");
     assert.equal(ownerYLeads.length, 0, "owner Y must not see owner X webhook messages");
     assert.equal(defaultLeads.length, 0, "webhook messages must not fall back to the default owner");
+    const ownerXConversations = await listMetaWhatsAppConversations({
+      tenantId: "tenant_owner_x",
+      ownerId: "owner_x",
+      whatsappBusinessAccountId: "waba_owner_x",
+      phoneNumberId: "phone_owner_x"
+    });
+    assert.equal(ownerXConversations.length, 1, "official WhatsApp route should track inbound conversations");
+    assert.equal(ownerXConversations[0].lastMessageText, "Owner X private message");
+    assert.equal(ownerXConversations[0].inboundCount, 1);
 
     const sharedPayload = {
       object: "whatsapp_business_account",
