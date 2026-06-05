@@ -1,0 +1,1055 @@
+{
+  "name": "Leadsy - Automation Router",
+  "active": false,
+  "nodes": [
+    {
+      "id": "leadsy-router-webhook-trigger",
+      "name": "Leadsy Event Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "leadsy/automation-router",
+        "responseMode": "onReceived",
+        "options": {
+          "responseCode": 202,
+          "responseData": "firstEntryJson"
+        }
+      },
+      "notes": "Single Leadsy entrypoint. Send { workflowKey, tenantId, ownerId, idempotencyKey, payload } to route automation events.",
+      "notesInFlow": true
+    },
+    {
+      "id": "leadsy-router-follow-up-schedule",
+      "name": "Follow-up Due Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        220
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "notes": "Follow-up Due Schedule feeds the same router canvas as external Leadsy events.",
+      "notesInFlow": true
+    },
+    {
+      "id": "leadsy-router-worker-retry-schedule",
+      "name": "Worker Retry Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        440
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "notes": "Worker Retry Schedule feeds the same router canvas as external Leadsy events.",
+      "notesInFlow": true
+    },
+    {
+      "id": "leadsy-router-normalize-webhook",
+      "name": "Normalize Webhook Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const body = $json.body ?? $json;\nconst workflowKey = body.workflowKey ?? body.leadsyWorkflowKey ?? body.eventType ?? body.type;\nreturn [{\n  json: {\n    workflowKey,\n    workflowName: workflowKey,\n    triggerId: body.triggerId ?? body.idempotencyKey ?? $execution.id,\n    idempotencyKey: body.idempotencyKey ?? $execution.id,\n    tenantId: body.tenantId,\n    ownerId: body.ownerId,\n    leadId: body.leadId,\n    taskId: body.taskId,\n    conversationId: body.conversationId,\n    startedAt: new Date().toISOString(),\n    payload: body.payload ?? body\n  }\n}];"
+      },
+      "notes": "Normalizes event payloads emitted by Leadsy APIs.",
+      "notesInFlow": true
+    },
+    {
+      "id": "leadsy-router-normalize-follow-up-due",
+      "name": "Normalize Follow-up Due",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        220
+      ],
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    workflowKey: \"follow-up-due\",\n    workflowName: \"Follow-up Due\",\n    triggerId: $execution.id,\n    idempotencyKey: $execution.id,\n    startedAt: new Date().toISOString(),\n    payload: {\n      scheduled: true,\n      dueWindowMinutes: 15,\n      triggeredAt: new Date().toISOString()\n    }\n  }\n}];"
+      },
+      "notes": "n8n scheduled due check or task due timestamp.",
+      "notesInFlow": true
+    },
+    {
+      "id": "leadsy-router-normalize-worker-retry",
+      "name": "Normalize Worker Retry",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        440
+      ],
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    workflowKey: \"worker-retry\",\n    workflowName: \"Worker Retry\",\n    triggerId: $execution.id,\n    idempotencyKey: $execution.id,\n    startedAt: new Date().toISOString(),\n    payload: {\n      scheduled: true,\n      dueWindowMinutes: 5,\n      triggeredAt: new Date().toISOString()\n    }\n  }\n}];"
+      },
+      "notes": "Worker task failed, blocked, postponed, or reached retry due time.",
+      "notesInFlow": true
+    },
+    {
+      "id": "leadsy-router-log-started",
+      "name": "Log Started",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        -260
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 60000,
+      "continueOnFail": true,
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.LEADSY_API_BASE_URL + '/api/automation/executions'}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "{\"workflowKey\":\"={{$json.workflowKey}}\",\"n8nExecutionId\":\"={{$execution.id}}\",\"status\":\"started\",\"metadata\":\"={{$json}}\"}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "leadsy-router-route-event",
+      "name": "Route Event",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{$json.workflowKey}}",
+                    "rightValue": "lead-added",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Lead Added"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{$json.workflowKey}}",
+                    "rightValue": "lead-updated",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Lead Updated"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{$json.workflowKey}}",
+                    "rightValue": "research-requested",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Research Requested"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{$json.workflowKey}}",
+                    "rightValue": "qualification-requested",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Qualification Requested"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{$json.workflowKey}}",
+                    "rightValue": "task-generated",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Task Generated"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{$json.workflowKey}}",
+                    "rightValue": "approval-requested",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Approval Requested"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{$json.workflowKey}}",
+                    "rightValue": "follow-up-due",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Follow-up Due"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{$json.workflowKey}}",
+                    "rightValue": "meta-lead-received",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Meta Lead Received"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{$json.workflowKey}}",
+                    "rightValue": "whatsapp-message-received",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "WhatsApp Message Received"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{$json.workflowKey}}",
+                    "rightValue": "worker-retry",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Worker Retry"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "notes": "One router switch keeps all Leadsy automation routes visible on a single n8n canvas.",
+      "notesInFlow": true
+    },
+    {
+      "id": "leadsy-router-run-lead-added",
+      "name": "Run Lead Added",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        980,
+        -420
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 60000,
+      "continueOnFail": false,
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.LEADSY_API_BASE_URL + '/api/automation/events/lead-added'}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "{\"workflowKey\":\"lead-added\",\"n8nExecutionId\":\"={{$execution.id}}\",\"idempotencyKey\":\"={{$json.idempotencyKey}}\",\"payload\":\"={{$json.payload}}\"}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "leadsy-router-run-lead-updated",
+      "name": "Run Lead Updated",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        980,
+        -280
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 60000,
+      "continueOnFail": false,
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.LEADSY_API_BASE_URL + '/api/automation/events/lead-updated'}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "{\"workflowKey\":\"lead-updated\",\"n8nExecutionId\":\"={{$execution.id}}\",\"idempotencyKey\":\"={{$json.idempotencyKey}}\",\"payload\":\"={{$json.payload}}\"}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "leadsy-router-run-research-requested",
+      "name": "Run Research Requested",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        980,
+        -140
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 60000,
+      "continueOnFail": false,
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.LEADSY_API_BASE_URL + '/api/automation/events/research-requested'}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "{\"workflowKey\":\"research-requested\",\"n8nExecutionId\":\"={{$execution.id}}\",\"idempotencyKey\":\"={{$json.idempotencyKey}}\",\"payload\":\"={{$json.payload}}\"}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "leadsy-router-run-qualification-requested",
+      "name": "Run Qualification Requested",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        980,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 60000,
+      "continueOnFail": false,
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.LEADSY_API_BASE_URL + '/api/automation/events/qualification-requested'}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "{\"workflowKey\":\"qualification-requested\",\"n8nExecutionId\":\"={{$execution.id}}\",\"idempotencyKey\":\"={{$json.idempotencyKey}}\",\"payload\":\"={{$json.payload}}\"}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "leadsy-router-run-task-generated",
+      "name": "Run Task Generated",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        980,
+        140
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 60000,
+      "continueOnFail": false,
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.LEADSY_API_BASE_URL + '/api/automation/events/task-generated'}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "{\"workflowKey\":\"task-generated\",\"n8nExecutionId\":\"={{$execution.id}}\",\"idempotencyKey\":\"={{$json.idempotencyKey}}\",\"payload\":\"={{$json.payload}}\"}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "leadsy-router-run-approval-requested",
+      "name": "Run Approval Requested",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        980,
+        280
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 60000,
+      "continueOnFail": false,
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.LEADSY_API_BASE_URL + '/api/automation/events/approval-requested'}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "{\"workflowKey\":\"approval-requested\",\"n8nExecutionId\":\"={{$execution.id}}\",\"idempotencyKey\":\"={{$json.idempotencyKey}}\",\"payload\":\"={{$json.payload}}\"}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "leadsy-router-run-follow-up-due",
+      "name": "Run Follow-up Due",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        980,
+        420
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 60000,
+      "continueOnFail": false,
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.LEADSY_API_BASE_URL + '/api/automation/events/follow-up-due'}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "{\"workflowKey\":\"follow-up-due\",\"n8nExecutionId\":\"={{$execution.id}}\",\"idempotencyKey\":\"={{$json.idempotencyKey}}\",\"payload\":\"={{$json.payload}}\"}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "leadsy-router-run-meta-lead-received",
+      "name": "Run Meta Lead Received",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        980,
+        560
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 60000,
+      "continueOnFail": false,
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.LEADSY_API_BASE_URL + '/api/automation/events/meta-lead-received'}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "{\"workflowKey\":\"meta-lead-received\",\"n8nExecutionId\":\"={{$execution.id}}\",\"idempotencyKey\":\"={{$json.idempotencyKey}}\",\"payload\":\"={{$json.payload}}\"}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "leadsy-router-run-whatsapp-message-received",
+      "name": "Run WhatsApp Message Received",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        980,
+        700
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 60000,
+      "continueOnFail": false,
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.LEADSY_API_BASE_URL + '/api/automation/events/whatsapp-message-received'}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "{\"workflowKey\":\"whatsapp-message-received\",\"n8nExecutionId\":\"={{$execution.id}}\",\"idempotencyKey\":\"={{$json.idempotencyKey}}\",\"payload\":\"={{$json.payload}}\"}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "leadsy-router-run-worker-retry",
+      "name": "Run Worker Retry",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        980,
+        840
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 60000,
+      "continueOnFail": false,
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.LEADSY_API_BASE_URL + '/api/automation/events/worker-retry'}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "{\"workflowKey\":\"worker-retry\",\"n8nExecutionId\":\"={{$execution.id}}\",\"idempotencyKey\":\"={{$json.idempotencyKey}}\",\"payload\":\"={{$json.payload}}\"}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "leadsy-router-unsupported-route",
+      "name": "Unsupported Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        980,
+        1000
+      ],
+      "parameters": {
+        "jsCode": "throw new Error(`Unsupported Leadsy workflowKey: ${$json.workflowKey ?? 'missing'}`);"
+      },
+      "notes": "Fails fast when Leadsy sends a workflowKey this router does not recognize.",
+      "notesInFlow": true
+    },
+    {
+      "id": "leadsy-router-log-succeeded",
+      "name": "Log Succeeded",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1280,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 60000,
+      "continueOnFail": true,
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.LEADSY_API_BASE_URL + '/api/automation/executions'}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "{\"workflowKey\":\"={{$json.workflowKey}}\",\"n8nExecutionId\":\"={{$execution.id}}\",\"status\":\"succeeded\",\"metadata\":\"={{$json}}\"}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Leadsy Event Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize Webhook Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Follow-up Due Schedule": {
+      "main": [
+        [
+          {
+            "node": "Normalize Follow-up Due",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Worker Retry Schedule": {
+      "main": [
+        [
+          {
+            "node": "Normalize Worker Retry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Webhook Event": {
+      "main": [
+        [
+          {
+            "node": "Log Started",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Route Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Follow-up Due": {
+      "main": [
+        [
+          {
+            "node": "Log Started",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Route Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Worker Retry": {
+      "main": [
+        [
+          {
+            "node": "Log Started",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Route Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Event": {
+      "main": [
+        [
+          {
+            "node": "Run Lead Added",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Run Lead Updated",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Run Research Requested",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Run Qualification Requested",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Run Task Generated",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Run Approval Requested",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Run Follow-up Due",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Run Meta Lead Received",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Run WhatsApp Message Received",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Run Worker Retry",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Unsupported Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Lead Added": {
+      "main": [
+        [
+          {
+            "node": "Log Succeeded",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Lead Updated": {
+      "main": [
+        [
+          {
+            "node": "Log Succeeded",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Research Requested": {
+      "main": [
+        [
+          {
+            "node": "Log Succeeded",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Qualification Requested": {
+      "main": [
+        [
+          {
+            "node": "Log Succeeded",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Task Generated": {
+      "main": [
+        [
+          {
+            "node": "Log Succeeded",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Approval Requested": {
+      "main": [
+        [
+          {
+            "node": "Log Succeeded",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Follow-up Due": {
+      "main": [
+        [
+          {
+            "node": "Log Succeeded",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Meta Lead Received": {
+      "main": [
+        [
+          {
+            "node": "Log Succeeded",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run WhatsApp Message Received": {
+      "main": [
+        [
+          {
+            "node": "Log Succeeded",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Worker Retry": {
+      "main": [
+        [
+          {
+            "node": "Log Succeeded",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "timezone": "Asia/Kolkata"
+  },
+  "pinData": {},
+  "meta": {
+    "leadsyWorkflowKey": "automation-router",
+    "purpose": "Route every Leadsy automation event through one configurable n8n workflow.",
+    "preserves": "Leadsy remains the application backend, auth/RBAC boundary, and Postgres source of truth.",
+    "routes": [
+      {
+        "key": "lead-added",
+        "name": "Lead Added",
+        "purpose": "Start qualification, summary, and task orchestration after Leadsy owns the lead record.",
+        "trigger": "Leadsy stores a new lead from manual intake, Meta, WhatsApp, or extension sync.",
+        "preserves": "Lead CRUD and lead storage stay in Leadsy."
+      },
+      {
+        "key": "lead-updated",
+        "name": "Lead Updated",
+        "purpose": "Refresh only the intelligence artifacts affected by the changed fields.",
+        "trigger": "Leadsy updates contact, status, task, knowledge, or communication fields.",
+        "preserves": "Lead updates and tenant checks stay in Leadsy APIs."
+      },
+      {
+        "key": "research-requested",
+        "name": "Research Requested",
+        "purpose": "Coordinate research while keeping evidence, spend, and saved records inside Leadsy.",
+        "trigger": "Operator or schedule asks Leadsy to research a lead or research request.",
+        "preserves": "OpenRouter calls stay behind the Leadsy provider abstraction."
+      },
+      {
+        "key": "qualification-requested",
+        "name": "Qualification Requested",
+        "purpose": "Score fit/urgency and decide whether task or approval routing is needed.",
+        "trigger": "Lead added, lead updated, WhatsApp message received, or operator request.",
+        "preserves": "Qualification result storage stays in Leadsy."
+      },
+      {
+        "key": "task-generated",
+        "name": "Task Generated",
+        "purpose": "Route approvals, due reminders, and retry schedules around Leadsy task state.",
+        "trigger": "Leadsy creates an extension, CRM, or follow-up task.",
+        "preserves": "Task CRUD and status transitions stay in Leadsy."
+      },
+      {
+        "key": "approval-requested",
+        "name": "Approval Requested",
+        "purpose": "Create a central approval item and pause downstream automation until reviewed.",
+        "trigger": "Research, task, note, draft, outreach, or qualification output requires human review.",
+        "preserves": "Leadsy remains the human approval gate before outbound sends."
+      },
+      {
+        "key": "follow-up-due",
+        "name": "Follow-up Due",
+        "purpose": "Surface due follow-ups and create approved draft paths when useful.",
+        "trigger": "n8n scheduled due check or task due timestamp.",
+        "preserves": "Follow-up task state stays in Leadsy."
+      },
+      {
+        "key": "meta-lead-received",
+        "name": "Meta Lead Received",
+        "purpose": "Run post-storage qualification and approval routing for Meta-originated leads.",
+        "trigger": "Existing Leadsy Meta route stores a Meta-derived lead or communication.",
+        "preserves": "Public Meta webhooks continue to terminate at Leadsy."
+      },
+      {
+        "key": "whatsapp-message-received",
+        "name": "WhatsApp Message Received",
+        "purpose": "Generate reply suggestions, refresh qualification, and route approvals.",
+        "trigger": "Existing Leadsy WhatsApp/Meta route stores an inbound WhatsApp message.",
+        "preserves": "WhatsApp message handling and storage stay in Leadsy."
+      },
+      {
+        "key": "worker-retry",
+        "name": "Worker Retry",
+        "purpose": "Retry only safe worker actions and escalate exhausted/non-retryable failures.",
+        "trigger": "Worker task failed, blocked, postponed, or reached retry due time.",
+        "preserves": "Leadsy keeps worker task state while the extension remains the capture/execution layer."
+      }
+    ]
+  }
+}

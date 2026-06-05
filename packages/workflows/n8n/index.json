@@ -1,62 +1,60 @@
 [
   {
-    "key": "lead-added",
-    "name": "Leadsy - Lead Added",
-    "file": "lead-added.json",
-    "active": false
-  },
-  {
-    "key": "lead-updated",
-    "name": "Leadsy - Lead Updated",
-    "file": "lead-updated.json",
-    "active": false
-  },
-  {
-    "key": "research-requested",
-    "name": "Leadsy - Research Requested",
-    "file": "research-requested.json",
-    "active": false
-  },
-  {
-    "key": "qualification-requested",
-    "name": "Leadsy - Qualification Requested",
-    "file": "qualification-requested.json",
-    "active": false
-  },
-  {
-    "key": "task-generated",
-    "name": "Leadsy - Task Generated",
-    "file": "task-generated.json",
-    "active": false
-  },
-  {
-    "key": "approval-requested",
-    "name": "Leadsy - Approval Requested",
-    "file": "approval-requested.json",
-    "active": false
-  },
-  {
-    "key": "follow-up-due",
-    "name": "Leadsy - Follow-up Due",
-    "file": "follow-up-due.json",
-    "active": false
-  },
-  {
-    "key": "meta-lead-received",
-    "name": "Leadsy - Meta Lead Received",
-    "file": "meta-lead-received.json",
-    "active": false
-  },
-  {
-    "key": "whatsapp-message-received",
-    "name": "Leadsy - WhatsApp Message Received",
-    "file": "whatsapp-message-received.json",
-    "active": false
-  },
-  {
-    "key": "worker-retry",
-    "name": "Leadsy - Worker Retry",
-    "file": "worker-retry.json",
-    "active": false
+    "key": "automation-router",
+    "name": "Leadsy - Automation Router",
+    "file": "leadsy-automation-router.json",
+    "active": false,
+    "routes": [
+      {
+        "key": "lead-added",
+        "name": "Lead Added",
+        "purpose": "Start qualification, summary, and task orchestration after Leadsy owns the lead record."
+      },
+      {
+        "key": "lead-updated",
+        "name": "Lead Updated",
+        "purpose": "Refresh only the intelligence artifacts affected by the changed fields."
+      },
+      {
+        "key": "research-requested",
+        "name": "Research Requested",
+        "purpose": "Coordinate research while keeping evidence, spend, and saved records inside Leadsy."
+      },
+      {
+        "key": "qualification-requested",
+        "name": "Qualification Requested",
+        "purpose": "Score fit/urgency and decide whether task or approval routing is needed."
+      },
+      {
+        "key": "task-generated",
+        "name": "Task Generated",
+        "purpose": "Route approvals, due reminders, and retry schedules around Leadsy task state."
+      },
+      {
+        "key": "approval-requested",
+        "name": "Approval Requested",
+        "purpose": "Create a central approval item and pause downstream automation until reviewed."
+      },
+      {
+        "key": "follow-up-due",
+        "name": "Follow-up Due",
+        "purpose": "Surface due follow-ups and create approved draft paths when useful."
+      },
+      {
+        "key": "meta-lead-received",
+        "name": "Meta Lead Received",
+        "purpose": "Run post-storage qualification and approval routing for Meta-originated leads."
+      },
+      {
+        "key": "whatsapp-message-received",
+        "name": "WhatsApp Message Received",
+        "purpose": "Generate reply suggestions, refresh qualification, and route approvals."
+      },
+      {
+        "key": "worker-retry",
+        "name": "Worker Retry",
+        "purpose": "Retry only safe worker actions and escalate exhausted/non-retryable failures."
+      }
+    ]
   }
 ]

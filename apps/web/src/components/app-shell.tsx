@@ -10,60 +10,72 @@ import {
   Bot,
   CheckCircle2,
   ChevronDown,
-  CircleAlert,
+  ClipboardList,
   Grid2X2,
   LogOut,
   Menu,
+  MessageSquareText,
   PanelLeftClose,
   PanelLeftOpen,
   Plug,
+  Plus,
+  Search,
   Settings,
-  Sparkles,
   UsersRound,
-  X
+  X,
+  Zap
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { SessionUser } from "@leadsy/security";
 import { OnboardingWizard } from "@/components/onboarding-wizard";
 import { ToastProvider } from "@/components/toast-provider";
 
-const navItems: Array<{ href: string; label: string; icon: LucideIcon; activePaths: string[] }> = [
+const workflowNavItems: Array<{ href: string; label: string; icon: LucideIcon; activePaths: string[]; count?: string }> = [
   { href: "/app", label: "Dashboard", icon: Grid2X2, activePaths: ["/app", "/dashboard"] },
   { href: "/app/leads", label: "CRM", icon: UsersRound, activePaths: ["/app/leads", "/crm"] },
   { href: "/app/worker", label: "Workers", icon: Bot, activePaths: ["/app/worker", "/workers"] },
   { href: "/app/worker?tab=pending", label: "Approvals", icon: CheckCircle2, activePaths: ["/app/worker", "/workers"] },
-  { href: "/app/leads?panel=knowledge", label: "Knowledge", icon: BookOpen, activePaths: ["/app/leads", "/crm"] },
+  { href: "/app/leads?tab=communications", label: "Communications", icon: MessageSquareText, activePaths: ["/app/leads", "/crm"] },
+  { href: "/app/leads?tab=tasks", label: "Tasks", icon: ClipboardList, activePaths: ["/app/leads", "/crm"] },
   { href: "/app/connect", label: "Integrations", icon: Plug, activePaths: ["/app/connect"] },
   { href: "/app/connect?panel=settings", label: "Settings", icon: Settings, activePaths: ["/app/connect", "/settings"] }
 ];
 
+const knowledgeNavItems: Array<{ href: string; label: string; icon: LucideIcon; count: string }> = [
+  { href: "/app/leads?panel=knowledge&view=icp", label: "ICP & playbooks", icon: BookOpen, count: "12" },
+  { href: "/app/leads?panel=knowledge", label: "Recent AI findings", icon: BookOpen, count: "38" },
+  { href: "/app/leads?panel=knowledge&view=snippets", label: "Snippets", icon: BookOpen, count: "24" }
+];
+
 const pageTitles: Array<{ path: string; title: string; eyebrow: string }> = [
-  { path: "/app/connect", title: "Integrations", eyebrow: "Configuration" },
-  { path: "/app/worker", title: "Worker Center", eyebrow: "AI operations" },
-  { path: "/app/leads", title: "CRM", eyebrow: "Lead intelligence" },
-  { path: "/app", title: "Dashboard", eyebrow: "Operations" }
+  { path: "/app/connect", title: "Integrations", eyebrow: "Leadsy" },
+  { path: "/app/worker", title: "Workers", eyebrow: "Leadsy" },
+  { path: "/app/leads", title: "CRM", eyebrow: "Leadsy" },
+  { path: "/app", title: "Dashboard", eyebrow: "Leadsy" }
 ];
 
 type SearchParamsLike = Pick<URLSearchParams, "get">;
 
 function initials(name: string) {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("") || "L";
+  return (
+    name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join("") || "L"
+  );
 }
 
 function pageTitleForPath(pathname: string, searchParams: SearchParamsLike) {
   if ((pathname === "/app/worker" || pathname === "/workers") && searchParams.get("tab") === "pending") {
-    return { path: "/app/worker", title: "Approvals", eyebrow: "Human review" };
+    return { path: "/app/worker", title: "Approvals", eyebrow: "Leadsy" };
   }
   if ((pathname === "/app/leads" || pathname === "/crm") && searchParams.get("panel") === "knowledge") {
-    return { path: "/app/leads", title: "Knowledge", eyebrow: "Lead intelligence" };
+    return { path: "/app/leads", title: "Knowledge", eyebrow: "Leadsy" };
   }
   if ((pathname === "/app/connect" || pathname === "/settings") && searchParams.get("panel") === "settings") {
-    return { path: "/app/connect", title: "Settings", eyebrow: "Configuration" };
+    return { path: "/app/connect", title: "Settings", eyebrow: "Leadsy" };
   }
   return pageTitles.find((item) => pathname === item.path || pathname.startsWith(`${item.path}/`)) ?? pageTitles.at(-1)!;
 }
@@ -80,10 +92,47 @@ function isNavItemActive(pathname: string, searchParams: SearchParamsLike, label
   const activePath = activePaths.some((path) => pathname === path || pathname.startsWith(`${path}/`));
   if (!activePath) return false;
   if (href.includes("?")) return searchParamsMatch(searchParams, href);
-  if (label === "CRM") return searchParams.get("panel") !== "knowledge";
+  if (label === "CRM") return searchParams.get("panel") !== "knowledge" && !searchParams.get("tab");
   if (label === "Workers") return searchParams.get("tab") !== "pending";
   if (label === "Integrations") return searchParams.get("panel") !== "settings";
   return true;
+}
+
+function SidebarLink({
+  href,
+  label,
+  icon: Icon,
+  active,
+  count,
+  expanded,
+  onClick
+}: {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  active: boolean;
+  count?: string;
+  expanded: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <Link
+      href={href}
+      onClick={onClick}
+      aria-label={label}
+      aria-current={active ? "page" : undefined}
+      title={label}
+      className={`group flex h-9 items-center gap-3 rounded-[6px] px-3 text-sm ${
+        active
+          ? "bg-white/[0.08] text-white"
+          : "text-[var(--muted-2)] hover:bg-white/[0.045] hover:text-white"
+      } ${expanded ? "justify-start" : "justify-center"}`}
+    >
+      <Icon size={17} className={active ? "text-[var(--teal)]" : "text-[var(--muted)] group-hover:text-[var(--muted-2)]"} />
+      {expanded ? <span className="min-w-0 flex-1 truncate">{label}</span> : null}
+      {expanded && count ? <span className="mono text-xs text-[var(--muted)]">{count}</span> : null}
+    </Link>
+  );
 }
 
 export function AppShell({
@@ -108,8 +157,7 @@ export function AppShell({
   const page = pageTitleForPath(pathname, searchParams);
   const setupIssues = hasMetaConnection ? 0 : 1;
   const onboardingReminder = session.onboardingCompletedAt ? 0 : 1;
-  const pendingApprovals = pendingApprovalCount;
-  const notificationCount = setupIssues + pendingApprovals + onboardingReminder;
+  const notificationCount = setupIssues + pendingApprovalCount + onboardingReminder;
 
   const notificationItems = useMemo(
     () => [
@@ -119,31 +167,28 @@ export function AppShell({
             {
               title: "Finish onboarding",
               detail: "Complete your business profile so workers can generate better lead research and tasks.",
-              href: "/app/leads",
-              tone: "amber" as const
+              href: "/app/leads"
             }
           ]),
       ...(hasMetaConnection
         ? []
         : [
             {
-              title: "Meta messaging connection needs attention",
+              title: "Meta connection needs attention",
               detail: "Connect Facebook, Instagram, or WhatsApp before lead ingestion is complete.",
-              href: "/app/connect",
-              tone: "amber" as const
+              href: "/app/connect"
             }
           ]),
       {
-        title: "Approval queue ready",
-        detail: pendingApprovals ? `${pendingApprovals} worker item needs review.` : "Worker approvals will appear here before any outreach action.",
-        href: "/app/worker?tab=pending",
-        tone: "teal" as const
+        title: "Approval queue",
+        detail: pendingApprovalCount ? `${pendingApprovalCount} worker item needs review.` : "Worker approvals will appear before outreach is sent.",
+        href: "/app/worker?tab=pending"
       }
     ],
-    [hasMetaConnection, pendingApprovals, session.onboardingCompletedAt]
+    [hasMetaConnection, pendingApprovalCount, session.onboardingCompletedAt]
   );
 
-  const sidebarWidth = sidebarExpanded ? "lg:pl-[248px]" : "lg:pl-[88px]";
+  const sidebarWidth = sidebarExpanded ? "lg:pl-[312px]" : "lg:pl-[84px]";
 
   async function logout() {
     if (logoutPending) return;
@@ -162,83 +207,130 @@ export function AppShell({
   }
 
   const nav = (
-    <nav className="flex flex-1 flex-col gap-2" aria-label="Primary">
-      {navItems.map((item) => {
-        const Icon = item.icon;
-        const active = isNavItemActive(pathname, searchParams, item.label, item.href, item.activePaths);
-        return (
-          <Link
-            key={`${item.label}-${item.href}`}
-            href={item.href}
-            onClick={() => setMobileOpen(false)}
-            aria-label={item.label}
-            aria-current={active ? "page" : undefined}
-            className={`group flex h-11 items-center gap-3 rounded-[8px] border px-3 text-sm font-medium ${
-              active
-                ? "border-teal-300/25 bg-teal-300/10 text-teal-100"
-                : "border-transparent text-[var(--muted-2)] hover:border-[var(--line)] hover:bg-white/[0.04] hover:text-white"
-            } ${sidebarExpanded ? "justify-start" : "justify-center"}`}
-            title={item.label}
-          >
-            <Icon size={18} className="shrink-0" />
-            {sidebarExpanded ? <span className="truncate">{item.label}</span> : null}
-          </Link>
-        );
-      })}
-    </nav>
+    <div className="flex flex-1 flex-col gap-6" aria-label="Primary">
+      <div className="space-y-1">
+        {sidebarExpanded ? <div className="mono px-3 pb-2 text-[11px] uppercase tracking-[0.22em] text-[var(--muted)]">Workflow</div> : null}
+        {workflowNavItems.map((item) => {
+          const count = item.label === "Approvals" && pendingApprovalCount ? String(pendingApprovalCount) : item.count;
+          return (
+            <SidebarLink
+              key={`${item.label}-${item.href}`}
+              href={item.href}
+              label={item.label}
+              icon={item.icon}
+              active={isNavItemActive(pathname, searchParams, item.label, item.href, item.activePaths)}
+              count={count}
+              expanded={sidebarExpanded}
+              onClick={() => setMobileOpen(false)}
+            />
+          );
+        })}
+      </div>
+      <div className="space-y-1">
+        {sidebarExpanded ? <div className="mono px-3 pb-2 text-[11px] uppercase tracking-[0.22em] text-[var(--muted)]">Knowledge</div> : null}
+        {knowledgeNavItems.map((item) => {
+          const view = searchParams.get("view") ?? "recent";
+          const active =
+            pathname === "/app/leads" &&
+            searchParams.get("panel") === "knowledge" &&
+            ((view === "recent" && item.label === "Recent AI findings") ||
+              (view === "icp" && item.label === "ICP & playbooks") ||
+              (view === "snippets" && item.label === "Snippets"));
+          return (
+            <SidebarLink
+              key={`${item.label}-${item.href}`}
+              href={item.href}
+              label={item.label}
+              icon={item.icon}
+              active={active}
+              count={item.count}
+              expanded={sidebarExpanded}
+              onClick={() => setMobileOpen(false)}
+            />
+          );
+        })}
+      </div>
+    </div>
   );
 
   return (
     <ToastProvider>
       <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-        <div className="noise" />
-
         <aside
           data-testid="global-sidebar"
           data-state={sidebarExpanded ? "expanded" : "collapsed"}
-          className={`fixed inset-y-0 left-0 z-30 hidden border-r border-[var(--line)] bg-black/45 backdrop-blur-xl lg:block ${
-            sidebarExpanded ? "w-[248px]" : "w-[88px]"
+          className={`fixed inset-y-0 left-0 z-30 hidden border-r border-[var(--line)] bg-[var(--surface)] lg:block ${
+            sidebarExpanded ? "w-[312px]" : "w-[84px]"
           }`}
         >
-          <div className={`flex h-full flex-col gap-4 py-5 ${sidebarExpanded ? "px-4" : "items-center px-3"}`}>
-            <div className={`flex items-center gap-3 ${sidebarExpanded ? "justify-between" : "flex-col"}`}>
-              <Link
-                href="/"
-                aria-label="Leadsy home"
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[8px] border border-teal-300/30 bg-teal-300/10 text-teal-200"
-              >
-                <Sparkles size={19} />
+          <div className={`flex h-full flex-col py-4 ${sidebarExpanded ? "px-3" : "items-center px-2"}`}>
+            <div className={`flex items-center gap-3 px-1 ${sidebarExpanded ? "justify-between" : "flex-col"}`}>
+              <Link href="/app" aria-label="Leadsy dashboard" className="flex min-w-0 items-center gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[7px] bg-[var(--teal)] text-sm font-bold text-black">
+                  L
+                </span>
+                {sidebarExpanded ? (
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-semibold text-white">Leadsy</span>
+                    <span className="block truncate text-xs text-[var(--muted)]">Helio · Operations</span>
+                  </span>
+                ) : null}
               </Link>
-              {sidebarExpanded ? (
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold text-white">Leadsy</div>
-                  <div className="mono text-[10px] uppercase text-[var(--muted)]">AI lead intelligence</div>
-                </div>
-              ) : null}
               <button
                 type="button"
                 data-testid="sidebar-toggle"
                 aria-label={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"}
                 aria-expanded={sidebarExpanded}
                 onClick={() => setSidebarExpanded((current) => !current)}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-[6px] border border-[var(--line)] bg-white/[0.03] text-[var(--muted-2)] hover:text-white"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-[6px] text-[var(--muted-2)] hover:bg-white/[0.045] hover:text-white"
               >
                 {sidebarExpanded ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
               </button>
             </div>
 
-            {nav}
+            {sidebarExpanded ? (
+              <div className="mt-4 space-y-2">
+                <button
+                  type="button"
+                  className="flex h-10 w-full items-center gap-2 rounded-[6px] border border-[var(--line)] bg-black/20 px-3 text-sm text-[var(--muted-2)] hover:border-[var(--line-strong)] hover:text-white"
+                >
+                  <Search size={16} />
+                  <span className="flex-1 text-left">Quick search</span>
+                  <span className="mono rounded-[5px] border border-[var(--line)] bg-white/[0.04] px-1.5 py-0.5 text-[11px] text-[var(--muted)]">⌘K</span>
+                </button>
+                <Link
+                  href="/app/leads?new=lead"
+                  className="flex h-9 items-center gap-3 rounded-[6px] px-3 text-sm text-[var(--muted-2)] hover:bg-white/[0.045] hover:text-white"
+                >
+                  <Plus size={16} />
+                  <span className="flex-1">New lead</span>
+                  <span className="mono rounded-[5px] border border-[var(--line)] bg-white/[0.04] px-1.5 py-0.5 text-[11px] text-[var(--muted)]">N</span>
+                </Link>
+              </div>
+            ) : null}
 
-            <div className={`border-t border-[var(--line)] pt-4 ${sidebarExpanded ? "" : "w-full"}`}>
-              <div className={`flex items-center gap-3 rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-2 ${sidebarExpanded ? "" : "justify-center"}`}>
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-teal-300/15 text-xs font-semibold text-teal-100">
+            <nav className="mt-7 flex min-h-0 flex-1 flex-col overflow-y-auto scrollbar-dark">{nav}</nav>
+
+            <div className={`border-t border-[var(--line)] pt-4 ${sidebarExpanded ? "space-y-3" : "w-full space-y-2"}`}>
+              <div className={`flex items-center gap-3 px-2 ${sidebarExpanded ? "" : "justify-center"}`}>
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--line)] bg-white/[0.04] text-xs font-semibold text-white">
                   {initials(session.name)}
                 </div>
                 {sidebarExpanded ? (
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium text-white">{session.name}</div>
-                    <div className="truncate text-xs text-[var(--muted)]">{session.role}</div>
+                    <div className="truncate text-xs text-[var(--muted)]">{session.role} · Helio</div>
                   </div>
+                ) : null}
+                {sidebarExpanded ? (
+                  <button
+                    type="button"
+                    aria-label="Open notifications"
+                    onClick={() => setNotificationsOpen((current) => !current)}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-[6px] text-[var(--muted-2)] hover:bg-white/[0.045] hover:text-white"
+                  >
+                    <Bell size={16} />
+                  </button>
                 ) : null}
               </div>
               {sidebarExpanded ? (
@@ -246,7 +338,7 @@ export function AppShell({
                   type="button"
                   onClick={logout}
                   disabled={logoutPending}
-                  className="mt-2 flex h-9 w-full items-center gap-2 rounded-[6px] px-2 text-sm text-[var(--muted-2)] hover:bg-white/[0.04] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                  className="flex h-9 w-full items-center gap-2 rounded-[6px] px-2 text-sm text-[var(--muted-2)] hover:bg-white/[0.045] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <LogOut size={16} />
                   {logoutPending ? "Logging out..." : "Logout"}
@@ -256,8 +348,8 @@ export function AppShell({
           </div>
         </aside>
 
-        <header className={`sticky top-0 z-20 border-b border-[var(--line)] bg-[rgba(7,9,11,0.86)] backdrop-blur-xl ${sidebarWidth}`}>
-          <div className="flex min-h-16 items-center justify-between gap-4 px-4 md:px-8">
+        <header className={`sticky top-0 z-20 border-b border-[var(--line)] bg-[rgba(8,10,12,0.92)] backdrop-blur-xl ${sidebarWidth}`}>
+          <div className="flex min-h-[64px] items-center justify-between gap-4 px-4 md:px-6">
             <div className="flex min-w-0 items-center gap-3">
               <button
                 type="button"
@@ -268,26 +360,34 @@ export function AppShell({
               >
                 <Menu size={18} />
               </button>
-              <div className="min-w-0">
-                <div className="mono text-[11px] uppercase text-[var(--muted)]">{page.eyebrow}</div>
-                <h1 className="truncate text-lg font-semibold text-white md:text-xl">{page.title}</h1>
+              <div className="flex min-w-0 items-center gap-2 text-sm">
+                <span className="truncate text-[var(--muted)]">{page.eyebrow}</span>
+                <span className="text-[var(--line-strong)]">/</span>
+                <h1 className="truncate font-medium text-white">{page.title}</h1>
               </div>
             </div>
 
             <div className="relative flex items-center gap-2">
               <Link
-                href="/app/connect"
-                className={`hidden h-10 items-center gap-2 rounded-[6px] border px-3 text-sm md:inline-flex ${
-                  hasMetaConnection
-                    ? "border-teal-300/25 bg-teal-300/10 text-teal-100"
-                    : "border-amber-300/25 bg-amber-300/10 text-amber-100"
-                }`}
+                href="/app/worker"
+                className="hidden h-9 items-center gap-2 rounded-[6px] border border-[var(--line)] bg-white/[0.035] px-3 text-sm text-[var(--muted-2)] hover:border-[var(--line-strong)] hover:text-white md:inline-flex"
               >
-                <Plug size={16} />
-                <span>Meta messaging connection</span>
-                <span className="mono text-[10px] uppercase">{hasMetaConnection ? "Connected" : "Action needed"}</span>
+                <Zap size={15} className="text-[var(--teal)]" />
+                <span className="mono">4 workers running · queue {82 + pendingApprovalCount}</span>
               </Link>
-
+              <Link
+                href="/app/leads?filters=open"
+                className="hidden h-9 items-center rounded-[6px] border border-[var(--line)] bg-white/[0.035] px-3 text-sm text-[var(--muted-2)] hover:border-[var(--line-strong)] hover:text-white sm:inline-flex"
+              >
+                Filter
+              </Link>
+              <Link
+                href="/app/leads?new=lead"
+                className="inline-flex h-9 items-center gap-2 rounded-[6px] border border-teal-300/30 bg-[var(--teal)] px-3 text-sm font-medium text-black hover:bg-teal-200"
+              >
+                <Plus size={16} />
+                New
+              </Link>
               <button
                 type="button"
                 data-testid="notification-bell"
@@ -297,11 +397,11 @@ export function AppShell({
                   setNotificationsOpen((current) => !current);
                   setUserMenuOpen(false);
                 }}
-                className="relative inline-flex h-10 w-10 items-center justify-center rounded-[6px] border border-[var(--line)] bg-white/[0.03] text-[var(--muted-2)] hover:text-white"
+                className="relative inline-flex h-9 w-9 items-center justify-center rounded-[6px] border border-[var(--line)] bg-white/[0.035] text-[var(--muted-2)] hover:text-white"
               >
-                <Bell size={17} />
+                <Bell size={16} />
                 {notificationCount ? (
-                  <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-300 px-1 text-[10px] font-bold text-black">
+                  <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--teal)] px-1 text-[10px] font-bold text-black">
                     {notificationCount}
                   </span>
                 ) : null}
@@ -313,7 +413,7 @@ export function AppShell({
                   className="absolute right-12 top-12 z-40 w-[min(360px,calc(100vw-2rem))] rounded-[8px] border border-[var(--line)] bg-[var(--surface)] p-3 shadow-2xl"
                 >
                   <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm font-semibold text-white">Notifications</div>
+                    <div className="text-sm font-semibold text-white">Needs you</div>
                     <button
                       type="button"
                       aria-label="Close notifications"
@@ -323,19 +423,16 @@ export function AppShell({
                       <X size={14} />
                     </button>
                   </div>
-                  <div className="mt-3 space-y-2">
+                  <div className="mt-3 divide-y divide-[var(--line)] rounded-[8px] border border-[var(--line)]">
                     {notificationItems.map((item) => (
                       <Link
                         key={item.title}
                         href={item.href}
                         onClick={() => setNotificationsOpen(false)}
-                        className="flex gap-3 rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-3 hover:border-[var(--line-strong)]"
+                        className="block p-3 hover:bg-white/[0.035]"
                       >
-                        <CircleAlert size={17} className={item.tone === "amber" ? "text-amber-200" : "text-teal-200"} />
-                        <span className="min-w-0">
-                          <span className="block text-sm font-medium text-white">{item.title}</span>
-                          <span className="mt-1 block text-xs leading-5 text-[var(--muted-2)]">{item.detail}</span>
-                        </span>
+                        <span className="block text-sm font-medium text-white">{item.title}</span>
+                        <span className="mt-1 block text-xs leading-5 text-[var(--muted-2)]">{item.detail}</span>
                       </Link>
                     ))}
                   </div>
@@ -351,12 +448,12 @@ export function AppShell({
                   setUserMenuOpen((current) => !current);
                   setNotificationsOpen(false);
                 }}
-                className="inline-flex h-10 items-center gap-2 rounded-[6px] border border-[var(--line)] bg-white/[0.03] px-2 text-sm text-[var(--muted-2)] hover:text-white"
+                className="hidden h-9 items-center gap-2 rounded-[6px] border border-[var(--line)] bg-white/[0.035] px-2 text-sm text-[var(--muted-2)] hover:text-white md:inline-flex"
               >
-                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-teal-300/15 text-[10px] font-semibold text-teal-100">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/[0.06] text-[10px] font-semibold text-white">
                   {initials(session.name)}
                 </span>
-                <ChevronDown size={14} className="hidden md:block" />
+                <ChevronDown size={14} />
               </button>
 
               {userMenuOpen ? (
@@ -388,11 +485,11 @@ export function AppShell({
 
         {mobileOpen ? (
           <div data-testid="mobile-nav-drawer" className="fixed inset-0 z-50 bg-black/65 backdrop-blur-sm lg:hidden">
-            <div className="absolute inset-x-0 bottom-0 rounded-t-[8px] border border-[var(--line)] bg-[var(--surface)] p-4 shadow-2xl">
+            <div className="absolute inset-x-0 bottom-0 max-h-[86vh] overflow-y-auto rounded-t-[8px] border border-[var(--line)] bg-[var(--surface)] p-4 shadow-2xl">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-sm font-semibold text-white">Leadsy</div>
-                  <div className="mono text-[10px] uppercase text-[var(--muted)]">AI lead intelligence</div>
+                  <div className="text-xs text-[var(--muted)]">Helio · Operations</div>
                 </div>
                 <button
                   type="button"
@@ -403,13 +500,13 @@ export function AppShell({
                   <X size={16} />
                 </button>
               </div>
-              <div className="mt-4">{nav}</div>
+              <div className="mt-5">{nav}</div>
             </div>
           </div>
         ) : null}
 
         <main className={sidebarWidth}>
-          <div className="px-4 py-6 md:px-8">{children}</div>
+          <div className="min-h-[calc(100vh-64px)]">{children}</div>
         </main>
         {!session.onboardingCompletedAt ? <OnboardingWizard session={session} hasMetaConnection={hasMetaConnection} /> : null}
       </div>

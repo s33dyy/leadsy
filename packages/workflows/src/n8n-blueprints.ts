@@ -37,23 +37,17 @@ export type N8nWorkflowBlueprint = {
   };
   pinData: Record<string, never>;
   meta: {
-    leadsyWorkflowKey: AutomationWorkflowDefinition["key"];
+    leadsyWorkflowKey: "automation-router";
+    routes: Array<{
+      key: AutomationWorkflowDefinition["key"];
+      name: string;
+      purpose: string;
+      trigger: string;
+      preserves: string;
+    }>;
     purpose: string;
     preserves: string;
   };
-};
-
-const scheduledWorkflowRules: Partial<Record<AutomationWorkflowDefinition["key"], Record<string, unknown>>> = {
-  "follow-up-due": {
-    rule: {
-      interval: [{ field: "minutes", minutesInterval: 15 }]
-    }
-  },
-  "worker-retry": {
-    rule: {
-      interval: [{ field: "minutes", minutesInterval: 5 }]
-    }
-  }
 };
 
 const workflowActionPath: Record<AutomationWorkflowDefinition["key"], string> = {
@@ -69,93 +63,32 @@ const workflowActionPath: Record<AutomationWorkflowDefinition["key"], string> = 
   "worker-retry": "/api/automation/events/worker-retry"
 };
 
-function nodeId(workflow: AutomationWorkflowDefinition, suffix: string) {
-  return `leadsy-${workflow.key}-${suffix}`;
+function nodeId(suffix: string) {
+  return `leadsy-router-${suffix}`;
 }
 
-function triggerNode(workflow: AutomationWorkflowDefinition): N8nNode {
-  const scheduledRule = scheduledWorkflowRules[workflow.key];
-  if (scheduledRule) {
-    return {
-      id: nodeId(workflow, "schedule-trigger"),
-      name: "Trigger",
-      type: "n8n-nodes-base.scheduleTrigger",
-      typeVersion: 1.2,
-      position: [0, 0],
-      parameters: scheduledRule,
-      notes: workflow.trigger,
-      notesInFlow: true
-    };
-  }
-
-  return {
-    id: nodeId(workflow, "webhook-trigger"),
-    name: "Trigger",
-    type: "n8n-nodes-base.webhook",
-    typeVersion: 2,
-    position: [0, 0],
-    parameters: {
-      httpMethod: "POST",
-      path: `leadsy/${workflow.key}`,
-      responseMode: "responseNode",
-      options: {}
-    },
-    notes: workflow.trigger,
-    notesInFlow: true
-  };
-}
-
-function codeNode(workflow: AutomationWorkflowDefinition): N8nNode {
-  return {
-    id: nodeId(workflow, "normalize"),
-    name: "Normalize Execution",
-    type: "n8n-nodes-base.code",
-    typeVersion: 2,
-    position: [260, 0],
-    parameters: {
-      jsCode: [
-        "const body = $json.body ?? $json;",
-        "return [{",
-        "  json: {",
-        `    workflowKey: ${JSON.stringify(workflow.key)},`,
-        `    workflowName: ${JSON.stringify(workflow.name)},`,
-        "    triggerId: body.triggerId ?? body.idempotencyKey ?? $execution.id,",
-        "    idempotencyKey: body.idempotencyKey ?? $execution.id,",
-        "    tenantId: body.tenantId,",
-        "    ownerId: body.ownerId,",
-        "    leadId: body.leadId,",
-        "    taskId: body.taskId,",
-        "    conversationId: body.conversationId,",
-        "    startedAt: new Date().toISOString(),",
-        "    payload: body",
-        "  }",
-        "}];"
-      ].join("\n")
-    },
-    notes: "Normalize webhook/schedule input into the shared Leadsy execution metadata shape.",
-    notesInFlow: true
-  };
+function connection(to: string): N8nConnectionTarget {
+  return { node: to, type: "main", index: 0 };
 }
 
 function httpNode(
-  workflow: AutomationWorkflowDefinition,
   suffix: string,
   name: string,
   pathExpression: string,
   body: Record<string, unknown>,
   position: [number, number],
-  retryOnFail = true
+  options: { continueOnFail?: boolean; retryOnFail?: boolean } = {}
 ): N8nNode {
   return {
-    id: nodeId(workflow, suffix),
+    id: nodeId(suffix),
     name,
     type: "n8n-nodes-base.httpRequest",
     typeVersion: 4.2,
     position,
-    retryOnFail,
+    retryOnFail: options.retryOnFail ?? true,
     maxTries: 3,
     waitBetweenTries: 60000,
-    continueOnFail: suffix === "log-failed",
+    continueOnFail: options.continueOnFail ?? false,
     parameters: {
       method: "POST",
       url: pathExpression,
@@ -171,33 +104,196 @@ function httpNode(
   };
 }
 
-function responseNode(workflow: AutomationWorkflowDefinition): N8nNode {
+function webhookTrigger(): N8nNode {
   return {
-    id: nodeId(workflow, "response"),
-    name: "Respond",
-    type: "n8n-nodes-base.respondToWebhook",
-    typeVersion: 1.1,
-    position: [1300, 0],
+    id: nodeId("webhook-trigger"),
+    name: "Leadsy Event Webhook",
+    type: "n8n-nodes-base.webhook",
+    typeVersion: 2,
+    position: [0, 0],
     parameters: {
-      respondWith: "json",
-      responseBody: "={{ { ok: true, workflowKey: $json.workflowKey, executionId: $execution.id } }}",
-      options: {}
-    }
+      httpMethod: "POST",
+      path: "leadsy/automation-router",
+      responseMode: "onReceived",
+      options: {
+        responseCode: 202,
+        responseData: "firstEntryJson"
+      }
+    },
+    notes: "Single Leadsy entrypoint. Send { workflowKey, tenantId, ownerId, idempotencyKey, payload } to route automation events.",
+    notesInFlow: true
   };
 }
 
-function connection(to: string): N8nConnectionTarget {
-  return { node: to, type: "main", index: 0 };
+function scheduleTrigger(name: string, suffix: string, minutesInterval: number, position: [number, number]): N8nNode {
+  return {
+    id: nodeId(suffix),
+    name,
+    type: "n8n-nodes-base.scheduleTrigger",
+    typeVersion: 1.2,
+    position,
+    parameters: {
+      rule: {
+        interval: [{ field: "minutes", minutesInterval }]
+      }
+    },
+    notes: `${name} feeds the same router canvas as external Leadsy events.`,
+    notesInFlow: true
+  };
 }
 
-export function n8nBlueprintForWorkflow(workflow: AutomationWorkflowDefinition): N8nWorkflowBlueprint {
-  const trigger = triggerNode(workflow);
-  const normalize = codeNode(workflow);
+function normalizeWebhook(): N8nNode {
+  return {
+    id: nodeId("normalize-webhook"),
+    name: "Normalize Webhook Event",
+    type: "n8n-nodes-base.code",
+    typeVersion: 2,
+    position: [300, 0],
+    parameters: {
+      jsCode: [
+        "const body = $json.body ?? $json;",
+        "const workflowKey = body.workflowKey ?? body.leadsyWorkflowKey ?? body.eventType ?? body.type;",
+        "return [{",
+        "  json: {",
+        "    workflowKey,",
+        "    workflowName: workflowKey,",
+        "    triggerId: body.triggerId ?? body.idempotencyKey ?? $execution.id,",
+        "    idempotencyKey: body.idempotencyKey ?? $execution.id,",
+        "    tenantId: body.tenantId,",
+        "    ownerId: body.ownerId,",
+        "    leadId: body.leadId,",
+        "    taskId: body.taskId,",
+        "    conversationId: body.conversationId,",
+        "    startedAt: new Date().toISOString(),",
+        "    payload: body.payload ?? body",
+        "  }",
+        "}];"
+      ].join("\n")
+    },
+    notes: "Normalizes event payloads emitted by Leadsy APIs.",
+    notesInFlow: true
+  };
+}
+
+function normalizeSchedule(
+  name: string,
+  suffix: string,
+  workflow: AutomationWorkflowDefinition,
+  position: [number, number],
+  dueWindowMinutes: number
+): N8nNode {
+  return {
+    id: nodeId(suffix),
+    name,
+    type: "n8n-nodes-base.code",
+    typeVersion: 2,
+    position,
+    parameters: {
+      jsCode: [
+        "return [{",
+        "  json: {",
+        `    workflowKey: ${JSON.stringify(workflow.key)},`,
+        `    workflowName: ${JSON.stringify(workflow.name)},`,
+        "    triggerId: $execution.id,",
+        "    idempotencyKey: $execution.id,",
+        "    startedAt: new Date().toISOString(),",
+        "    payload: {",
+        "      scheduled: true,",
+        `      dueWindowMinutes: ${dueWindowMinutes},`,
+        "      triggeredAt: new Date().toISOString()",
+        "    }",
+        "  }",
+        "}];"
+      ].join("\n")
+    },
+    notes: workflow.trigger,
+    notesInFlow: true
+  };
+}
+
+function switchNode(): N8nNode {
+  return {
+    id: nodeId("route-event"),
+    name: "Route Event",
+    type: "n8n-nodes-base.switch",
+    typeVersion: 3.2,
+    position: [660, 0],
+    parameters: {
+      mode: "rules",
+      rules: {
+        values: automationWorkflowDefinitions.map((workflow) => ({
+          conditions: {
+            options: {
+              caseSensitive: true,
+              leftValue: "",
+              typeValidation: "strict",
+              version: 2
+            },
+            conditions: [
+              {
+                leftValue: "={{$json.workflowKey}}",
+                rightValue: workflow.key,
+                operator: {
+                  type: "string",
+                  operation: "equals"
+                }
+              }
+            ],
+            combinator: "and"
+          },
+          renameOutput: true,
+          outputKey: workflow.name
+        }))
+      },
+      options: {
+        fallbackOutput: "extra"
+      }
+    },
+    notes: "One router switch keeps all Leadsy automation routes visible on a single n8n canvas.",
+    notesInFlow: true
+  };
+}
+
+function actionNode(workflow: AutomationWorkflowDefinition, index: number): N8nNode {
+  return httpNode(
+    `run-${workflow.key}`,
+    `Run ${workflow.name}`,
+    `={{$env.LEADSY_API_BASE_URL + '${workflowActionPath[workflow.key]}'}}`,
+    {
+      workflowKey: workflow.key,
+      n8nExecutionId: "={{$execution.id}}",
+      idempotencyKey: "={{$json.idempotencyKey}}",
+      payload: "={{$json.payload}}"
+    },
+    [980, -420 + index * 140],
+    { retryOnFail: true }
+  );
+}
+
+function unsupportedRouteNode(): N8nNode {
+  return {
+    id: nodeId("unsupported-route"),
+    name: "Unsupported Event",
+    type: "n8n-nodes-base.code",
+    typeVersion: 2,
+    position: [980, 1000],
+    parameters: {
+      jsCode: [
+        "throw new Error(`Unsupported Leadsy workflowKey: ${$json.workflowKey ?? 'missing'}`);"
+      ].join("\n")
+    },
+    notes: "Fails fast when Leadsy sends a workflowKey this router does not recognize.",
+    notesInFlow: true
+  };
+}
+
+export function n8nAutomationRouterBlueprint(): N8nWorkflowBlueprint {
+  const followUpWorkflow = automationWorkflowDefinitions.find((workflow) => workflow.key === "follow-up-due")!;
+  const workerRetryWorkflow = automationWorkflowDefinitions.find((workflow) => workflow.key === "worker-retry")!;
   const startedPath = "={{$env.LEADSY_API_BASE_URL + '/api/automation/executions'}}";
-  const actionPath = `={{$env.LEADSY_API_BASE_URL + '${workflowActionPath[workflow.key]}'}}`;
+  const actionNodes = automationWorkflowDefinitions.map(actionNode);
 
   const logStarted = httpNode(
-    workflow,
     "log-started",
     "Log Started",
     startedPath,
@@ -207,25 +303,11 @@ export function n8nBlueprintForWorkflow(workflow: AutomationWorkflowDefinition):
       status: "started",
       metadata: "={{$json}}"
     },
-    [520, -120]
-  );
-
-  const runAction = httpNode(
-    workflow,
-    "run-action",
-    "Run Leadsy Action",
-    actionPath,
-    {
-      workflowKey: "={{$json.workflowKey}}",
-      n8nExecutionId: "={{$execution.id}}",
-      idempotencyKey: "={{$json.idempotencyKey}}",
-      payload: "={{$json.payload}}"
-    },
-    [780, 0]
+    [660, -260],
+    { continueOnFail: true, retryOnFail: true }
   );
 
   const logSucceeded = httpNode(
-    workflow,
     "log-succeeded",
     "Log Succeeded",
     startedPath,
@@ -235,36 +317,40 @@ export function n8nBlueprintForWorkflow(workflow: AutomationWorkflowDefinition):
       status: "succeeded",
       metadata: "={{$json}}"
     },
-    [1040, -120]
+    [1280, 0],
+    { continueOnFail: true, retryOnFail: true }
   );
-
-  const logFailed = httpNode(
-    workflow,
-    "log-failed",
-    "Log Failed",
-    startedPath,
-    {
-      workflowKey: "={{$json.workflowKey}}",
-      n8nExecutionId: "={{$execution.id}}",
-      status: "failed",
-      metadata: "={{$json}}"
-    },
-    [1040, 180]
-  );
-
-  const respond = responseNode(workflow);
 
   return {
-    name: `Leadsy - ${workflow.name}`,
+    name: "Leadsy - Automation Router",
     active: false,
-    nodes: [trigger, normalize, logStarted, runAction, logSucceeded, logFailed, respond],
+    nodes: [
+      webhookTrigger(),
+      scheduleTrigger("Follow-up Due Schedule", "follow-up-schedule", 15, [0, 220]),
+      scheduleTrigger("Worker Retry Schedule", "worker-retry-schedule", 5, [0, 440]),
+      normalizeWebhook(),
+      normalizeSchedule("Normalize Follow-up Due", "normalize-follow-up-due", followUpWorkflow, [300, 220], 15),
+      normalizeSchedule("Normalize Worker Retry", "normalize-worker-retry", workerRetryWorkflow, [300, 440], 5),
+      logStarted,
+      switchNode(),
+      ...actionNodes,
+      unsupportedRouteNode(),
+      logSucceeded
+    ],
     connections: {
-      Trigger: { main: [[connection("Normalize Execution")]] },
-      "Normalize Execution": { main: [[connection("Log Started")]] },
-      "Log Started": { main: [[connection("Run Leadsy Action")]] },
-      "Run Leadsy Action": { main: [[connection("Log Succeeded")], [connection("Log Failed")]] },
-      "Log Succeeded": { main: [[connection("Respond")]] },
-      "Log Failed": { main: [[connection("Respond")]] }
+      "Leadsy Event Webhook": { main: [[connection("Normalize Webhook Event")]] },
+      "Follow-up Due Schedule": { main: [[connection("Normalize Follow-up Due")]] },
+      "Worker Retry Schedule": { main: [[connection("Normalize Worker Retry")]] },
+      "Normalize Webhook Event": { main: [[connection("Log Started"), connection("Route Event")]] },
+      "Normalize Follow-up Due": { main: [[connection("Log Started"), connection("Route Event")]] },
+      "Normalize Worker Retry": { main: [[connection("Log Started"), connection("Route Event")]] },
+      "Route Event": {
+        main: [
+          ...automationWorkflowDefinitions.map((workflow) => [connection(`Run ${workflow.name}`)]),
+          [connection("Unsupported Event")]
+        ]
+      },
+      ...Object.fromEntries(actionNodes.map((node) => [node.name, { main: [[connection("Log Succeeded")]] }]))
     },
     settings: {
       executionOrder: "v1",
@@ -276,11 +362,18 @@ export function n8nBlueprintForWorkflow(workflow: AutomationWorkflowDefinition):
     },
     pinData: {},
     meta: {
-      leadsyWorkflowKey: workflow.key,
-      purpose: workflow.purpose,
-      preserves: workflow.preserves
+      leadsyWorkflowKey: "automation-router",
+      purpose: "Route every Leadsy automation event through one configurable n8n workflow.",
+      preserves: "Leadsy remains the application backend, auth/RBAC boundary, and Postgres source of truth.",
+      routes: automationWorkflowDefinitions.map((workflow) => ({
+        key: workflow.key,
+        name: workflow.name,
+        purpose: workflow.purpose,
+        trigger: workflow.trigger,
+        preserves: workflow.preserves
+      }))
     }
   };
 }
 
-export const n8nWorkflowBlueprints = automationWorkflowDefinitions.map(n8nBlueprintForWorkflow);
+export const n8nWorkflowBlueprints = [n8nAutomationRouterBlueprint()];

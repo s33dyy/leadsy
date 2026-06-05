@@ -43,6 +43,9 @@ async function main() {
   assert(authPage.includes("auth-step-dots"), "auth page should render the three step-indicator dots below the card");
   assert(authPage.includes("page-shell"), "auth page should keep the existing non-plain page shell background");
   assert(authPage.includes("noise"), "auth page should keep the existing background texture layer");
+  assert(authPage.includes("OperatorPreview"), "auth page should show the Lovable-style operator workspace preview");
+  assert(authPage.includes("Good morning, Iris."), "auth preview should mirror the Lovable dashboard greeting");
+  assert(authPage.includes("Needs you"), "auth preview should include the Lovable right-side approval rail");
   assert(!authPage.includes("window.alert"), "auth page should not use browser alerts");
   assert(!authPage.includes("window.confirm"), "auth page should not use browser confirms");
   assert(!authPage.includes("window.prompt"), "auth page should not use browser prompts");

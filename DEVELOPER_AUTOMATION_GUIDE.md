@@ -1,6 +1,6 @@
 # Developer Automation Guide
 
-Status: founder-readable guide for the first n8n automation layer. The n8n Railway service is live; workflows are source-controlled but intentionally inactive until Leadsy service-auth/action endpoints are implemented.
+Status: founder-readable guide for the first n8n automation layer. The n8n Railway service is live; the single automation router workflow is source-controlled but intentionally inactive until Leadsy service-auth/action endpoints are implemented.
 
 ## Plain-English Overview
 
@@ -14,7 +14,11 @@ n8n should behave like an operations coordinator. It can say, "this lead needs q
 
 ## Where Automations Live
 
-Planned n8n workflows:
+Planned n8n workflow:
+
+- Leadsy - Automation Router
+
+The router contains branches for:
 
 - Lead Added
 - Lead Updated
@@ -34,6 +38,10 @@ Workflow documentation lives in:
 Importable n8n workflow JSON lives in:
 
 - `packages/workflows/n8n/`
+
+Current import file:
+
+- `packages/workflows/n8n/leadsy-automation-router.json`
 
 The workflow list is generated from typed source in:
 
@@ -147,10 +155,10 @@ Current process:
 1. Edit the typed workflow catalog or blueprint builder in `packages/workflows/src/`.
 2. Run `npm run workflows:export-n8n`.
 3. Run `npm run test:n8n-workflows`.
-4. Import the relevant JSON file from `packages/workflows/n8n/` into n8n.
-5. Keep the workflow inactive until credentials and Leadsy action endpoints are ready.
-6. Reconnect credentials inside n8n; do not commit secrets into JSON.
-7. Verify the workflow appears in Leadsy Settings -> Infrastructure -> Automation after the web service has the n8n URL variables.
+4. Import `packages/workflows/n8n/leadsy-automation-router.json` into n8n.
+5. Keep the router inactive until credentials and Leadsy action endpoints are ready.
+6. Reconnect the single Leadsy API credential inside n8n; do not commit secrets into JSON.
+7. Verify the router appears in Leadsy Settings -> Infrastructure -> Automation after the web service has the n8n URL variables.
 
 ## How Workflows Are Edited
 
@@ -161,6 +169,8 @@ Edit in n8n when changing:
 - Retry timing.
 - Notification routing.
 - Approval routing.
+
+Keep those changes inside `Leadsy - Automation Router` unless a future workflow truly needs separate ownership.
 
 Edit in Leadsy code when changing:
 

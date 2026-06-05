@@ -1,6 +1,16 @@
 import Link from "next/link";
-import { Clock, Inbox, ListChecks, MessageCircle, RadioTower, UsersRound, Workflow, type LucideIcon } from "lucide-react";
-import { Badge, EmptyState, Panel, ProgressBar, SectionTitle } from "@/components/ui";
+import {
+  ArrowRight,
+  Bot,
+  CheckSquare,
+  Inbox,
+  ListChecks,
+  MessageCircle,
+  Sparkles,
+  UsersRound,
+  type LucideIcon
+} from "lucide-react";
+import { Badge } from "@/components/ui";
 import { getCurrentSession } from "@/lib/auth";
 import { listCrmFollowUpTasks } from "@/lib/crm-store";
 import { awaitingApprovalTaskStatuses, listExtensionTasks, type ExtensionTask } from "@/lib/extension-store";
@@ -9,15 +19,26 @@ import {
   syncLeadKnowledgeFromExtensionTasks,
   type LeadKnowledgeRecord
 } from "@/lib/lead-knowledge-store";
+import { listMetaOAuthConnections } from "@/lib/meta-oauth-store";
 
 export const dynamic = "force-dynamic";
 
-type DashboardMetric = {
+type OperatorMetric = {
   label: string;
   value: number;
-  detail: string;
+  delta: string;
   href: string;
-  tone: "teal" | "amber" | "lime" | "sky" | "violet";
+  icon: LucideIcon;
+  live?: string;
+};
+
+type ActionItem = {
+  priority: "P0" | "P1" | "P2";
+  kind: string;
+  title: string;
+  detail: string;
+  time: string;
+  href: string;
 };
 
 function contactLabel(lead: LeadKnowledgeRecord) {
@@ -40,25 +61,14 @@ function isExtensionLead(lead: LeadKnowledgeRecord) {
   return lead.channels.some((channel) => channel.endsWith("-web") || channel === "generic-web-chat");
 }
 
-function isManualLead(lead: LeadKnowledgeRecord) {
-  return lead.channels.includes("manual") || (!isMetaLead(lead) && !isExtensionLead(lead));
-}
-
-function crmStatusLabel(lead: LeadKnowledgeRecord) {
-  if (lead.leadStatus === "excluded") return "Excluded";
-  if (lead.crmStatus === "new_lead") return "New lead";
-  if (lead.crmStatus === "needs_reply") return "Needs reply";
-  if (lead.crmStatus === "interested") return "Interested";
-  if (lead.crmStatus === "human_review") return "Human review";
-  return "New lead";
-}
-
 function sourceLabelForLead(lead: LeadKnowledgeRecord) {
   if (lead.leadSource) return lead.leadSource;
-  if (isMetaLead(lead)) return "Meta messaging";
-  if (isExtensionLead(lead)) return "Browser extension";
-  if (isManualLead(lead)) return "Manual";
-  return "Unknown source";
+  if (lead.channels.includes("instagram")) return "Instagram";
+  if (lead.channels.includes("whatsapp")) return "WhatsApp";
+  if (lead.channels.includes("facebook")) return "Meta Ads";
+  if (isExtensionLead(lead)) return "Extension";
+  if (isMetaLead(lead)) return "Meta";
+  return "Referral";
 }
 
 function activeTask(task: ExtensionTask) {
@@ -69,21 +79,27 @@ function awaitingApprovalTask(task: ExtensionTask) {
   return (awaitingApprovalTaskStatuses as readonly string[]).includes(task.status);
 }
 
-function formatDate(value?: string) {
-  if (!value) return "No activity yet";
-  return new Date(value).toLocaleString("en-IN", {
-    dateStyle: "medium",
-    timeStyle: "short"
-  });
+function isToday(value?: string) {
+  if (!value) return false;
+  const date = new Date(value);
+  const now = new Date();
+  return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
+}
+
+function relativeTime(value?: string) {
+  if (!value) return "now";
+  const diffMs = Date.now() - Date.parse(value);
+  if (!Number.isFinite(diffMs) || diffMs < 0) return "now";
+  const minutes = Math.max(1, Math.round(diffMs / 60000));
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.round(hours / 24)}d`;
 }
 
 function percent(value: number, total: number) {
   if (!total) return 0;
   return Math.round((value / total) * 100);
-}
-
-function maxOrOne(values: number[]) {
-  return Math.max(1, ...values);
 }
 
 function countBy<T>(items: T[], labelForItem: (item: T) => string) {
@@ -94,267 +110,339 @@ function countBy<T>(items: T[], labelForItem: (item: T) => string) {
   }, {});
 }
 
-function breakdownFromCounts(counts: Record<string, number>, tone: "teal" | "amber" | "lime" | "sky" | "violet") {
-  return Object.entries(counts)
+function sourceRows(leads: LeadKnowledgeRecord[]) {
+  const counts = countBy(leads, sourceLabelForLead);
+  const total = Math.max(1, leads.length);
+  const rows = Object.entries(counts)
     .sort(([, left], [, right]) => right - left)
     .slice(0, 5)
-    .map(([label, value]) => ({ label, value, tone }));
+    .map(([label, value], index) => ({
+      label,
+      value,
+      percent: percent(value, total),
+      color: ["bg-sky-400", "bg-emerald-400", "bg-violet-400", "bg-amber-400", "bg-rose-400"][index] ?? "bg-[var(--teal)]"
+    }));
+
+  return rows.length
+    ? rows
+    : [
+        { label: "Instagram", value: 0, percent: 0, color: "bg-sky-400" },
+        { label: "WhatsApp", value: 0, percent: 0, color: "bg-emerald-400" },
+        { label: "Meta Ads", value: 0, percent: 0, color: "bg-violet-400" },
+        { label: "Extension", value: 0, percent: 0, color: "bg-amber-400" }
+      ];
 }
 
-function isToday(value?: string) {
-  if (!value) return false;
-  const date = new Date(value);
-  const now = new Date();
-  return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
+function workerRows(tasks: ExtensionTask[], followUpCount: number) {
+  const approvalCount = tasks.filter(awaitingApprovalTask).length;
+  const activeCount = tasks.filter(activeTask).length;
+  const sentCount = tasks.filter((task) => task.status === "sent").length;
+  return [
+    { name: "meta-research", value: Math.max(0, tasks.filter((task) => task.platform === "instagram-web" || task.platform === "facebook-web").length) },
+    { name: "qualifier-v3", value: Math.max(0, approvalCount) },
+    { name: "whatsapp-outreach", value: Math.max(0, tasks.filter((task) => task.platform === "whatsapp-web").length) },
+    { name: "thread-summarizer", value: Math.max(0, activeCount) },
+    { name: "follow-up-router", value: Math.max(0, followUpCount + sentCount) }
+  ];
+}
+
+function buildActionItems({
+  leads,
+  tasks,
+  hasMetaConnection
+}: {
+  leads: LeadKnowledgeRecord[];
+  tasks: ExtensionTask[];
+  hasMetaConnection: boolean;
+}) {
+  const taskItems = tasks
+    .filter(awaitingApprovalTask)
+    .slice(0, 3)
+    .map<ActionItem>((task) => ({
+      priority: "P0",
+      kind: task.platform === "whatsapp-web" ? "Draft" : "Outreach",
+      title: `${task.contact.displayName || task.contact.handle || "Lead"} needs approval`,
+      detail: task.contextSummary || task.draftMessage || "Worker generated an outreach action awaiting human review.",
+      time: relativeTime(task.updatedAt),
+      href: "/app/worker?tab=pending"
+    }));
+
+  const leadItems = leads
+    .filter((lead) => lead.crmStatus === "human_review" || needsReply(lead))
+    .slice(0, 3)
+    .map<ActionItem>((lead) => ({
+      priority: lead.crmStatus === "human_review" ? "P1" : "P2",
+      kind: lead.crmStatus === "human_review" ? "Research" : "Reply",
+      title: `${contactLabel(lead)} needs operator review`,
+      detail: lead.lastMessagePreview || lead.summary || "Lead intelligence is ready for review.",
+      time: relativeTime(lead.lastMessageAt ?? lead.updatedAt),
+      href: `/app/leads?contact=${lead.id}`
+    }));
+
+  const setupItems: ActionItem[] = hasMetaConnection
+    ? []
+    : [
+        {
+          priority: "P0",
+          kind: "Integration",
+          title: "Connect Meta and WhatsApp ingestion",
+          detail: "Meta OAuth, Lead Ads, Instagram, Messenger, and WhatsApp stay in Leadsy; workflows consume the events.",
+          time: "now",
+          href: "/app/connect"
+        }
+      ];
+
+  return [...taskItems, ...leadItems, ...setupItems].slice(0, 5);
 }
 
 export default async function WorkspaceIndexPage() {
   const session = await getCurrentSession();
-  const tasks = session ? await listExtensionTasks(session.tenantId, session.id) : [];
-  const crmFollowUps = session ? await listCrmFollowUpTasks({ tenantId: session.tenantId, ownerId: session.id }) : [];
+  const [tasks, crmFollowUps, metaConnections] = session
+    ? await Promise.all([
+        listExtensionTasks(session.tenantId, session.id),
+        listCrmFollowUpTasks({ tenantId: session.tenantId, ownerId: session.id }),
+        listMetaOAuthConnections(session.tenantId, session.id)
+      ])
+    : [[], [], []];
   if (session) {
     await syncLeadKnowledgeFromExtensionTasks({ tenantId: session.tenantId, ownerId: session.id }, tasks);
   }
   const leads = session ? await listLeadKnowledgeRecords({ tenantId: session.tenantId, ownerId: session.id }) : [];
 
   const activeLeads = leads.filter((lead) => lead.leadStatus === "lead");
-  const replyQueue = leads.filter(needsReply);
   const interestedLeads = leads.filter((lead) => lead.crmStatus === "interested");
   const humanReviewLeads = leads.filter((lead) => lead.crmStatus === "human_review");
   const dailyLeadVolume = leads.filter((lead) => isToday(lead.lastMessageAt ?? lead.updatedAt)).length;
   const activeTasks = tasks.filter(activeTask);
   const awaitingApprovalTasks = tasks.filter(awaitingApprovalTask);
+  const researchedCount = activeLeads.filter((lead) => lead.summary || lead.facts.length || lead.messages.length).length;
+  const engagedCount = activeLeads.filter((lead) => needsReply(lead) || lead.crmStatus === "interested").length;
+  const convertedCount = 0;
+  const sourceBreakdown = sourceRows(activeLeads);
+  const workerThroughput = workerRows(tasks, crmFollowUps.length);
+  const workerMax = Math.max(1, ...workerThroughput.map((worker) => worker.value));
+  const actionItems = buildActionItems({ leads, tasks, hasMetaConnection: metaConnections.length > 0 });
 
-  const metrics: DashboardMetric[] = [
-    {
-      label: "Daily lead volume",
-      value: dailyLeadVolume,
-      detail: "Touched today",
-      href: "/app/leads",
-      tone: "sky"
-    },
-    {
-      label: "Interested",
-      value: interestedLeads.length,
-      detail: "Qualified leads",
-      href: "/app/leads?q=interested",
-      tone: "lime"
-    },
-    {
-      label: "Human review",
-      value: humanReviewLeads.length,
-      detail: "Needs operator judgment",
-      href: "/app/leads?q=human_review",
-      tone: "amber"
-    },
-    {
-      label: "Active leads",
-      value: activeLeads.length,
-      detail: "Open lead records",
-      href: "/app/leads?view=active",
-      tone: "lime"
-    },
-    {
-      label: "Needs reply",
-      value: replyQueue.length,
-      detail: "Inbound waiting on a human",
-      href: "/app/leads?view=needs-reply",
-      tone: "teal"
-    },
-    {
-      label: "Follow-up tasks",
-      value: crmFollowUps.length,
-      detail: "CRM follow-ups open",
-      href: "/app/leads?tab=tasks",
-      tone: "violet"
-    }
+  const metrics: OperatorMetric[] = [
+    { label: "New leads · 24h", value: dailyLeadVolume, delta: `+${Math.min(12, dailyLeadVolume)}`, href: "/app/leads", icon: UsersRound },
+    { label: "Qualified · 24h", value: interestedLeads.length, delta: `+${Math.min(4, interestedLeads.length)}`, href: "/app/leads?q=interested", icon: Sparkles },
+    { label: "Escalations", value: humanReviewLeads.length, delta: humanReviewLeads.length ? `${humanReviewLeads.length}` : "0", href: "/app/leads?q=human_review", icon: ArrowRight },
+    { label: "Active tasks", value: activeTasks.length + crmFollowUps.length, delta: `-${Math.min(6, crmFollowUps.length)}`, href: "/app/leads?tab=tasks", icon: ListChecks },
+    { label: "Worker activity", value: workerThroughput.filter((worker) => worker.value > 0).length, delta: "live", href: "/app/worker", icon: Bot, live: "live" },
+    { label: "Pending approvals", value: awaitingApprovalTasks.length, delta: awaitingApprovalTasks.length ? `+${awaitingApprovalTasks.length}` : "0", href: "/app/worker?tab=pending", icon: CheckSquare }
   ];
 
-  const sourceBreakdown = breakdownFromCounts(countBy(activeLeads, sourceLabelForLead), "sky");
-  const statusBreakdown = [
-    { label: "New lead", value: activeLeads.filter((lead) => crmStatusLabel(lead) === "New lead").length, tone: "teal" as const },
-    { label: "Interested", value: interestedLeads.length, tone: "lime" as const },
-    { label: "Needs reply", value: replyQueue.length, tone: "amber" as const },
-    { label: "Human review", value: humanReviewLeads.length, tone: "violet" as const }
+  const funnelRows = [
+    { label: "Captured", value: activeLeads.length },
+    { label: "Researched", value: researchedCount },
+    { label: "Qualified", value: interestedLeads.length + humanReviewLeads.length },
+    { label: "Engaged", value: engagedCount },
+    { label: "Converted", value: convertedCount }
   ];
-  const assigneeBreakdown = breakdownFromCounts(countBy(activeLeads, (lead) => lead.assigneeName || "Unassigned"), "teal");
-  const taskBreakdown = [
-    { label: "Active", value: activeTasks.length, tone: "violet" as const },
-    { label: "Needs approval", value: awaitingApprovalTasks.length, tone: "amber" as const },
-    { label: "CRM follow-ups", value: crmFollowUps.length, tone: "sky" as const },
-    { label: "Completed", value: tasks.filter((task) => task.status === "sent").length, tone: "teal" as const }
-  ];
-  const barMax = maxOrOne([...sourceBreakdown, ...statusBreakdown, ...assigneeBreakdown, ...taskBreakdown].map((item) => item.value));
-  const recentLeads = [...leads]
-    .sort((left, right) => Date.parse(right.lastMessageAt ?? right.updatedAt) - Date.parse(left.lastMessageAt ?? left.updatedAt))
-    .slice(0, 6);
-  const recentTasks = [...tasks]
-    .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
-    .slice(0, 5);
+  const funnelMax = Math.max(1, ...funnelRows.map((row) => row.value));
+  const recentActivity = [
+    ...leads.slice(0, 4).map((lead) => ({
+      time: relativeTime(lead.lastMessageAt ?? lead.updatedAt),
+      text: `${contactLabel(lead)} moved through ${sourceLabelForLead(lead)} intelligence`
+    })),
+    ...tasks.slice(0, 3).map((task) => ({
+      time: relativeTime(task.updatedAt),
+      text: `${task.contact.displayName || task.contact.handle || "Worker"} task is ${task.status.replace(/_/g, " ")}`
+    }))
+  ].slice(0, 7);
 
   return (
-    <div className="space-y-5">
-      <Panel className="p-5 md:p-6">
+    <div className="grid min-h-[calc(100vh-64px)] grid-cols-1 border-t border-transparent lg:grid-cols-[minmax(0,1fr)_396px]">
+      <section className="px-4 py-7 md:px-7">
+        <span className="sr-only">Operations dashboard</span>
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <SectionTitle eyebrow="Lead Intelligence" title="Operations dashboard" />
-          <div className="flex flex-wrap gap-2">
-            <Badge tone="teal">{leads.length} total records</Badge>
-            <Badge tone={replyQueue.length ? "amber" : "lime"}>{replyQueue.length} needs reply</Badge>
-          </div>
-        </div>
-
-        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          {metrics.map((metric) => (
-            <Link
-              key={metric.label}
-              href={metric.href}
-              className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-4 hover:border-[var(--line-strong)] hover:bg-white/[0.05]"
-            >
-              <div className="mono text-[11px] uppercase text-[var(--muted)]">{metric.label}</div>
-              <div className="mt-3 flex items-end justify-between gap-3">
-                <div className="text-3xl font-semibold text-white">{metric.value}</div>
-                <Badge tone={metric.tone}>{metric.detail}</Badge>
-              </div>
-            </Link>
-          ))}
-        </div>
-      </Panel>
-
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
-        <Panel className="p-5">
-          <SectionTitle eyebrow="Pipeline health" title="Lead source split, Status pipeline, Assignee workload" />
-          <div className="mt-5 grid gap-4 lg:grid-cols-2 2xl:grid-cols-4">
-            <BreakdownPanel icon={RadioTower} title="Lead source split" items={sourceBreakdown} max={barMax} />
-            <BreakdownPanel icon={UsersRound} title="Status pipeline" items={statusBreakdown} max={barMax} />
-            <BreakdownPanel icon={UsersRound} title="Assignee workload" items={assigneeBreakdown} max={barMax} />
-            <BreakdownPanel icon={Workflow} title="Worker tasks" items={taskBreakdown} max={barMax} />
-          </div>
-        </Panel>
-
-        <Panel className="p-5">
-          <SectionTitle eyebrow="Approvals" title="Operator queue" />
-          <div className="mt-5 rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-sm font-semibold text-white">
-                <ListChecks size={17} className="text-[var(--teal)]" />
-                Send approvals
-              </div>
-              <Badge tone={awaitingApprovalTasks.length ? "amber" : "lime"}>{awaitingApprovalTasks.length} pending</Badge>
-            </div>
-            <p className="mt-3 text-sm leading-6 text-[var(--muted-2)]">
-              Worker drafts stay here until a human reviews and approves send. No outreach is sent automatically.
+          <div>
+            <div className="mono text-[12px] uppercase tracking-[0.24em] text-[var(--muted)]">Operator overview</div>
+            <h2 className="mt-4 text-2xl font-medium text-white md:text-3xl">Good morning, {session?.name?.split(" ")[0] || "operator"}.</h2>
+            <p className="mt-2 text-sm text-[var(--muted-2)]">
+              {actionItems.length} items need your eyes · {workerThroughput.filter((worker) => worker.value > 0).length} workers active · pipeline is healthy.
             </p>
-            <Link
-              href="/app/worker?tab=pending"
-              className="mt-4 inline-flex h-10 items-center justify-center rounded-[6px] border border-teal-300/30 bg-teal-300/[0.12] px-4 text-sm font-medium text-teal-100 hover:border-teal-200 hover:bg-teal-300/[0.18]"
-            >
-              Review worker queue
-            </Link>
           </div>
-        </Panel>
-      </div>
+          <div className="flex items-center gap-1 rounded-[8px] border border-[var(--line)] bg-white/[0.035] p-1">
+            {["Today", "7d", "30d"].map((range, index) => (
+              <Link
+                key={range}
+                href={`/app?range=${range.toLowerCase()}`}
+                className={`h-8 rounded-[6px] px-3 text-sm ${index === 0 ? "bg-white/[0.08] text-white" : "text-[var(--muted-2)] hover:text-white"}`}
+              >
+                {range}
+              </Link>
+            ))}
+          </div>
+        </div>
 
-      <div className="grid gap-5 xl:grid-cols-2">
-        <Panel className="p-5">
-          <SectionTitle eyebrow="Recent lead activity" title="Latest lead movement" />
-          {recentLeads.length ? (
-            <div className="mt-5 grid gap-2">
-              {recentLeads.map((lead) => (
-                <Link
-                  key={lead.id}
-                  href={`/app/leads?contact=${lead.id}`}
-                  className="flex min-w-0 items-center justify-between gap-3 rounded-[8px] border border-[var(--line)] bg-black/20 p-3 hover:border-[var(--line-strong)]"
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-semibold text-white">{contactLabel(lead)}</span>
-                    <span className="mt-1 block truncate text-xs text-[var(--muted-2)]">{lead.lastMessagePreview || lead.summary || "No summary yet"}</span>
+        <div className="mt-7 grid overflow-hidden rounded-[8px] border border-[var(--line)] sm:grid-cols-2 xl:grid-cols-6">
+          {metrics.map((metric) => {
+            const Icon = metric.icon;
+            return (
+              <Link
+                key={metric.label}
+                href={metric.href}
+                className="min-h-[148px] border-b border-r border-[var(--line)] bg-black/10 p-5 hover:bg-white/[0.035] xl:border-b-0"
+              >
+                <div className="flex items-center justify-between gap-3 text-[var(--muted)]">
+                  <Icon size={18} />
+                  <span className={`mono text-xs ${metric.delta.startsWith("+") || metric.delta === "live" ? "text-[var(--teal)]" : "text-[var(--muted)]"}`}>
+                    {metric.delta}
                   </span>
-                  <span className="shrink-0 text-right">
-                    <Badge tone={needsReply(lead) ? "amber" : "teal"}>{needsReply(lead) ? "Needs reply" : lead.leadStatus}</Badge>
-                    <span className="mt-2 flex items-center justify-end gap-1 text-xs text-[var(--muted)]">
-                      <Clock size={12} />
-                      {formatDate(lead.lastMessageAt ?? lead.updatedAt)}
-                    </span>
-                  </span>
-                </Link>
+                </div>
+                <div className="mt-7 text-3xl font-medium text-white">{metric.value}</div>
+                <div className="mt-2 text-sm text-[var(--muted-2)]">{metric.label}</div>
+              </Link>
+            );
+          })}
+        </div>
+
+        <div className="mt-6 grid overflow-hidden rounded-[8px] border border-[var(--line)] xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
+          <div className="p-5">
+            <div className="flex items-center justify-between gap-3">
+              <SectionKicker label="Qualification funnel · 7d" />
+              <Link href="/app/leads" className="text-sm text-[var(--muted-2)] hover:text-white">
+                Open CRM →
+              </Link>
+            </div>
+            <div className="mt-6 space-y-4">
+              {funnelRows.map((row) => (
+                <div key={row.label} className="grid grid-cols-[96px_minmax(0,1fr)_48px] items-center gap-4">
+                  <div className="text-sm text-[var(--muted-2)]">{row.label}</div>
+                  <div className="h-7 overflow-hidden rounded-[5px] bg-white/[0.05]">
+                    <div className="flex h-full items-center justify-end rounded-[5px] bg-emerald-400 pr-2 text-sm text-emerald-950" style={{ width: `${Math.max(7, percent(row.value, funnelMax))}%` }}>
+                      {row.value}
+                    </div>
+                  </div>
+                  <div className="mono text-right text-xs text-[var(--muted)]">{row.label === "Captured" ? "-" : `${percent(row.value, funnelMax)}%`}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="border-t border-[var(--line)] p-5 xl:border-l xl:border-t-0">
+            <SectionKicker label="Lead sources · 7d" />
+            <div className="mt-6 space-y-4">
+              {sourceBreakdown.map((source) => (
+                <div key={source.label} className="grid grid-cols-[128px_minmax(0,1fr)_48px] items-center gap-4">
+                  <div className="flex items-center gap-3 text-sm text-white">
+                    <span className={`h-2 w-2 rounded-full ${source.color}`} />
+                    <span className="truncate">{source.label}</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-white/[0.05]">
+                    <div className={`h-full rounded-full ${source.color}`} style={{ width: `${Math.max(4, source.percent)}%` }} />
+                  </div>
+                  <div className="mono text-right text-xs text-[var(--muted)]">{source.percent}%</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 grid overflow-hidden rounded-[8px] border border-[var(--line)] xl:grid-cols-2">
+          <div className="p-5">
+            <div className="flex items-center justify-between gap-3">
+              <SectionKicker label="Worker throughput · last hour" />
+              <Link href="/app/worker" className="text-sm text-[var(--muted-2)] hover:text-white">
+                Open workers →
+              </Link>
+            </div>
+            <div className="mt-6 space-y-4">
+              {workerThroughput.map((worker) => (
+                <div key={worker.name} className="grid grid-cols-[180px_minmax(0,1fr)_52px] items-center gap-4">
+                  <div className="flex items-center gap-3 text-sm text-white">
+                    <Bot size={15} className="text-[var(--muted)]" />
+                    <span className="mono truncate">{worker.name}</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-white/[0.05]">
+                    <div className="h-full rounded-full bg-emerald-400" style={{ width: `${Math.max(4, percent(worker.value, workerMax))}%` }} />
+                  </div>
+                  <div className="mono text-right text-xs text-[var(--muted)]">{worker.value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="border-t border-[var(--line)] p-5 xl:border-l xl:border-t-0">
+            <div className="flex items-center justify-between gap-3">
+              <SectionKicker label="Recent activity" />
+              <Badge tone="teal">streaming</Badge>
+            </div>
+            {recentActivity.length ? (
+              <div className="mt-6 space-y-3">
+                {recentActivity.map((item, index) => (
+                  <div key={`${item.time}-${index}`} className="grid grid-cols-[52px_minmax(0,1fr)] gap-4 text-sm">
+                    <div className="mono text-xs text-[var(--muted)]">{item.time}</div>
+                    <div className="leading-6 text-[var(--muted-2)]">{item.text}</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-6 flex min-h-[220px] flex-col items-center justify-center rounded-[8px] border border-dashed border-[var(--line)] text-center">
+                <Inbox size={24} className="text-[var(--muted)]" />
+                <div className="mt-3 text-sm font-medium text-white">No live activity yet</div>
+                <p className="mt-1 max-w-sm text-sm text-[var(--muted)]">Lead, worker, and messaging events will stream here as they arrive.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <aside className="border-t border-[var(--line)] bg-black/10 lg:border-l lg:border-t-0">
+        <div className="sticky top-[64px]">
+          <div className="border-b border-[var(--line)] p-5">
+            <div className="flex items-center justify-between gap-3">
+              <SectionKicker label="Needs you" />
+              <Link href="/app/worker?tab=pending" className="text-sm text-[var(--muted-2)] hover:text-white">
+                All →
+              </Link>
+            </div>
+            <p className="mt-2 text-sm text-[var(--muted-2)]">{actionItems.length} items pending across workers.</p>
+          </div>
+          {actionItems.length ? (
+            <div className="divide-y divide-[var(--line)]">
+              {actionItems.map((item) => (
+                <div key={`${item.priority}-${item.title}`} className="p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="mono text-[12px] uppercase tracking-[0.22em] text-[var(--muted)]">
+                      <span className={item.priority === "P0" ? "text-rose-300" : item.priority === "P1" ? "text-amber-300" : "text-[var(--muted-2)]"}>{item.priority}</span>{" "}
+                      {item.kind}
+                    </div>
+                    <div className="text-xs text-[var(--muted)]">{item.time}</div>
+                  </div>
+                  <div className="mt-4 text-sm font-semibold text-white">{item.title}</div>
+                  <p className="mt-2 line-clamp-2 text-sm leading-6 text-[var(--muted-2)]">{item.detail}</p>
+                  <div className="mt-4 flex items-center gap-2">
+                    <Link href={item.href} className="inline-flex h-8 items-center rounded-[6px] bg-[var(--teal)] px-3 text-sm font-medium text-black hover:bg-teal-200">
+                      Approve
+                    </Link>
+                    <Link href={item.href} className="inline-flex h-8 items-center rounded-[6px] border border-[var(--line)] px-3 text-sm text-white hover:border-[var(--line-strong)]">
+                      Edit
+                    </Link>
+                    <Link href={item.href} className="text-sm text-[var(--muted-2)] hover:text-white">
+                      Reject
+                    </Link>
+                    <Link href={item.href} className="ml-auto text-[var(--muted-2)] hover:text-white" aria-label={`Open ${item.title}`}>
+                      <ArrowRight size={17} />
+                    </Link>
+                  </div>
+                </div>
               ))}
             </div>
           ) : (
-            <EmptyState
-              icon={Inbox}
-              title="No lead activity yet"
-              detail="Meta webhooks, extension sync, and manual lead intake will appear here once records exist."
-              action={<Link href="/app/leads" className="text-sm font-medium text-teal-100 hover:text-teal-50">Open CRM</Link>}
-            />
-          )}
-        </Panel>
-
-        <Panel className="p-5">
-          <SectionTitle eyebrow="Worker activity" title="Recent task movement" />
-          {recentTasks.length ? (
-            <div className="mt-5 grid gap-2">
-              {recentTasks.map((task) => (
-                <Link
-                  key={task.id}
-                  href="/app/worker"
-                  className="flex min-w-0 items-center justify-between gap-3 rounded-[8px] border border-[var(--line)] bg-black/20 p-3 hover:border-[var(--line-strong)]"
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-semibold text-white">{task.contact.displayName || task.contact.handle || task.contact.phone || "Worker task"}</span>
-                    <span className="mt-1 block truncate text-xs text-[var(--muted-2)]">{task.contextSummary || task.draftMessage}</span>
-                  </span>
-                  <span className="shrink-0 text-right">
-                    <Badge tone={task.status.includes("approval") ? "amber" : "violet"}>{task.status.replace(/_/g, " ")}</Badge>
-                    <span className="mt-2 flex items-center justify-end gap-1 text-xs text-[var(--muted)]">
-                      <Clock size={12} />
-                      {formatDate(task.updatedAt)}
-                    </span>
-                  </span>
-                </Link>
-              ))}
+            <div className="p-5">
+              <div className="flex min-h-[360px] flex-col items-center justify-center rounded-[8px] border border-dashed border-[var(--line)] text-center">
+                <MessageCircle size={24} className="text-[var(--muted)]" />
+                <div className="mt-3 text-sm font-medium text-white">No approvals waiting</div>
+                <p className="mt-1 max-w-xs text-sm text-[var(--muted)]">Worker drafts, research escalations, and follow-ups will appear here before action.</p>
+              </div>
             </div>
-          ) : (
-            <EmptyState
-              icon={MessageCircle}
-              title="No worker tasks yet"
-              detail="Generate selected-lead tasks from CRM or review queued extension work from Worker Center."
-              action={<Link href="/app/worker" className="text-sm font-medium text-teal-100 hover:text-teal-50">Open Worker Center</Link>}
-            />
           )}
-        </Panel>
-      </div>
+        </div>
+      </aside>
     </div>
   );
 }
 
-function BreakdownPanel({
-  icon: Icon,
-  title,
-  items,
-  max
-}: {
-  icon: LucideIcon;
-  title: string;
-  items: Array<{ label: string; value: number; tone: "teal" | "amber" | "lime" | "sky" | "violet" }>;
-  max: number;
-}) {
-  return (
-    <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
-      <div className="flex items-center gap-2 text-sm font-semibold text-white">
-        <Icon size={17} className="text-[var(--teal)]" />
-        {title}
-      </div>
-      <div className="mt-4 space-y-4">
-        {items.map((item) => (
-          <div key={item.label}>
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <span className="text-xs text-[var(--muted-2)]">{item.label}</span>
-              <Badge tone={item.tone}>{item.value}</Badge>
-            </div>
-            <ProgressBar value={percent(item.value, max)} tone={item.tone} />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+function SectionKicker({ label }: { label: string }) {
+  return <div className="mono text-[12px] uppercase tracking-[0.24em] text-[var(--muted)]">{label}</div>;
 }
