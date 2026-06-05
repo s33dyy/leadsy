@@ -50,6 +50,10 @@ async function main() {
   assert(appShell.includes("data-testid=\"notification-center\""), "notification bell should open a notification center");
   assert(appShell.includes("data-testid=\"user-menu\""), "top bar should include a user avatar menu");
   assert(appShell.includes("ToastProvider"), "app shell should wrap workspace content in the toast provider");
+  assert(appShell.includes("h-[100dvh]"), "app shell should use dynamic viewport height so browser chrome does not create page overflow");
+  assert(appShell.includes("max-h-[100dvh]"), "app shell should cap the authenticated workspace to the viewport");
+  assert(appShell.includes("min-h-0 min-w-0 flex-1 flex-col overflow-hidden"), "app shell main column should contain child scrolling instead of leaking overflow");
+  assert(appShell.includes("min-h-0 min-w-0 flex-1 overflow-hidden"), "app shell content slot should give pages a bounded scroll area");
   assert(appShell.includes('fetch("/api/auth/logout"'), "logout should use an explicit POST API call");
   assert(!appShell.includes('href="/logout"'), "logout must not use a prefetchable navigation link");
 

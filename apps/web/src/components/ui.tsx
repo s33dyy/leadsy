@@ -3,10 +3,12 @@ import { ArrowDownRight, ArrowUpRight, Minus, type LucideIcon } from "lucide-rea
 
 export function Badge({
   children,
-  tone = "neutral"
+  tone = "neutral",
+  className = ""
 }: {
   children: ReactNode;
   tone?: "neutral" | "teal" | "amber" | "rose" | "sky" | "lime" | "violet";
+  className?: string;
 }) {
   const tones = {
     neutral: "border-[var(--line)] bg-white/[0.04] text-[var(--muted-2)]",
@@ -20,7 +22,7 @@ export function Badge({
 
   return (
     <span
-      className={`mono inline-flex h-6 items-center gap-1 rounded-[4px] border px-2 text-[11px] ${tones[tone]}`}
+      className={`mono inline-flex h-6 items-center gap-1 rounded-[4px] border px-2 text-[11px] ${tones[tone]} ${className}`}
     >
       {children}
     </span>

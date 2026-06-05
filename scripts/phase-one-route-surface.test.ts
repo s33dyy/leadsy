@@ -56,6 +56,14 @@ async function main() {
   assert(workspaceIndex.includes("Qualification funnel"), "Dashboard should include the Lovable qualification funnel surface");
   assert(workspaceIndex.includes("Worker throughput"), "Dashboard should include worker throughput");
   assert(workspaceIndex.includes("Needs you"), "Dashboard should include the right-side Needs You rail");
+
+  const settingsPage = await read("apps/web/src/app/app/settings/page.tsx");
+  assert(settingsPage.includes("overflow-y-auto overflow-x-hidden"), "Settings automation view should scroll vertically without horizontal overflow");
+  assert(settingsPage.includes("grid min-w-0 grid-cols-12"), "Settings automation rows should opt into shrinking inside grid tracks");
+  assert(settingsPage.includes("col-span-12 min-w-0 truncate text-muted-foreground md:col-span-5"), "Backend logic module details should truncate instead of widening the page");
+  assert(settingsPage.includes("col-span-4 min-w-0 truncate whitespace-nowrap text-right"), "Backend logic owner labels should stay inside their grid cell");
+  assert(settingsPage.includes("grid min-w-0 grid-cols-1 gap-px overflow-hidden"), "Provider config cards should be horizontally contained");
+  assert(settingsPage.includes("<Badge className=\"shrink-0\""), "Provider config status badges should not stretch or push text columns wider");
 }
 
 main().catch((error) => {
