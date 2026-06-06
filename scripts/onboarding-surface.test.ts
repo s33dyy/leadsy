@@ -43,6 +43,10 @@ async function main() {
   for (const label of ["About You", "About Your Business", "Your Target Customer", "Integration Verification", "Completion Score"]) {
     assert(wizard.includes(label), `onboarding wizard should include ${label}`);
   }
+  for (const label of ["Business name", "Industry", "Team size", "WhatsApp number", "Twilio connected?", "Lead sources", "Assignment preferences", "Follow-up preferences"]) {
+    assert(wizard.includes(label), `onboarding wizard should collect ${label}`);
+  }
+  assert(wizard.includes("workspaceConfiguration"), "onboarding should save CRM setup answers to workspace configuration");
   assert(wizard.includes("/api/onboarding"), "wizard should save progress through the onboarding API");
   assert(
     /fetch\("\/api\/onboarding",\s*{[\s\S]*credentials:\s*"include"/.test(wizard),

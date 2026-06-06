@@ -133,8 +133,8 @@ export async function getAutomationStatus(): Promise<AutomationStatus> {
     queueStatus: configured ? (probe.health === "healthy" ? "healthy" : "unknown") : "not_configured",
     checkedAt: new Date().toISOString(),
     detail: configured
-      ? `${probe.detail} One backend-agent workflow handles ${automationWorkflowDefinitions.length} Leadsy event types.`
-      : "Add n8n as a separate Railway service to enable automation orchestration."
+      ? `${probe.detail} One backend-agent workflow handles ${automationWorkflowDefinitions.length} operational automation routes.`
+      : "Add n8n as a separate Railway service to enable follow-up scheduling, reminders, task creation, and escalation rules."
   };
 }
 
@@ -166,8 +166,8 @@ function getProviderConfigHubStatus(automation: AutomationStatus): ProviderConfi
       secretFieldCount: group.fields.filter((field) => field.secret).length,
       workflowCount,
       detail: automation.configured
-        ? `${group.label} automation config is managed in n8n. ${group.leadsyBoundary}`
-        : `Connect the n8n service before ${group.label} automation config can be managed there.`
+        ? `${group.label} config is available in n8n for operator reminders and escalations. ${group.leadsyBoundary}`
+        : `Connect the n8n service before ${group.label} notification config can be managed there.`
     };
   });
 }
@@ -182,7 +182,6 @@ export async function getInfrastructureStatus() {
   const sources = sourceHealth();
   const now = new Date().toISOString();
   const providerConfigs = getProviderConfigHubStatus(automation);
-  const n8nManagedProviders = automation.configured;
   const emailFallbackConfigured = Boolean(
     process.env.SMTP_HOST || process.env.EMAIL_SERVER || process.env.RESEND_API_KEY || process.env.POSTMARK_SERVER_TOKEN
   );
@@ -215,45 +214,39 @@ export async function getInfrastructureStatus() {
     {
       key: "meta",
       label: "Meta",
-      status: n8nManagedProviders || process.env.META_APP_ID || process.env.META_EMBEDDED_SIGNUP_URL ? "healthy" : "warning",
+      status: process.env.META_APP_ID || process.env.META_EMBEDDED_SIGNUP_URL ? "healthy" : "warning",
       errors: 0,
       lastSync: now,
-      detail: n8nManagedProviders
-        ? "Meta automation provider config is managed in n8n; Leadsy keeps OAuth and webhook intake."
-        : process.env.META_APP_ID || process.env.META_EMBEDDED_SIGNUP_URL
+      detail: process.env.META_APP_ID || process.env.META_EMBEDDED_SIGNUP_URL
           ? "Meta web configuration is present."
           : "Meta app configuration is pending."
     },
     {
       key: "whatsapp",
       label: "WhatsApp",
-      status: n8nManagedProviders || process.env.META_WHATSAPP_WEBHOOK_VERIFY_TOKEN || process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN ? "healthy" : "warning",
+      status: process.env.META_WHATSAPP_WEBHOOK_VERIFY_TOKEN || process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || process.env.TWILIO_ACCOUNT_SID ? "healthy" : "warning",
       errors: 0,
       lastSync: now,
-      detail: n8nManagedProviders
-        ? `${leadKnowledge.metaSourced ?? 0} Meta-sourced leads; ${leadKnowledge.conversations ?? 0} conversations tracked. WhatsApp automation config is managed in n8n.`
-        : `${leadKnowledge.metaSourced ?? 0} Meta-sourced leads; ${leadKnowledge.conversations ?? 0} conversations tracked.`
+      detail: `${leadKnowledge.metaSourced ?? 0} Meta-sourced leads; ${leadKnowledge.conversations ?? 0} conversations tracked. Twilio/WhatsApp transport config stays in Leadsy.`
     },
     {
       key: "openrouter",
       label: "OpenRouter",
-      status: n8nManagedProviders || sources.openrouter ? "healthy" : "warning",
+      status: sources.openrouter ? "healthy" : "warning",
       errors: 0,
       lastSync: now,
-      detail: n8nManagedProviders
-        ? "OpenRouter automation config is managed in n8n; Leadsy keeps saved outputs and cost reporting."
-        : sources.openrouter
+      detail: sources.openrouter
           ? "OpenRouter web fallback configuration is present."
           : "OpenRouter key is not configured; deterministic/free paths remain available."
     },
     {
       key: "email",
       label: "Email",
-      status: n8nManagedProviders || emailFallbackConfigured ? "healthy" : "warning",
+      status: automation.configured || emailFallbackConfigured ? "healthy" : "warning",
       errors: 0,
       lastSync: now,
-      detail: n8nManagedProviders
-        ? "Email automation config is managed in n8n for notifications and approved outreach."
+      detail: automation.configured
+        ? "Optional operator reminder and escalation notification config can be managed in n8n."
         : emailFallbackConfigured
           ? "Email fallback configuration is present on the web service."
           : "Email automation config should be added to n8n."
@@ -299,6 +292,6 @@ export async function getAiCostDashboard() {
       modelUsage: {},
       failures: 0
     })),
-    detail: "OpenRouter cost events are computed by the AI package today. Durable per-workflow cost persistence should be added before n8n production rollout."
+    detail: "OpenRouter cost events are computed by the AI package today. n8n does not own research, qualification, drafting, conversations, leads, or CRM decisions."
   };
 }

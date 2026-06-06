@@ -60,18 +60,9 @@ export type N8nWorkflowBlueprint = {
   };
 };
 
-const workflowActionPath: Record<AutomationWorkflowDefinition["key"], string> = {
-  "lead-added": "/api/automation/agent",
-  "lead-updated": "/api/automation/agent",
-  "research-requested": "/api/automation/agent",
-  "qualification-requested": "/api/automation/agent",
-  "task-generated": "/api/automation/agent",
-  "approval-requested": "/api/automation/agent",
-  "follow-up-due": "/api/automation/agent",
-  "meta-lead-received": "/api/automation/agent",
-  "whatsapp-message-received": "/api/automation/agent",
-  "worker-retry": "/api/automation/agent"
-};
+const workflowActionPath = Object.fromEntries(
+  automationWorkflowDefinitions.map((workflow) => [workflow.key, "/api/automation/agent"])
+) as Record<AutomationWorkflowDefinition["key"], string>;
 
 function nodeId(suffix: string) {
   return `leadsy-backend-agent-${suffix}`;
@@ -146,27 +137,6 @@ function webhookTrigger(): N8nNode {
       }
     },
     notes: "Leadsy frontend/API entrypoint. Send { workflowKey, tenantId, ownerId, idempotencyKey, payload } to the n8n backend agent.",
-    notesInFlow: true
-  };
-}
-
-function providerWebhookTrigger(): N8nNode {
-  return {
-    id: nodeId("provider-webhook-trigger"),
-    name: "Meta / WhatsApp Event Webhook",
-    type: "n8n-nodes-base.webhook",
-    typeVersion: 2,
-    position: [0, 220],
-    parameters: {
-      httpMethod: "POST",
-      path: "leadsy/provider-events",
-      responseMode: "onReceived",
-      options: {
-        responseCode: 202,
-        responseData: "firstEntryJson"
-      }
-    },
-    notes: "Optional internal relay for stored Meta/WhatsApp events. Public provider verification and raw intake still stay in Leadsy.",
     notesInFlow: true
   };
 }
@@ -322,7 +292,7 @@ function providerConfigStatusNode(): N8nNode {
         "}];"
       ].join("\n")
     },
-    notes: "Reads Meta, WhatsApp, Email, and OpenRouter provider configuration from the n8n service environment. It reports only configured/missing status to Leadsy, never secret values.",
+    notes: "Reads optional operator-notification configuration from the n8n service environment. It reports only configured/missing status to Leadsy, never secret values.",
     notesInFlow: true
   };
 }
@@ -330,7 +300,7 @@ function providerConfigStatusNode(): N8nNode {
 function backendLogicModulesNode(): N8nNode {
   return {
     id: nodeId("backend-logic-modules"),
-    name: "Leadsy Backend AI Agent",
+    name: "Leadsy Automation Rule Agent",
     type: "n8n-nodes-base.code",
     typeVersion: 2,
     position: [1460, 160],
@@ -372,7 +342,7 @@ function backendLogicModulesNode(): N8nNode {
         "}];"
       ].join("\n")
     },
-    notes: "Central backend-agent node. Mutable automation decisions, action plans, guardrails, approval requirements, and failure policy live here.",
+    notes: "Central automation-rule node. n8n owns only follow-up scheduling, reminder generation, task creation triggers, and escalation rules.",
     notesInFlow: true
   };
 }
@@ -438,7 +408,7 @@ function contextLoaderNode(): N8nNode {
         "}];"
       ].join("\n")
     },
-    notes: "Prepares the context request shape. Leadsy remains the source of truth; n8n receives only the event context Leadsy exposes.",
+    notes: "Prepares the operational context request shape. Leadsy remains the source of truth; n8n receives only task, reminder, and escalation context Leadsy exposes.",
     notesInFlow: true
   };
 }
@@ -569,8 +539,9 @@ function dispatchAutomationNode(): N8nNode {
 }
 
 export function n8nBackendAgentBlueprint(): N8nWorkflowBlueprint {
-  const followUpWorkflow = automationWorkflowDefinitions.find((workflow) => workflow.key === "follow-up-due")!;
-  const workerRetryWorkflow = automationWorkflowDefinitions.find((workflow) => workflow.key === "worker-retry")!;
+  const followUpWorkflow = automationWorkflowDefinitions.find((workflow) => workflow.key === "follow-up-scheduled")!;
+  const reminderWorkflow = automationWorkflowDefinitions.find((workflow) => workflow.key === "reminder-generated")!;
+  const escalationWorkflow = automationWorkflowDefinitions.find((workflow) => workflow.key === "escalation-triggered")!;
   const startedPath = "={{$env.LEADSY_API_BASE_URL + '/api/automation/executions'}}";
 
   const logStarted = httpNode(
@@ -608,47 +579,26 @@ export function n8nBackendAgentBlueprint(): N8nWorkflowBlueprint {
   const providerConfig = providerConfigStatusNode();
   const contextLoader = contextLoaderNode();
   const backendLogicModules = backendLogicModulesNode();
-  const openRouterTool = providerToolNode(
-    "openrouter-chat-model",
-    "OpenRouter Chat Model",
-    "openrouter",
-    [1460, 460],
-    "Model-routing tool node. Configure OPENROUTER_* env vars in n8n; Leadsy stores outputs and cost metadata."
-  );
-  const whatsappTool = providerToolNode(
-    "whatsapp-business-cloud",
-    "WhatsApp Business Cloud",
-    "whatsapp",
-    [1700, 460],
-    "WhatsApp provider tool node. It may send only after Leadsy approval state is present in the event payload."
-  );
-  const metaTool = providerToolNode(
-    "meta-graph-api",
-    "Meta Graph API",
-    "meta",
-    [1700, 620],
-    "Meta provider tool node. OAuth, webhooks, and raw Lead Ads intake stay in Leadsy."
-  );
   const emailTool = providerToolNode(
-    "email-send",
-    "Email Send",
+    "operator-email-notification",
+    "Operator Email Notification",
     "email",
-    [1700, 780],
-    "Email provider tool node for notifications and approved outreach. Configure SMTP, Resend, or Postmark in n8n env vars."
+    [1700, 460],
+    "Optional internal notification lane for reminders and escalations. It is not an outreach transport."
   );
-  const taskWriter = leadsyWriterNode(
-    "task-approval-writer",
-    "Task + Approval Writer",
-    "tasks-approvals",
+  const taskReminderWriter = leadsyWriterNode(
+    "task-reminder-writer",
+    "Task + Reminder Writer",
+    "tasks-reminders",
     [1940, 300],
-    "Writes task and approval commands back through the Leadsy gateway; no direct Postgres writes from n8n."
+    "Writes task creation, follow-up scheduling, and reminder commands through the Leadsy gateway; no direct Postgres writes from n8n."
   );
-  const researchWriter = leadsyWriterNode(
-    "research-qualification-writer",
-    "Research + Qualification Writer",
-    "research-qualification",
+  const escalationWriter = leadsyWriterNode(
+    "escalation-writer",
+    "Escalation Writer",
+    "escalations",
     [1940, 460],
-    "Writes research and qualification outputs through Leadsy APIs so Postgres remains the source of truth."
+    "Writes escalation commands through Leadsy APIs so managers review stale work inside Leadsy."
   );
   const auditWriter = leadsyWriterNode(
     "audit-event-writer",
@@ -657,13 +607,6 @@ export function n8nBackendAgentBlueprint(): N8nWorkflowBlueprint {
     [1940, 620],
     "Writes audit-event metadata through the Leadsy gateway."
   );
-  const retryHandler = providerToolNode(
-    "failure-retry-handler",
-    "Failure / Retry Handler",
-    "failure-retry",
-    [1940, 780],
-    "Central retry/escalation lane. Edit retry policy in n8n while Leadsy stores durable execution metadata."
-  );
   const dispatchAutomation = dispatchAutomationNode();
 
   return {
@@ -671,62 +614,52 @@ export function n8nBackendAgentBlueprint(): N8nWorkflowBlueprint {
     active: false,
     nodes: [
       webhookTrigger(),
-      providerWebhookTrigger(),
-      scheduleTrigger("Follow-up Due Schedule", "follow-up-schedule", 15, [0, 440]),
-      scheduleTrigger("Worker Retry Schedule", "worker-retry-schedule", 5, [0, 660]),
+      scheduleTrigger("Follow-Up Schedule", "follow-up-schedule", 15, [0, 300]),
+      scheduleTrigger("Reminder Schedule", "reminder-schedule", 10, [0, 500]),
+      scheduleTrigger("Escalation Schedule", "escalation-schedule", 5, [0, 700]),
       normalizeWebhook(),
-      normalizeSchedule("Normalize Follow-up Due", "normalize-follow-up-due", followUpWorkflow, [300, 440], 15),
-      normalizeSchedule("Normalize Worker Retry", "normalize-worker-retry", workerRetryWorkflow, [300, 660], 5),
+      normalizeSchedule("Normalize Follow-Up Schedule", "normalize-follow-up-schedule", followUpWorkflow, [300, 300], 15),
+      normalizeSchedule("Normalize Reminder Schedule", "normalize-reminder-schedule", reminderWorkflow, [300, 500], 10),
+      normalizeSchedule("Normalize Escalation Schedule", "normalize-escalation-schedule", escalationWorkflow, [300, 700], 5),
       logStarted,
       validateEvent,
       providerConfig,
       contextLoader,
       backendLogicModules,
-      openRouterTool,
-      whatsappTool,
-      metaTool,
       emailTool,
-      taskWriter,
-      researchWriter,
+      taskReminderWriter,
+      escalationWriter,
       auditWriter,
-      retryHandler,
       dispatchAutomation,
       logSucceeded
     ],
     connections: {
       "Leadsy Frontend Webhook": { main: [[connection("Edit Fields / Normalize Event")]] },
-      "Meta / WhatsApp Event Webhook": { main: [[connection("Edit Fields / Normalize Event")]] },
-      "Follow-up Due Schedule": { main: [[connection("Normalize Follow-up Due")]] },
-      "Worker Retry Schedule": { main: [[connection("Normalize Worker Retry")]] },
+      "Follow-Up Schedule": { main: [[connection("Normalize Follow-Up Schedule")]] },
+      "Reminder Schedule": { main: [[connection("Normalize Reminder Schedule")]] },
+      "Escalation Schedule": { main: [[connection("Normalize Escalation Schedule")]] },
       "Edit Fields / Normalize Event": { main: [[connection("Log Started"), connection("Validate Event")]] },
-      "Normalize Follow-up Due": { main: [[connection("Log Started"), connection("Validate Event")]] },
-      "Normalize Worker Retry": { main: [[connection("Log Started"), connection("Validate Event")]] },
+      "Normalize Follow-Up Schedule": { main: [[connection("Log Started"), connection("Validate Event")]] },
+      "Normalize Reminder Schedule": { main: [[connection("Log Started"), connection("Validate Event")]] },
+      "Normalize Escalation Schedule": { main: [[connection("Log Started"), connection("Validate Event")]] },
       "Validate Event": { main: [[connection("Provider Config Check")]] },
       "Provider Config Check": { main: [[connection("Leadsy Context Loader")]] },
-      "Leadsy Context Loader": { main: [[connection("Leadsy Backend AI Agent")]] },
-      "Leadsy Backend AI Agent": {
+      "Leadsy Context Loader": { main: [[connection("Leadsy Automation Rule Agent")]] },
+      "Leadsy Automation Rule Agent": {
         main: [
           [
-            connection("OpenRouter Chat Model"),
-            connection("WhatsApp Business Cloud"),
-            connection("Meta Graph API"),
-            connection("Email Send"),
-            connection("Task + Approval Writer"),
-            connection("Research + Qualification Writer"),
+            connection("Operator Email Notification"),
+            connection("Task + Reminder Writer"),
+            connection("Escalation Writer"),
             connection("Audit Event Writer"),
-            connection("Failure / Retry Handler"),
             connection("Leadsy Result Writer")
           ]
         ]
       },
-      "OpenRouter Chat Model": { main: [[connection("Leadsy Result Writer")]] },
-      "WhatsApp Business Cloud": { main: [[connection("Leadsy Result Writer")]] },
-      "Meta Graph API": { main: [[connection("Leadsy Result Writer")]] },
-      "Email Send": { main: [[connection("Leadsy Result Writer")]] },
-      "Task + Approval Writer": { main: [[connection("Leadsy Result Writer")]] },
-      "Research + Qualification Writer": { main: [[connection("Leadsy Result Writer")]] },
+      "Operator Email Notification": { main: [[connection("Leadsy Result Writer")]] },
+      "Task + Reminder Writer": { main: [[connection("Leadsy Result Writer")]] },
+      "Escalation Writer": { main: [[connection("Leadsy Result Writer")]] },
       "Audit Event Writer": { main: [[connection("Leadsy Result Writer")]] },
-      "Failure / Retry Handler": { main: [[connection("Leadsy Result Writer")]] },
       "Leadsy Result Writer": { main: [[connection("Log Succeeded")]] }
     },
     settings: {
@@ -743,8 +676,8 @@ export function n8nBackendAgentBlueprint(): N8nWorkflowBlueprint {
       providerConfigs: n8nProviderConfigGroups,
       routeProviderRequirements: n8nProviderConfigByWorkflowKey,
       backendLogicModules: n8nBackendLogicModules,
-      purpose: "Run every Leadsy operational automation through one configurable n8n backend-agent canvas.",
-      preserves: "n8n owns mutable automation logic and provider config; Leadsy remains the auth/RBAC boundary, API gateway, and Postgres source of truth.",
+      purpose: "Run only follow-up scheduling, reminder generation, task creation, and escalation rules through one configurable n8n backend-agent canvas.",
+      preserves: "n8n owns operational scheduling rules only; Leadsy remains the auth/RBAC boundary, API gateway, CRM, conversations, assignments, leads, and Postgres source of truth.",
       routes: automationWorkflowDefinitions.map((workflow) => ({
         key: workflow.key,
         name: workflow.name,

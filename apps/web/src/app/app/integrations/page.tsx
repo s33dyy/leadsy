@@ -41,9 +41,7 @@ export default async function IntegrationsPage() {
   const openRouter = infrastructure.services.find((service) => service.key === "openrouter");
   const n8n = infrastructure.services.find((service) => service.key === "n8n");
   const providerConfigs = new Map(infrastructure.providerConfigs.map((provider) => [provider.key, provider]));
-  const metaConfig = providerConfigs.get("meta");
   const whatsappConfig = providerConfigs.get("whatsapp");
-  const openRouterConfig = providerConfigs.get("openrouter");
   const emailConfig = providerConfigs.get("email");
   const n8nHref = infrastructure.automation.dashboardUrl || "/app/settings";
   const emailConfigured = configured(process.env.SMTP_HOST, process.env.EMAIL_SERVER, process.env.RESEND_API_KEY, process.env.POSTMARK_SERVER_TOKEN);
@@ -51,13 +49,10 @@ export default async function IntegrationsPage() {
   const items: IntegrationItem[] = [
     {
       name: "Meta - Instagram & Messenger",
-      desc: "OAuth and webhook intake stay in Leadsy; automation provider config is managed in n8n.",
+      desc: "OAuth, webhook intake, lead routing, and conversation storage stay in Leadsy.",
       status: metaConnections.length ? "Connected" : "Needs config",
-      scope: metaConfig?.managedByN8n
-        ? "n8n provider config hub"
-        : latestMeta?.facebookPageId || latestMeta?.instagramBusinessAccountId || "Connect Meta, then add automation config in n8n",
-      href: "/app/connect",
-      externalHref: metaConfig?.managedByN8n ? n8nHref : undefined
+      scope: latestMeta?.facebookPageId || latestMeta?.instagramBusinessAccountId || "Connect Meta in Leadsy",
+      href: "/app/connect"
     },
     {
       name: "Twilio WhatsApp",
@@ -68,11 +63,10 @@ export default async function IntegrationsPage() {
     },
     {
       name: "OpenRouter",
-      desc: "Model routing for automation research, qualification, drafting, and summaries is configured in n8n.",
-      status: openRouterConfig?.managedByN8n ? "Managed in n8n" : openRouter?.status === "healthy" ? "Connected" : "Needs config",
-      scope: openRouterConfig?.managedByN8n ? `${openRouterConfig.workflowCount} workflows use n8n model config` : openRouter?.detail,
-      href: "/app/settings",
-      externalHref: openRouterConfig?.managedByN8n ? n8nHref : undefined
+      desc: "Model routing remains in Leadsy/Railway app configuration. n8n does not own research, qualification, drafting, or CRM decisions.",
+      status: openRouter?.status === "healthy" ? "Connected" : "Needs config",
+      scope: openRouter?.detail,
+      href: "/app/settings"
     },
     {
       name: "Browser Extension",
@@ -83,14 +77,14 @@ export default async function IntegrationsPage() {
     },
     {
       name: "n8n Automation",
-      desc: "One backend-agent workflow for scheduled jobs, approvals, research, qualification, and retries.",
+      desc: "One backend-agent workflow only for follow-up scheduling, reminder generation, task creation, and escalation rules.",
       status: n8n?.status === "healthy" ? "Connected" : n8n?.status === "critical" ? "Warning" : "Needs config",
       scope: `${infrastructure.automation.workflowCount} workflow - ${infrastructure.automation.detail}`,
       href: "/app/settings"
     },
     {
       name: "Email",
-      desc: "Outbound notifications and approved outreach email config are managed in n8n.",
+      desc: "Optional operator reminder and escalation notifications can be configured in n8n.",
       status: emailConfig?.managedByN8n ? "Managed in n8n" : emailConfigured ? "Connected" : "Available",
       scope: emailConfig?.managedByN8n ? `${emailConfig.workflowCount} workflows use n8n email config` : emailConfigured ? "Web fallback configured" : "Add email provider config in n8n",
       href: "/app/settings",

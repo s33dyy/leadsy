@@ -118,19 +118,19 @@ const sectionSummaries: Record<SettingsSection, {
     primaryLabel: "Open cost dashboard",
     rows: [
       { label: "Provider", value: "OpenRouter" },
-      { label: "Secrets", value: "Configured in Railway and n8n environment variables" },
+      { label: "Secrets", value: "Configured in Railway environment variables" },
       { label: "Cost tracking", value: "Recorded through Leadsy automation metadata" }
     ]
   },
   workers: {
     eyebrow: "Settings / Workers",
     title: "Workers",
-    detail: "AI operator task queues, approval routing, and retry behavior.",
+    detail: "Operator task queues, approval routing, and retry behavior.",
     primaryHref: "/app/worker",
     primaryLabel: "Open workers",
     rows: [
       { label: "Queue ownership", value: "Leadsy stores task state" },
-      { label: "Execution", value: "n8n backend agent coordinates automation" },
+      { label: "Execution", value: "n8n schedules reminders, task creation, and escalations only" },
       { label: "Approval", value: "Operators approve before send actions" }
     ]
   },
@@ -140,7 +140,7 @@ const sectionSummaries: Record<SettingsSection, {
     detail: "Operator alerts for approvals, failed executions, and follow-up reminders.",
     rows: [
       { label: "Approvals", value: "Visible in the top bar and approval center" },
-      { label: "Failures", value: "Routed through backend-agent failure handling" },
+      { label: "Failures", value: "Escalation rules can create manager-visible tasks" },
       { label: "Follow-ups", value: "Driven by n8n schedules, stored in Leadsy" }
     ]
   },
@@ -153,7 +153,7 @@ const sectionSummaries: Record<SettingsSection, {
     rows: [
       { label: "OAuth", value: "Leadsy-owned" },
       { label: "Webhook intake", value: "Leadsy-owned" },
-      { label: "Provider actions", value: "n8n backend agent" }
+      { label: "Provider actions", value: "Leadsy-owned" }
     ]
   },
   whatsapp: {
@@ -183,7 +183,7 @@ const sectionSummaries: Record<SettingsSection, {
   infrastructure: {
     eyebrow: "Settings / Infrastructure",
     title: "Automation",
-    detail: "n8n is the orchestration layer. Leadsy keeps auth, tenant isolation, APIs, and business state in Next.js and Postgres.",
+    detail: "n8n is limited to follow-up scheduling, reminder generation, task creation, and escalation rules. Leadsy keeps auth, CRM, conversations, assignments, leads, APIs, and Postgres.",
     rows: []
   }
 };
@@ -428,7 +428,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
               <span>{automation.detail}</span>
             </div>
             <p className="mt-1 text-[11.5px] text-muted-foreground">
-              Edit the backend agent in n8n, keep payload storage and decisions in Leadsy, and use the Next.js APIs as the only state boundary.
+              Edit operational schedules and escalation rules in n8n; keep payload storage, CRM decisions, conversations, assignments, and lead state in Leadsy.
             </p>
           </section>
           </>

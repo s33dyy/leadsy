@@ -68,6 +68,7 @@ async function main() {
     JSON.stringify(
       {
         assignmentRules: [{ id: "rule_legacy" }],
+        assignmentHistory: [{ id: "assignment_history_legacy" }],
         followUpTasks: [{ id: "task_legacy" }],
         qualificationProfiles: [{ id: "profile_keep" }]
       },
@@ -98,6 +99,7 @@ async function main() {
   assert.equal(result.removed.conversations, 1);
   assert.equal(result.removed.messages, 1);
   assert.equal(result.removed.extensionTasks, 1);
+  assert.equal(result.removed.crmAssignmentHistory, 1);
   assert.equal(result.removed.crmFollowUpTasks, 1);
 
   const leadKnowledge = await readJson(join(dataDir, "lead-knowledge.json"));
@@ -123,6 +125,7 @@ async function main() {
 
   const crm = await readJson(join(dataDir, "lead-crm.json"));
   assert.deepEqual(crm.assignmentRules, []);
+  assert.deepEqual(crm.assignmentHistory, []);
   assert.deepEqual(crm.followUpTasks, []);
   assert.deepEqual(crm.qualificationProfiles, [{ id: "profile_keep" }]);
 

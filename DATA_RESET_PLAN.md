@@ -20,7 +20,7 @@ The `backups/` directory is ignored by git so local customer/session data is not
 | `data/app/lead-knowledge.json` | 30 leads, 37 conversations, 48 messages | SAFE TO DELETE AFTER BACKUP | Clear lead records, conversations, messages, and historical qualification fields. |
 | `data/app/extension.json` | 5 tokens, 39 tasks, 45 task events | MIXED | Preserve tokens. Clear captured conversations, messages, events, approvals, tasks, and task events. |
 | `data/app/lead-magnet.json` | 2 briefs, 39 brief history records, 92 generated leads, 84 runs, 2 drafts, 168 agent runs, 6 search sessions | MIXED | Preserve briefs, brief history, and owner search memory. Clear generated leads, runs, drafts, agent runs, and search sessions. |
-| `data/app/lead-crm.json` | 0 assignment rules, 0 follow-up tasks, 0 qualification profiles; file currently absent locally | MIXED | Preserve qualification profiles if present. Clear assignment rules and follow-up tasks. |
+| `data/app/lead-crm.json` | 0 assignment rules, 0 assignment history records, 0 follow-up tasks, 0 qualification profiles; file currently absent locally | MIXED | Preserve qualification profiles if present. Clear assignment rules, assignment history, and follow-up tasks. |
 | `data/app/agency-clients.json` | 1 record | MUST PRESERVE | Back up only. Keep agency/client configuration. |
 | `data/postgres/` | Local Postgres data directory | MUST PRESERVE | Not modified by the JSON CRM reset. Use a separate `pg_dump`/restore plan before any database reset. |
 | `data/redis/` | Local Redis data directory | MUST PRESERVE | Not modified by the JSON CRM reset. Use a separate Redis dump plan before any Redis reset. |
@@ -32,7 +32,7 @@ SAFE TO DELETE AFTER BACKUP:
 
 - Legacy lead knowledge records in `data/app/lead-knowledge.json`.
 - Generated lead magnet leads in `data/app/lead-magnet.json`.
-- Stale assignment rules and follow-up tasks in `data/app/lead-crm.json`.
+- Stale assignment rules, assignment history, and follow-up tasks in `data/app/lead-crm.json`.
 
 MUST PRESERVE:
 
@@ -80,6 +80,7 @@ SAFE TO DELETE AFTER BACKUP:
 
 - Extension tasks with approval states such as `draft`, `awaiting_approval`, or `awaiting_send_approval`.
 - Extension task event history.
+- CRM assignment history.
 - CRM follow-up tasks.
 
 MUST PRESERVE:
@@ -107,7 +108,7 @@ The reset command creates a fresh backup first, then resets only after explicit 
 CONFIRM_RESET=RESET_TWILIO_CRM npm run data:reset:twilio-crm
 ```
 
-The command clears CRM lead/conversation/message/task history and preserves authentication, extension tokens, lead magnet briefs, owner search memory, qualification profile configuration, and agency/client configuration.
+The command clears CRM lead/conversation/message/task/assignment history and preserves authentication, extension tokens, lead magnet briefs, owner search memory, qualification profile configuration, and agency/client configuration.
 
 ## Validation
 

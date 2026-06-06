@@ -8,16 +8,24 @@ import {
 } from "@leadsy/workflows";
 
 const requiredWorkflowKeys = [
-  "lead-added",
-  "lead-updated",
+  "follow-up-scheduled",
+  "reminder-generated",
+  "task-created",
+  "escalation-triggered"
+];
+
+const forbiddenN8nTerms = [
   "research-requested",
   "qualification-requested",
-  "task-generated",
-  "approval-requested",
-  "follow-up-due",
+  "lead-added",
   "meta-lead-received",
   "whatsapp-message-received",
-  "worker-retry"
+  "OpenRouter Chat Model",
+  "WhatsApp Business Cloud",
+  "Meta Graph API",
+  "Research + Qualification Writer",
+  "run-qualification",
+  "run-research"
 ];
 
 function nodeNames(workflow: N8nWorkflowBlueprint) {
@@ -28,25 +36,22 @@ function assertRequiredNodes(workflow: N8nWorkflowBlueprint) {
   const names = nodeNames(workflow);
   for (const name of [
     "Leadsy Frontend Webhook",
-    "Meta / WhatsApp Event Webhook",
-    "Follow-up Due Schedule",
-    "Worker Retry Schedule",
+    "Follow-Up Schedule",
+    "Reminder Schedule",
+    "Escalation Schedule",
     "Edit Fields / Normalize Event",
-    "Normalize Follow-up Due",
-    "Normalize Worker Retry",
+    "Normalize Follow-Up Schedule",
+    "Normalize Reminder Schedule",
+    "Normalize Escalation Schedule",
     "Log Started",
     "Validate Event",
     "Provider Config Check",
     "Leadsy Context Loader",
-    "Leadsy Backend AI Agent",
-    "OpenRouter Chat Model",
-    "WhatsApp Business Cloud",
-    "Meta Graph API",
-    "Email Send",
-    "Task + Approval Writer",
-    "Research + Qualification Writer",
+    "Leadsy Automation Rule Agent",
+    "Operator Email Notification",
+    "Task + Reminder Writer",
+    "Escalation Writer",
     "Audit Event Writer",
-    "Failure / Retry Handler",
     "Leadsy Result Writer",
     "Log Succeeded"
   ]) {
@@ -72,7 +77,7 @@ function assertLeadsyBoundaries(workflow: N8nWorkflowBlueprint) {
   );
   assert(
     serialized.includes("$env.LEADSY_N8N_WEBHOOK_SECRET"),
-    `${workflow.name} should use a shared env-backed header instead of per-node n8n credential setup`
+    `${workflow.name} should use a shared env-backed header instead of per-node n8n credentials`
   );
   assert(
     !serialized.includes("genericCredentialType"),
@@ -80,42 +85,45 @@ function assertLeadsyBoundaries(workflow: N8nWorkflowBlueprint) {
   );
   assert(
     serialized.includes("X-Leadsy-Config-Source"),
-    `${workflow.name} should identify n8n as the automation provider config source`
+    `${workflow.name} should identify n8n as the automation config source`
   );
   assert(
     serialized.includes("providerConfigMissing"),
-    `${workflow.name} should report missing n8n provider config to Leadsy`
+    `${workflow.name} should report missing optional n8n provider config to Leadsy`
   );
   assert(
     serialized.includes("field.secret ? undefined"),
     `${workflow.name} should redact secret provider values before dispatching to Leadsy`
   );
   assert(
-    workflow.meta.preserves.includes("Leadsy") || workflow.meta.preserves.includes("Postgres"),
-    `${workflow.name} should document the Leadsy-owned boundary it preserves`
+    workflow.meta.preserves.includes("CRM") && workflow.meta.preserves.includes("conversations") && workflow.meta.preserves.includes("assignments") && workflow.meta.preserves.includes("leads"),
+    `${workflow.name} should document that Leadsy keeps CRM, conversations, assignments, and leads`
   );
+  for (const forbidden of forbiddenN8nTerms) {
+    assert(!serialized.includes(forbidden), `n8n workflow must not own or route ${forbidden}`);
+  }
 }
 
 function assertProviderConfigHub(workflow: N8nWorkflowBlueprint) {
   assert.deepEqual(
     workflow.meta.providerConfigs.map((provider) => provider.key),
-    ["meta", "whatsapp", "email", "openrouter"],
-    `${workflow.name} should make Meta, WhatsApp, Email, and OpenRouter n8n-owned provider groups explicit`
+    ["email"],
+    `${workflow.name} should keep only optional operator notification config in n8n`
   );
   for (const provider of workflow.meta.providerConfigs) {
     assert.equal(provider.owner, "n8n", `${provider.label} config should be owned by n8n`);
-    assert(provider.leadsyBoundary.includes("Leadsy"), `${provider.label} should document the Leadsy boundary`);
-    assert(provider.fields.length > 0, `${provider.label} should list n8n configuration fields`);
+    assert(provider.leadsyBoundary.includes("Leadsy keeps auth"), `${provider.label} should document the Leadsy boundary`);
+    assert(provider.fields.length > 0, `${provider.label} should list optional n8n configuration fields`);
   }
   assert.deepEqual(
-    workflow.meta.routeProviderRequirements["whatsapp-message-received"],
-    ["whatsapp", "openrouter"],
-    "WhatsApp message automation should require WhatsApp and OpenRouter config in n8n"
-  );
-  assert.deepEqual(
-    workflow.meta.routeProviderRequirements["meta-lead-received"],
-    ["meta", "openrouter"],
-    "Meta lead automation should require Meta and OpenRouter config in n8n"
+    Object.fromEntries(Object.entries(workflow.meta.routeProviderRequirements).map(([key, value]) => [key, value])),
+    {
+      "follow-up-scheduled": [],
+      "reminder-generated": [],
+      "task-created": [],
+      "escalation-triggered": []
+    },
+    "n8n routes should not require Meta, WhatsApp, OpenRouter, or CRM provider config"
   );
 }
 
@@ -123,7 +131,7 @@ function assertBackendLogicModules(workflow: N8nWorkflowBlueprint) {
   assert.deepEqual(
     workflow.meta.backendLogicModules.map((module) => module.key),
     requiredWorkflowKeys,
-    `${workflow.name} should carry n8n-owned backend logic modules for every backend-agent event`
+    `${workflow.name} should carry n8n-owned modules only for the allowed operational automations`
   );
   for (const module of workflow.meta.backendLogicModules) {
     assert.equal(module.owner, "n8n", `${module.label} should be owned by n8n`);
@@ -133,24 +141,24 @@ function assertBackendLogicModules(workflow: N8nWorkflowBlueprint) {
     assert(module.actionPlan.length > 0, `${module.label} should define planned backend actions`);
     assert(module.leadsyOwns.length > 0, `${module.label} should preserve a Leadsy boundary`);
     assert(module.n8nOwns.length > 0, `${module.label} should define mutable logic owned by n8n`);
-    assert(module.guardrails.length > 0, `${module.label} should include safety guardrails`);
+    assert(module.guardrails.some((guardrail) => /Do not|only/i.test(guardrail)), `${module.label} should include explicit boundary guardrails`);
   }
   const serialized = JSON.stringify(workflow);
   assert(
     serialized.includes("n8nLogicPlan"),
-    `${workflow.name} should dispatch the n8n-generated backend logic plan to Leadsy`
+    `${workflow.name} should dispatch the n8n-generated operational plan to Leadsy`
   );
   assert(
-    serialized.includes("approvalRequired"),
-    `${workflow.name} should encode approval requirements inside n8n logic modules`
+    serialized.includes("create-task") && serialized.includes("generate-reminder") && serialized.includes("create-escalation"),
+    `${workflow.name} should encode task, reminder, and escalation actions`
   );
 }
 
 function assertRetryPolicy(workflow: N8nWorkflowBlueprint) {
   const retryingNodes = workflow.nodes.filter((node) => node.retryOnFail);
   assert(
-    retryingNodes.length >= 4,
-    `${workflow.name} should retry Leadsy gateway handoffs and external provider handoffs`
+    retryingNodes.length >= 3,
+    `${workflow.name} should retry Leadsy gateway handoffs and optional notification handoffs`
   );
   for (const node of retryingNodes) {
     assert.equal(node.maxTries, 3, `${workflow.name} ${node.name} should retry three times`);
@@ -160,40 +168,22 @@ function assertRetryPolicy(workflow: N8nWorkflowBlueprint) {
 
 function assertBackendAgentCanvas(workflow: N8nWorkflowBlueprint) {
   assert(
-    workflow.nodes.length <= 24,
+    workflow.nodes.length <= 20,
     `${workflow.name} should stay readable on one n8n backend-agent canvas`
   );
-  const agentNodes = workflow.nodes.filter((node) => node.name === "Leadsy Backend AI Agent");
-  assert.equal(agentNodes.length, 1, `${workflow.name} should have exactly one central backend-agent node`);
+  const agentNodes = workflow.nodes.filter((node) => node.name === "Leadsy Automation Rule Agent");
+  assert.equal(agentNodes.length, 1, `${workflow.name} should have exactly one central automation-rule node`);
   const writerNodes = workflow.nodes.filter((node) => node.name === "Leadsy Result Writer");
   assert.equal(writerNodes.length, 1, `${workflow.name} should have one Leadsy state-boundary writer`);
-  const providerToolNodes = [
-    "OpenRouter Chat Model",
-    "WhatsApp Business Cloud",
-    "Meta Graph API",
-    "Email Send",
-    "Failure / Retry Handler"
-  ];
-  for (const name of providerToolNodes) {
-    const node = workflow.nodes.find((item) => item.name === name);
-    assert(node, `${workflow.name} should expose ${name} as a visible n8n tool/provider node`);
-    assert(
-      node.position[1] >= 240,
-      `${workflow.name} should place ${name} in the lower provider/tool lane like the reference canvas`
-    );
-  }
-  const agentConnections = workflow.connections["Leadsy Backend AI Agent"]?.main?.flat().map((target) => target.node) ?? [];
+  const agentConnections = workflow.connections["Leadsy Automation Rule Agent"]?.main?.flat().map((target) => target.node) ?? [];
   for (const target of [
-    "OpenRouter Chat Model",
-    "WhatsApp Business Cloud",
-    "Meta Graph API",
-    "Email Send",
-    "Task + Approval Writer",
-    "Research + Qualification Writer",
+    "Operator Email Notification",
+    "Task + Reminder Writer",
+    "Escalation Writer",
     "Audit Event Writer",
     "Leadsy Result Writer"
   ]) {
-    assert(agentConnections.includes(target), `${workflow.name} should visibly connect the backend agent to ${target}`);
+    assert(agentConnections.includes(target), `${workflow.name} should visibly connect the automation rule agent to ${target}`);
   }
 }
 
@@ -202,7 +192,7 @@ async function main() {
   assert.deepEqual(
     automationWorkflowDefinitions.map((workflow) => workflow.key),
     requiredWorkflowKeys,
-    "automation catalog should cover the requested workflow set in order"
+    "automation catalog should cover only the allowed n8n workflow set in order"
   );
 
   assert.equal(n8nWorkflowBlueprints.length, 1, "n8n should export one easy-to-configure backend-agent workflow");
@@ -215,7 +205,7 @@ async function main() {
   assert.deepEqual(
     workflow.meta.routes.map((route) => route.key),
     requiredWorkflowKeys,
-    "backend-agent metadata should list every supported route"
+    "backend-agent metadata should list every supported operational route"
   );
   assertRequiredNodes(workflow);
   assertBackendAgentCanvas(workflow);
@@ -242,13 +232,13 @@ async function main() {
   );
   assert.deepEqual(
     index[0].providerConfigs.map((entry: { key: string }) => entry.key),
-    ["meta", "whatsapp", "email", "openrouter"],
-    "workflow export index should advertise the n8n-owned provider config groups"
+    ["email"],
+    "workflow export index should advertise only optional operator notification config"
   );
   assert.deepEqual(
     index[0].backendLogicModules.map((entry: { key: string }) => entry.key),
     requiredWorkflowKeys,
-    "workflow export index should advertise every n8n-owned backend logic module"
+    "workflow export index should advertise every allowed n8n backend logic module"
   );
 }
 

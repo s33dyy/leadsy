@@ -1,14 +1,8 @@
 export type AutomationWorkflowKey =
-  | "lead-added"
-  | "lead-updated"
-  | "research-requested"
-  | "qualification-requested"
-  | "task-generated"
-  | "approval-requested"
-  | "follow-up-due"
-  | "meta-lead-received"
-  | "whatsapp-message-received"
-  | "worker-retry";
+  | "follow-up-scheduled"
+  | "reminder-generated"
+  | "task-created"
+  | "escalation-triggered";
 
 export type AutomationWorkflowDefinition = {
   key: AutomationWorkflowKey;
@@ -24,114 +18,48 @@ export type AutomationWorkflowDefinition = {
 
 export const automationWorkflowDefinitions: AutomationWorkflowDefinition[] = [
   {
-    key: "lead-added",
-    name: "Lead Added",
-    trigger: "Leadsy stores a new lead from manual intake, Meta, WhatsApp, or extension sync.",
-    purpose: "Start qualification, summary, and task orchestration after Leadsy owns the lead record.",
-    inputs: ["tenantId", "ownerId", "leadId", "source", "idempotencyKey"],
-    outputs: ["qualification request", "optional task suggestion", "execution metadata"],
-    dependencies: ["Leadsy lead read API", "Leadsy qualification API", "Leadsy task API"],
-    retryPolicy: "Retry transient Leadsy API failures three times; skip duplicate idempotency keys.",
-    preserves: "Lead CRUD and lead storage stay in Leadsy."
+    key: "follow-up-scheduled",
+    name: "Follow-Up Scheduling",
+    trigger: "n8n schedule or Leadsy event asks for due follow-up evaluation.",
+    purpose: "Find due follow-up windows and ask Leadsy to create or refresh accountable follow-up tasks.",
+    inputs: ["tenantId", "ownerId", "leadId", "followUpTaskId", "dueWindowMinutes", "idempotencyKey"],
+    outputs: ["follow-up scheduling command", "execution metadata"],
+    dependencies: ["Leadsy automation gateway", "Leadsy task API"],
+    retryPolicy: "Retry transient Leadsy API failures three times; no-op completed or cancelled follow-ups.",
+    preserves: "Leadsy keeps leads, conversations, assignments, CRM state, and task records."
   },
   {
-    key: "lead-updated",
-    name: "Lead Updated",
-    trigger: "Leadsy updates contact, status, task, knowledge, or communication fields.",
-    purpose: "Refresh only the intelligence artifacts affected by the changed fields.",
-    inputs: ["tenantId", "ownerId", "leadId", "changedFields", "idempotencyKey"],
-    outputs: ["refresh decisions", "downstream workflow links", "execution metadata"],
-    dependencies: ["Leadsy lead read API", "Leadsy automation execution API"],
-    retryPolicy: "Retry conflict/transient failures; no-op when no actionable fields changed.",
-    preserves: "Lead updates and tenant checks stay in Leadsy APIs."
+    key: "reminder-generated",
+    name: "Reminder Generation",
+    trigger: "n8n schedule finds a task, follow-up, approval, or escalation approaching its reminder window.",
+    purpose: "Generate operator reminders without changing lead, conversation, assignment, or qualification state.",
+    inputs: ["tenantId", "ownerId", "taskId", "leadId", "reminderAt", "idempotencyKey"],
+    outputs: ["reminder command", "execution metadata"],
+    dependencies: ["Leadsy automation gateway", "Leadsy task API"],
+    retryPolicy: "Retry transient Leadsy API failures; skip duplicate reminder idempotency keys.",
+    preserves: "Leadsy stores reminder/task state and remains the operator accountability system."
   },
   {
-    key: "research-requested",
-    name: "Research Requested",
-    trigger: "Operator or schedule asks Leadsy to research a lead or research request.",
-    purpose: "Coordinate research while keeping evidence, spend, and saved records inside Leadsy.",
-    inputs: ["tenantId", "ownerId", "leadId", "researchRequestId", "sourceTypes", "budgetCap", "idempotencyKey"],
-    outputs: ["research summary", "evidence URLs", "cost metadata", "approval items"],
-    dependencies: ["n8n OpenRouter provider config", "Leadsy research persistence endpoint", "Leadsy audit endpoint"],
-    retryPolicy: "Retry transient provider failures; stop when spend cap or validation blocks execution.",
-    preserves: "OpenRouter automation config lives in n8n while saved outputs and cost state stay in Leadsy."
+    key: "task-created",
+    name: "Task Creation",
+    trigger: "A Leadsy-approved workflow or schedule requests a CRM task for a human owner.",
+    purpose: "Create accountable human tasks through Leadsy APIs for calls, WhatsApp follow-ups, meetings, site visits, reviews, or custom work.",
+    inputs: ["tenantId", "ownerId", "leadId", "taskType", "assigneeId", "dueAt", "idempotencyKey"],
+    outputs: ["task creation command", "execution metadata"],
+    dependencies: ["Leadsy automation gateway", "Leadsy task API"],
+    retryPolicy: "Retry transient Leadsy API failures; never complete, reassign, or message a lead from n8n.",
+    preserves: "Leadsy owns task records, owners, statuses, notes, and lead links."
   },
   {
-    key: "qualification-requested",
-    name: "Qualification Requested",
-    trigger: "Lead added, lead updated, WhatsApp message received, or operator request.",
-    purpose: "Score fit/urgency and decide whether task or approval routing is needed.",
-    inputs: ["tenantId", "ownerId", "leadId", "conversationId", "qualificationProfileId", "idempotencyKey"],
-    outputs: ["qualification stage", "scores", "recommended action", "optional task/approval trigger"],
-    dependencies: ["n8n OpenRouter provider config", "Leadsy qualification profile API"],
-    retryPolicy: "Retry transient AI/API failures; route missing profile to setup or approval.",
-    preserves: "Qualification result storage stays in Leadsy."
-  },
-  {
-    key: "task-generated",
-    name: "Task Generated",
-    trigger: "Leadsy creates an extension, CRM, or follow-up task.",
-    purpose: "Route approvals, due reminders, and retry schedules around Leadsy task state.",
-    inputs: ["tenantId", "ownerId", "taskId", "leadId", "taskType", "requiresApproval", "idempotencyKey"],
-    outputs: ["approval item", "schedule record", "execution metadata"],
-    dependencies: ["Leadsy task APIs"],
-    retryPolicy: "No-op deleted/cancelled tasks; fail without retry on tenant mismatch.",
-    preserves: "Task CRUD and status transitions stay in Leadsy."
-  },
-  {
-    key: "approval-requested",
-    name: "Approval Requested",
-    trigger: "Research, task, note, draft, outreach, or qualification output requires human review.",
-    purpose: "Create a central approval item and pause downstream automation until reviewed.",
-    inputs: ["tenantId", "ownerId", "approvalType", "resourceId", "leadId", "summary", "risk", "idempotencyKey"],
-    outputs: ["approval item", "approval status", "downstream continuation link"],
-    dependencies: ["Leadsy approval/task APIs", "Leadsy notification adapter"],
-    retryPolicy: "Escalate when no owner exists; mark stale on review timeout.",
-    preserves: "Leadsy remains the human approval gate before outbound sends."
-  },
-  {
-    key: "follow-up-due",
-    name: "Follow-up Due",
-    trigger: "n8n scheduled due check or task due timestamp.",
-    purpose: "Surface due follow-ups and create approved draft paths when useful.",
-    inputs: ["tenantId", "ownerId", "followUpTaskId", "leadId", "dueAt", "idempotencyKey"],
-    outputs: ["reminder item", "optional draft metadata", "execution metadata"],
-    dependencies: ["n8n WhatsApp/email/OpenRouter provider config", "Leadsy CRM follow-up API"],
-    retryPolicy: "No-op completed/excluded leads; create manual review task on draft failure.",
-    preserves: "Follow-up task state stays in Leadsy."
-  },
-  {
-    key: "meta-lead-received",
-    name: "Meta Lead Received",
-    trigger: "Existing Leadsy Meta route stores a Meta-derived lead or communication.",
-    purpose: "Run post-storage qualification and approval routing for Meta-originated leads.",
-    inputs: ["tenantId", "ownerId", "leadId", "metaObject", "assetIds", "campaignId", "idempotencyKey"],
-    outputs: ["qualification execution", "optional task or approval item"],
-    dependencies: ["Leadsy Meta webhook routes", "Leadsy qualification/task APIs"],
-    retryPolicy: "Escalate ambiguous asset routing; webhook verification failures never reach n8n.",
-    preserves: "Public Meta webhooks continue to terminate at Leadsy."
-  },
-  {
-    key: "whatsapp-message-received",
-    name: "WhatsApp Message Received",
-    trigger: "Existing Leadsy WhatsApp/Meta route stores an inbound WhatsApp message.",
-    purpose: "Generate reply suggestions, refresh qualification, and route approvals.",
-    inputs: ["tenantId", "ownerId", "leadId", "conversationId", "messageId", "direction", "idempotencyKey"],
-    outputs: ["suggested reply approval", "updated summary", "qualification refresh", "cost metadata"],
-    dependencies: ["Leadsy WhatsApp webhook handling", "Leadsy reply/AI endpoints"],
-    retryPolicy: "Skip duplicates and excluded leads; pause on approval-required states.",
-    preserves: "WhatsApp message handling and storage stay in Leadsy."
-  },
-  {
-    key: "worker-retry",
-    name: "Worker Retry",
-    trigger: "Worker task failed, blocked, postponed, or reached retry due time.",
-    purpose: "Retry only safe worker actions and escalate exhausted/non-retryable failures.",
-    inputs: ["tenantId", "ownerId", "taskId", "leadId", "failureReason", "retryCount", "retryAfter", "idempotencyKey"],
-    outputs: ["rescheduled task", "escalation item", "execution record"],
-    dependencies: ["Leadsy extension task APIs"],
-    retryPolicy: "Retry three times for transient failures; escalate non-retryable or exhausted tasks.",
-    preserves: "Leadsy keeps worker task state while the extension remains the capture/execution layer."
+    key: "escalation-triggered",
+    name: "Escalation Rules",
+    trigger: "n8n schedule or Leadsy event detects a stale task, missed reply SLA, failed reminder, or unresolved approval.",
+    purpose: "Apply escalation timing rules and ask Leadsy to create a manager-visible escalation task or reminder.",
+    inputs: ["tenantId", "ownerId", "leadId", "taskId", "escalationReason", "ageMinutes", "idempotencyKey"],
+    outputs: ["escalation command", "execution metadata"],
+    dependencies: ["Leadsy automation gateway", "Leadsy task API"],
+    retryPolicy: "Retry transient Leadsy API failures; keep escalation state in Leadsy.",
+    preserves: "Leadsy keeps CRM ownership, assignments, approvals, tasks, and audit history."
   }
 ];
 

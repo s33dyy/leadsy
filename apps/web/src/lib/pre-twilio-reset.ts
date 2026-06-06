@@ -40,9 +40,9 @@ export const preTwilioResetManifest: ResetStoreManifestItem[] = [
   },
   {
     file: "lead-crm.json",
-    store: "CRM assignment rules, follow-up tasks, qualification profiles",
+    store: "CRM assignment rules, assignment history, follow-up tasks, qualification profiles",
     classification: "MIXED",
-    resetBehavior: "Preserve qualification profiles; clear assignment rules and follow-up tasks."
+    resetBehavior: "Preserve qualification profiles; clear assignment rules, assignment history, and follow-up tasks."
   },
   {
     file: "agency-clients.json",
@@ -59,7 +59,7 @@ export type ResetStoreSummary = {
   leadKnowledge: { leads: number; conversations: number; messages: number };
   extension: { tokens: number; conversations: number; messages: number; events: number; tasks: number; taskEvents: number };
   leadMagnet: { briefs: number; briefHistory: number; leads: number; runs: number; drafts: number; agentRuns: number; searchSessions: number; ownerSearchMemory: number };
-  crm: { assignmentRules: number; followUpTasks: number; qualificationProfiles: number };
+  crm: { assignmentRules: number; assignmentHistory: number; followUpTasks: number; qualificationProfiles: number };
   agencyClients: { records: number };
 };
 
@@ -85,6 +85,7 @@ export type PreTwilioResetResult = {
     leadMagnetAgentRuns: number;
     leadMagnetSearchSessions: number;
     crmAssignmentRules: number;
+    crmAssignmentHistory: number;
     crmFollowUpTasks: number;
   };
   preserved: {
@@ -171,6 +172,7 @@ export async function summarizePreTwilioResetStores(input: { dataDir?: string } 
     },
     crm: {
       assignmentRules: arrayCount(crm.assignmentRules),
+      assignmentHistory: arrayCount(crm.assignmentHistory),
       followUpTasks: arrayCount(crm.followUpTasks),
       qualificationProfiles: arrayCount(crm.qualificationProfiles)
     },
@@ -243,6 +245,7 @@ export async function resetLocalCrmForTwilio(input: {
       leadMagnetAgentRuns: arrayCount(leadMagnet.agentRuns),
       leadMagnetSearchSessions: arrayCount(leadMagnet.searchSessions),
       crmAssignmentRules: arrayCount(crm.assignmentRules),
+      crmAssignmentHistory: arrayCount(crm.assignmentHistory),
       crmFollowUpTasks: arrayCount(crm.followUpTasks)
     },
     preserved: {
@@ -278,6 +281,7 @@ export async function resetLocalCrmForTwilio(input: {
   });
   await writeJsonFile(dataDir, "lead-crm.json", {
     assignmentRules: [],
+    assignmentHistory: [],
     followUpTasks: [],
     qualificationProfiles: arrayValue(crm.qualificationProfiles)
   });
