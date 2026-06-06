@@ -178,12 +178,71 @@ async function main() {
       globalThis.fetch = originalFetchForProvisioning;
     }
 
-    process.env.LEADSY_TWILIO_WHATSAPP_SENDER_POOL = "whatsapp:+14155239999";
-    globalThis.fetch = (async (url) => {
+    const broadFallbackInventoryCalls: string[] = [];
+    globalThis.fetch = (async (url, init) => {
+      broadFallbackInventoryCalls.push(`${init?.method ?? "GET"} ${String(url)}`);
       if (String(url).includes("/AvailablePhoneNumbers/IN/")) {
         return new Response(JSON.stringify({ available_phone_numbers: [] }), { status: 200, headers: { "content-type": "application/json" } });
       }
-      if (String(url).includes("/AvailablePhoneNumbers/US/Local.json") || String(url).includes("/AvailablePhoneNumbers/US/Mobile.json")) {
+      if (String(url).includes("/AvailablePhoneNumbers/US/")) {
+        return new Response(JSON.stringify({ available_phone_numbers: [] }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (String(url).includes("/AvailablePhoneNumbers/GB/Local.json")) {
+        return new Response(JSON.stringify({ available_phone_numbers: [{ phone_number: "+442071838750" }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
+      }
+      if (String(url).endsWith("/IncomingPhoneNumbers.json")) {
+        const body = init?.body as URLSearchParams;
+        assert.equal(body.get("PhoneNumber"), "+442071838750");
+        return new Response(JSON.stringify({ sid: "PNBROADFALLBACK00000000000000000001", phone_number: "+442071838750" }), {
+          status: 201,
+          headers: { "content-type": "application/json" }
+        });
+      }
+      if (String(url) === "https://messaging.twilio.com/v2/Channels/Senders") {
+        const body = JSON.parse(String(init?.body ?? "{}"));
+        assert.equal(body.sender_id, "whatsapp:+442071838750");
+        return new Response(JSON.stringify({ sid: "XEBROADFALLBACK00000000000000000001", status: "PENDING", sender_id: "whatsapp:+442071838750" }), {
+          status: 201,
+          headers: { "content-type": "application/json" }
+        });
+      }
+      throw new Error(`unexpected broad fallback provisioning URL: ${String(url)}`);
+    }) as typeof fetch;
+    try {
+      const broadFallbackSender = await provisionLeadsyAssignedWhatsAppSender(
+        {
+          tenantId: "tenant_broad_fallback_sender",
+          ownerId: "owner_broad_fallback_sender"
+        },
+        {
+          businessName: "Broad Fallback Workspace",
+          industry: "Retail",
+          website: "https://leadsy.test"
+        }
+      );
+      assert.equal(broadFallbackSender.assignedPhoneNumber, "+442071838750");
+      assert.equal(broadFallbackSender.twilioFrom, "whatsapp:+442071838750");
+      assert.equal(broadFallbackSender.twilioPhoneNumberSid, "PNBROADFALLBACK00000000000000000001");
+      assert.equal(broadFallbackSender.twilioSenderSid, "XEBROADFALLBACK00000000000000000001");
+      assert.equal(broadFallbackSender.status, "pending_verification");
+      assert(
+        broadFallbackInventoryCalls.some((call) => call.includes("/AvailablePhoneNumbers/IN/Mobile.json")),
+        "India inventory should remain first preference"
+      );
+      assert(
+        broadFallbackInventoryCalls.some((call) => call.includes("/AvailablePhoneNumbers/GB/Local.json")),
+        "provisioning should keep searching broader fallback countries before giving up"
+      );
+    } finally {
+      globalThis.fetch = originalFetchForProvisioning;
+    }
+
+    process.env.LEADSY_TWILIO_WHATSAPP_SENDER_POOL = "whatsapp:+14155239999";
+    globalThis.fetch = (async (url) => {
+      if (String(url).includes("/AvailablePhoneNumbers/")) {
         return new Response(JSON.stringify({ available_phone_numbers: [] }), { status: 200, headers: { "content-type": "application/json" } });
       }
       throw new Error(`live provisioning should fall back after inventory miss, not call ${String(url)}`);

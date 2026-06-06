@@ -134,11 +134,13 @@ function configuredSenderPool() {
 }
 
 function fallbackInventoryCountries() {
-  const raw = process.env.LEADSY_TWILIO_FALLBACK_COUNTRIES?.trim() || "US";
+  const defaultCountries = ["US", "GB", "CA", "AU", "IE", "NL", "DE", "FR", "ES", "IT"];
+  const configuredCountries = process.env.LEADSY_TWILIO_FALLBACK_COUNTRIES?.trim()
+    .split(/[,\n]/)
+    .map((country) => country.trim().toUpperCase())
+    .filter(Boolean) ?? [];
   return [...new Set(
-    raw
-      .split(/[,\n]/)
-      .map((country) => country.trim().toUpperCase())
+    [...configuredCountries, ...defaultCountries]
       .filter((country) => /^[A-Z]{2}$/.test(country) && country !== "IN")
   )];
 }
