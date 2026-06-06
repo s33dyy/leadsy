@@ -8,6 +8,7 @@ apps/**/node_modules/
 npm-debug.log*
 .vercel/
 artifacts/
+backups/
 out/
 graphify-out/
 .leadsy-data/
