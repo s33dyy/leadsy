@@ -34,7 +34,7 @@ async function main() {
   }
 
   const appShell = await read("apps/web/src/components/app-shell.tsx");
-  for (const href of ['href: "/app"', 'href: "/app/leads"', 'href: "/app/communications"', 'href: "/app/worker"', 'href: "/app/settings?panel=team"', 'href: "/app?view=analytics"', 'href: "/app/settings"']) {
+  for (const href of ['href: "/app"', 'href: "/app/leads"', 'href: "/app/communications"', 'href: "/app/worker"', 'href: "/app/team"', 'href: "/app?view=analytics"', 'href: "/app/settings"']) {
     assert(appShell.includes(href), `global sidebar should keep tab navigation inside the authenticated shell with ${href}`);
   }
   for (const legacyPath of ["/app", "/app/leads", "/app/worker", "/app/approvals", "/app/communications", "/app/tasks", "/app/integrations", "/app/connect", "/app/settings"]) {
