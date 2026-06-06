@@ -479,6 +479,7 @@ function SettingsSectionPanel({
 
 function senderStatusLabel(sender?: WorkspaceWhatsAppSender) {
   if (!sender) return "Assignment not started";
+  if (sender.transportMode === "simulator") return "simulator approved";
   return sender.status.replace(/_/g, " ");
 }
 
@@ -489,9 +490,10 @@ function TwilioSettingsPanel({
   twilio: TwilioIntegrationStatus;
   sender?: WorkspaceWhatsAppSender;
 }) {
+  const simulatorMode = sender?.transportMode === "simulator";
   const rows = [
     { label: "Workspace Sender Status", value: senderStatusLabel(sender) },
-    { label: "Assigned Lead Number", value: sender?.assignedPhoneNumber ?? "Not assigned yet" },
+    { label: "Assigned Lead Number", value: simulatorMode ? "Simulator only" : sender?.assignedPhoneNumber ?? "Not assigned yet" },
     { label: "Provisioning Detail", value: sender?.statusReason ?? "Leadsy operations will assign and approve a sender before replies are enabled." },
     { label: "Platform Connection Status", value: twilio.connected ? "Configured" : "Platform config pending" },
     { label: "Platform Account SID", value: maskTwilioAccountSid(twilio.accountSid) },
@@ -517,7 +519,9 @@ function TwilioSettingsPanel({
           <div>
             <div className="text-sm font-semibold text-foreground">Leadsy-assigned WhatsApp sender</div>
             <p className="mt-1 max-w-2xl text-[12.5px] leading-6 text-muted-foreground">
-              Leadsy assigns the workspace a dedicated WhatsApp lead number and uses Twilio as hidden platform infrastructure. Clients advertise the assigned number after approval; secrets and platform account details stay in environment variables.
+              {simulatorMode
+                ? "Leadsy is using the internal WhatsApp simulator for this workspace. Messages are stored in the CRM and Inbox without external WhatsApp delivery."
+                : "Leadsy assigns the workspace a dedicated WhatsApp lead number and uses Twilio as hidden platform infrastructure. Clients advertise the assigned number after approval; secrets and platform account details stay in environment variables."}
             </p>
           </div>
           <Badge tone={sender?.status === "approved" ? "lime" : sender?.status === "failed" || sender?.status === "disabled" ? "rose" : "amber"}>

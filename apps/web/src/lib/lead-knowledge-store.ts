@@ -28,7 +28,7 @@ export type LeadKnowledgeChannel =
   | "email"
   | "call"
   | "manual";
-export type LeadKnowledgeSource = "meta-webhook" | "twilio" | "extension" | "manual";
+export type LeadKnowledgeSource = "meta-webhook" | "twilio" | "twilio_simulator" | "extension" | "manual";
 export type LeadKnowledgeDirection = "inbound" | "outbound" | "system" | "note";
 export type LeadKnowledgeStatus = "lead" | "excluded";
 export type LeadConversationKnowledgeStatus = "included" | "excluded";
@@ -1368,6 +1368,8 @@ export async function saveTwilioInboundMessage(input: Scope & {
   from: string;
   to: string;
   body: string;
+  source?: Extract<LeadKnowledgeSource, "twilio" | "twilio_simulator">;
+  leadSource?: string;
   profileName?: string;
   waId?: string;
   sentAt?: string;
@@ -1378,6 +1380,7 @@ export async function saveTwilioInboundMessage(input: Scope & {
   const state = await readState();
   const receivedAt = input.receivedAt ?? nowIso();
   const sentAt = input.sentAt ?? receivedAt;
+  const source = input.source ?? "twilio";
   const phone = input.waId || input.from.replace(/^whatsapp:/i, "");
   const contact = cleanContact({
     displayName: input.profileName,
@@ -1389,19 +1392,19 @@ export async function saveTwilioInboundMessage(input: Scope & {
     contact,
     facts: [input.body],
     nextAction: "Reply in Leadsy-approved channel and qualify intent.",
-    leadSource: "Twilio WhatsApp"
+    leadSource: input.leadSource ?? (source === "twilio_simulator" ? "Twilio Simulator" : "Twilio WhatsApp")
   });
   const conversation = upsertConversation(state, input, {
     leadId: lead.id,
     channel: "whatsapp",
-    source: "twilio",
+    source,
     externalKey: phoneKey(contact.phone) || input.from,
     contact
   });
   const result = addMessage(state, input, {
     leadId: lead.id,
     conversationId: conversation.id,
-    source: "twilio",
+    source,
     channel: "whatsapp",
     externalId: input.messageSid,
     providerMessageSid: input.messageSid,
@@ -1430,6 +1433,8 @@ export async function appendTwilioOutboundMessage(input: Scope & {
   to: string;
   from: string;
   body?: string;
+  source?: Extract<LeadKnowledgeSource, "twilio" | "twilio_simulator">;
+  leadSource?: string;
   leadId?: string;
   contact?: LeadKnowledgeContact;
   sentAt?: string;
@@ -1442,6 +1447,7 @@ export async function appendTwilioOutboundMessage(input: Scope & {
   const state = await readState();
   const receivedAt = input.receivedAt ?? nowIso();
   const sentAt = input.sentAt ?? receivedAt;
+  const source = input.source ?? "twilio";
   const phone = input.to.replace(/^whatsapp:/i, "");
   const contact = cleanContact({ ...input.contact, phone: input.contact?.phone || phone });
   const messageBody = input.body?.trim() || (input.contentSid ? `Twilio template ${input.contentSid}` : "Twilio WhatsApp message");
@@ -1449,19 +1455,19 @@ export async function appendTwilioOutboundMessage(input: Scope & {
     leadId: input.leadId,
     identityKeys: identityKeysForContact("whatsapp", contact),
     contact,
-    leadSource: "Twilio WhatsApp"
+    leadSource: input.leadSource ?? (source === "twilio_simulator" ? "Twilio Simulator" : "Twilio WhatsApp")
   });
   const conversation = upsertConversation(state, input, {
     leadId: lead.id,
     channel: "whatsapp",
-    source: "twilio",
+    source,
     externalKey: phoneKey(contact.phone) || input.to,
     contact
   });
   const result = addMessage(state, input, {
     leadId: lead.id,
     conversationId: conversation.id,
-    source: "twilio",
+    source,
     channel: "whatsapp",
     externalId: input.messageSid,
     providerMessageSid: input.messageSid,

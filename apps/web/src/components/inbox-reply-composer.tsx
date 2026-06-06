@@ -9,6 +9,7 @@ type InboxReplyComposerProps = {
   leadId?: string;
   to?: string;
   channel: string;
+  transportMode?: "twilio" | "simulator";
   senderStatus?: string;
   senderStatusReason?: string;
   senderNumber?: string;
@@ -17,6 +18,7 @@ type InboxReplyComposerProps = {
 function sendBlockedReason(props: InboxReplyComposerProps) {
   if (props.channel !== "WhatsApp") return `${props.channel} replies are not wired to Twilio yet.`;
   if (!props.leadId || !props.to) return "This conversation needs a linked lead with a WhatsApp phone number before replying.";
+  if (props.transportMode === "simulator") return "";
   if (props.senderStatus !== "approved") return props.senderStatusReason || "The workspace WhatsApp sender is not approved yet.";
   return "";
 }
@@ -32,7 +34,7 @@ export function InboxReplyComposer(props: InboxReplyComposerProps) {
     if (blockedReason || !props.to || !props.leadId || !body.trim()) return;
     setSending(true);
     try {
-      const response = await fetch("/api/twilio/messages", {
+      const response = await fetch("/api/whatsapp/messages", {
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json" },
@@ -42,13 +44,17 @@ export function InboxReplyComposer(props: InboxReplyComposerProps) {
           body: body.trim()
         })
       });
-      const payload = (await response.json().catch(() => ({}))) as { error?: string; deliveryStatus?: string };
+      const payload = (await response.json().catch(() => ({}))) as { error?: string; deliveryStatus?: string; transportMode?: string };
       if (!response.ok) {
         toast({ title: "Reply was not sent", detail: payload.error || "Check sender status and try again.", tone: "error" });
         return;
       }
       setBody("");
-      toast({ title: "Reply queued", detail: `Delivery status: ${payload.deliveryStatus || "queued"}.`, tone: "success" });
+      toast({
+        title: payload.transportMode === "simulator" ? "Simulated reply saved" : "Reply queued",
+        detail: `Delivery status: ${payload.deliveryStatus || "queued"}.`,
+        tone: "success"
+      });
       router.refresh();
     } finally {
       setSending(false);
@@ -68,7 +74,13 @@ export function InboxReplyComposer(props: InboxReplyComposerProps) {
         <div className="flex min-w-0 items-center gap-2 text-muted-foreground">
           <ShieldAlert className="h-3 w-3" />
           <span className="truncate font-mono text-[10.5px]">
-            {props.senderNumber ? `Sending from ${props.senderNumber}` : props.senderStatus ? `Sender status: ${props.senderStatus}` : "Sender status pending"}
+            {props.transportMode === "simulator"
+              ? "Simulation mode: no external WhatsApp delivery"
+              : props.senderNumber
+                ? `Sending from ${props.senderNumber}`
+                : props.senderStatus
+                  ? `Sender status: ${props.senderStatus}`
+                  : "Sender status pending"}
           </span>
         </div>
         <button

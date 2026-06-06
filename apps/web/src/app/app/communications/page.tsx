@@ -363,6 +363,7 @@ export default async function CommunicationsPage({ searchParams }: Communication
                 leadId={contextLead?.id}
                 to={whatsappToForLead(contextLead)}
                 channel={active.channel}
+                transportMode={sender?.transportMode}
                 senderStatus={sender?.status}
                 senderStatusReason={sender?.statusReason}
                 senderNumber={sender?.assignedPhoneNumber}

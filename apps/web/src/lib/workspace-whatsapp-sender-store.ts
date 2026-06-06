@@ -13,10 +13,14 @@ export type WorkspaceWhatsAppSenderStatus =
   | "failed"
   | "disabled";
 
+export type WorkspaceWhatsAppTransportMode = "twilio" | "simulator";
+
 export type WorkspaceWhatsAppSender = {
   tenantId: string;
   ownerId: string;
   businessName?: string;
+  transportMode?: WorkspaceWhatsAppTransportMode;
+  simulatorHandle?: string;
   assignedPhoneNumber?: string;
   twilioFrom?: string;
   twilioPhoneNumberSid?: string;
@@ -117,10 +121,12 @@ export function normalizeWorkspaceWhatsAppNumber(input: { whatsappNumber: string
 function normalizeStoredSender(sender: WorkspaceWhatsAppSender & { whatsappNumber?: string; countryCode?: string }) {
   const legacyNumber = sender.assignedPhoneNumber ?? sender.whatsappNumber;
   const normalized = legacyNumber ? normalizeWorkspaceWhatsAppNumber({ whatsappNumber: legacyNumber, countryCode: sender.countryCode }) : undefined;
+  const transportMode: WorkspaceWhatsAppTransportMode = sender.transportMode === "simulator" ? "simulator" : "twilio";
   return {
     ...sender,
-    assignedPhoneNumber: normalized?.assignedPhoneNumber ?? sender.assignedPhoneNumber,
-    twilioFrom: normalized?.twilioFrom ?? sender.twilioFrom,
+    transportMode,
+    assignedPhoneNumber: transportMode === "simulator" ? undefined : normalized?.assignedPhoneNumber ?? sender.assignedPhoneNumber,
+    twilioFrom: transportMode === "simulator" ? undefined : normalized?.twilioFrom ?? sender.twilioFrom,
     status: sender.status ?? "not_started"
   };
 }
@@ -370,6 +376,8 @@ async function reserveWorkspaceSenderFromPool(
           tenantId: input.tenantId,
           ownerId: input.ownerId,
           businessName: input.businessName?.trim() || existing?.businessName,
+          transportMode: "twilio",
+          simulatorHandle: undefined,
           assignedPhoneNumber: poolNumber.assignedPhoneNumber,
           twilioFrom: poolNumber.twilioFrom,
           twilioPhoneNumberSid: existing?.twilioPhoneNumberSid,
@@ -383,6 +391,8 @@ async function reserveWorkspaceSenderFromPool(
           tenantId: input.tenantId,
           ownerId: input.ownerId,
           businessName: input.businessName?.trim() || existing?.businessName,
+          transportMode: "twilio",
+          simulatorHandle: undefined,
           status: "sender_registration_pending",
           statusReason: "Live India provisioning is unavailable and no fallback platform sender is currently available in the assignment pool.",
           createdAt: existing?.createdAt ?? now,
@@ -411,6 +421,7 @@ export async function ensureWorkspaceWhatsAppSender(input: {
       const updated: WorkspaceWhatsAppSender = {
         ...existing,
         businessName: input.businessName?.trim() || existing.businessName,
+        transportMode: existing.transportMode ?? "twilio",
         updatedAt: now
       };
       return {
@@ -424,6 +435,7 @@ export async function ensureWorkspaceWhatsAppSender(input: {
       tenantId: input.tenantId,
       ownerId: input.ownerId,
       businessName: input.businessName?.trim() || undefined,
+      transportMode: "twilio",
       status: "not_started",
       statusReason: "Leadsy will assign a dedicated WhatsApp sender after workspace setup.",
       createdAt: now,
@@ -444,6 +456,8 @@ export async function upsertWorkspaceWhatsAppSender(input: {
   twilioSenderSid?: string;
   status?: WorkspaceWhatsAppSenderStatus;
   statusReason?: string;
+  transportMode?: WorkspaceWhatsAppTransportMode;
+  simulatorHandle?: string;
 }) {
   const normalized = input.assignedPhoneNumber || input.whatsappNumber
     ? normalizeWorkspaceWhatsAppNumber({ whatsappNumber: input.assignedPhoneNumber ?? input.whatsappNumber ?? "", countryCode: input.countryCode })
@@ -451,14 +465,17 @@ export async function upsertWorkspaceWhatsAppSender(input: {
   return mutateState((state) => {
     const now = nowIso();
     const existing = state.senders.find((sender) => senderMatchesScope(sender, input));
+    const transportMode = input.transportMode ?? existing?.transportMode ?? "twilio";
     const sender: WorkspaceWhatsAppSender = {
       tenantId: input.tenantId,
       ownerId: input.ownerId,
       businessName: input.businessName?.trim() || existing?.businessName,
-      assignedPhoneNumber: normalized?.assignedPhoneNumber ?? existing?.assignedPhoneNumber,
-      twilioFrom: normalized?.twilioFrom ?? existing?.twilioFrom,
-      twilioPhoneNumberSid: input.twilioPhoneNumberSid ?? existing?.twilioPhoneNumberSid,
-      twilioSenderSid: input.twilioSenderSid ?? existing?.twilioSenderSid,
+      transportMode,
+      simulatorHandle: transportMode === "simulator" ? input.simulatorHandle ?? existing?.simulatorHandle : undefined,
+      assignedPhoneNumber: transportMode === "simulator" ? undefined : normalized?.assignedPhoneNumber ?? existing?.assignedPhoneNumber,
+      twilioFrom: transportMode === "simulator" ? undefined : normalized?.twilioFrom ?? existing?.twilioFrom,
+      twilioPhoneNumberSid: transportMode === "simulator" ? undefined : input.twilioPhoneNumberSid ?? existing?.twilioPhoneNumberSid,
+      twilioSenderSid: transportMode === "simulator" ? undefined : input.twilioSenderSid ?? existing?.twilioSenderSid,
       status: input.status ?? existing?.status ?? (normalized ? "number_reserved" : "not_started"),
       statusReason: input.statusReason ?? existing?.statusReason,
       createdAt: existing?.createdAt ?? now,
@@ -512,6 +529,7 @@ export async function provisionLeadsyAssignedWhatsAppSender(
   const reserved = await upsertWorkspaceWhatsAppSender({
     ...scope,
     businessName,
+    transportMode: "twilio",
     assignedPhoneNumber: purchase.value.phoneNumber,
     twilioPhoneNumberSid: purchase.value.sid,
     status: "number_reserved",
@@ -525,6 +543,7 @@ export async function provisionLeadsyAssignedWhatsAppSender(
     return upsertWorkspaceWhatsAppSender({
       ...scope,
       businessName,
+      transportMode: "twilio",
       assignedPhoneNumber: purchase.value.phoneNumber,
       twilioPhoneNumberSid: purchase.value.sid,
       status: registration.status === "failed" ? "failed" : "pending_verification",
@@ -535,6 +554,7 @@ export async function provisionLeadsyAssignedWhatsAppSender(
   return upsertWorkspaceWhatsAppSender({
     ...scope,
     businessName,
+    transportMode: "twilio",
     assignedPhoneNumber: purchase.value.phoneNumber,
     twilioPhoneNumberSid: purchase.value.sid,
     twilioSenderSid: registration.value.sid,

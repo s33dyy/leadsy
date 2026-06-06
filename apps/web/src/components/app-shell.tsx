@@ -44,6 +44,8 @@ type ShellLink = {
 };
 
 type ShellWhatsAppSender = {
+  transportMode?: "twilio" | "simulator";
+  simulatorHandle?: string;
   assignedPhoneNumber?: string;
   status?: string;
   statusReason?: string;
@@ -104,6 +106,7 @@ function isActiveLink(pathname: string, searchParams: SearchParamsLike, link: Sh
 }
 
 function whatsAppSenderLabel(sender?: ShellWhatsAppSender) {
+  if (sender?.transportMode === "simulator") return "WhatsApp · simulator";
   if (sender?.assignedPhoneNumber) return `WhatsApp · ${sender.assignedPhoneNumber}`;
   if (sender?.status === "failed") return "WhatsApp · action needed";
   if (sender?.status === "pending_verification" || sender?.status === "sender_registration_pending" || sender?.status === "number_reserved") {

@@ -158,8 +158,9 @@ async function main() {
     assert.match(communicationsSource, /InboxReplyComposer/, "Inbox should render the real WhatsApp reply composer");
     assert.match(communicationsSource, /deliveryStatus/, "Inbox should expose delivery status on outbound messages");
     const composerSource = await readFile(join(process.cwd(), "apps/web/src/components/inbox-reply-composer.tsx"), "utf8");
-    assert.match(composerSource, /\/api\/twilio\/messages/, "Inbox replies should send through the Twilio messages API");
-    assert.match(composerSource, /senderStatus !== "approved"/, "Inbox replies should be disabled until the workspace sender is approved");
+    assert.match(composerSource, /\/api\/whatsapp\/messages/, "Inbox replies should send through the generic WhatsApp messages API");
+    assert.match(composerSource, /transportMode === "simulator"/, "Inbox replies should allow the internal simulator transport");
+    assert.match(composerSource, /senderStatus !== "approved"/, "Inbox replies should be disabled until a non-simulator workspace sender is approved");
 
     const tasksSource = await readFile(join(process.cwd(), "apps/web/src/app/app/tasks/page.tsx"), "utf8");
     for (const taskType of ["Call", "WhatsApp Follow-Up", "Meeting", "Site Visit", "Review Lead", "Custom"]) {

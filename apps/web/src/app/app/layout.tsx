@@ -18,6 +18,8 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
       whatsAppSender={
         whatsAppSender
           ? {
+              transportMode: whatsAppSender.transportMode,
+              simulatorHandle: whatsAppSender.simulatorHandle,
               assignedPhoneNumber: whatsAppSender.assignedPhoneNumber,
               status: whatsAppSender.status,
               statusReason: whatsAppSender.statusReason
