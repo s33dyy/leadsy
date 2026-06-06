@@ -40,6 +40,7 @@ async function main() {
       searchIndianTwilioNumber,
       buyTwilioPhoneNumber,
       registerTwilioWhatsAppSender,
+      searchFallbackTwilioNumber,
       upsertWorkspaceWhatsAppSender
     } = await import("../apps/web/src/lib/workspace-whatsapp-sender-store");
 
@@ -57,6 +58,7 @@ async function main() {
     assert.equal(emptySender.twilioFrom, undefined);
 
     assert.equal(typeof searchIndianTwilioNumber, "function");
+    assert.equal(typeof searchFallbackTwilioNumber, "function");
     assert.equal(typeof buyTwilioPhoneNumber, "function");
     assert.equal(typeof registerTwilioWhatsAppSender, "function");
 
@@ -117,9 +119,71 @@ async function main() {
       globalThis.fetch = originalFetchForProvisioning;
     }
 
+    const fallbackInventoryCalls: string[] = [];
+    globalThis.fetch = (async (url, init) => {
+      fallbackInventoryCalls.push(`${init?.method ?? "GET"} ${String(url)}`);
+      if (String(url).includes("/AvailablePhoneNumbers/IN/")) {
+        return new Response(JSON.stringify({ available_phone_numbers: [] }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (String(url).includes("/AvailablePhoneNumbers/US/Local.json")) {
+        return new Response(JSON.stringify({ available_phone_numbers: [{ phone_number: "+12025550191" }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
+      }
+      if (String(url).endsWith("/IncomingPhoneNumbers.json")) {
+        const body = init?.body as URLSearchParams;
+        assert.equal(body.get("PhoneNumber"), "+12025550191");
+        return new Response(JSON.stringify({ sid: "PNFALLBACK00000000000000000000000001", phone_number: "+12025550191" }), {
+          status: 201,
+          headers: { "content-type": "application/json" }
+        });
+      }
+      if (String(url) === "https://messaging.twilio.com/v2/Channels/Senders") {
+        const body = JSON.parse(String(init?.body ?? "{}"));
+        assert.equal(body.sender_id, "whatsapp:+12025550191");
+        return new Response(JSON.stringify({ sid: "XEFALLBACK00000000000000000000000001", status: "PENDING", sender_id: "whatsapp:+12025550191" }), {
+          status: 201,
+          headers: { "content-type": "application/json" }
+        });
+      }
+      throw new Error(`unexpected fallback provisioning URL: ${String(url)}`);
+    }) as typeof fetch;
+    try {
+      const fallbackLiveSender = await provisionLeadsyAssignedWhatsAppSender(
+        {
+          tenantId: "tenant_global_fallback_sender",
+          ownerId: "owner_global_fallback_sender"
+        },
+        {
+          businessName: "Fallback Workspace",
+          industry: "Real Estate",
+          website: "https://leadsy.test"
+        }
+      );
+      assert.equal(fallbackLiveSender.assignedPhoneNumber, "+12025550191");
+      assert.equal(fallbackLiveSender.twilioFrom, "whatsapp:+12025550191");
+      assert.equal(fallbackLiveSender.twilioPhoneNumberSid, "PNFALLBACK00000000000000000000000001");
+      assert.equal(fallbackLiveSender.twilioSenderSid, "XEFALLBACK00000000000000000000000001");
+      assert.equal(fallbackLiveSender.status, "pending_verification");
+      assert(
+        fallbackInventoryCalls.some((call) => call.includes("/AvailablePhoneNumbers/IN/Mobile.json")),
+        "India inventory should still be attempted before global fallback"
+      );
+      assert(
+        fallbackInventoryCalls.some((call) => call.includes("/AvailablePhoneNumbers/US/Local.json")),
+        "fallback Twilio inventory should be searched when India has no available number"
+      );
+    } finally {
+      globalThis.fetch = originalFetchForProvisioning;
+    }
+
     process.env.LEADSY_TWILIO_WHATSAPP_SENDER_POOL = "whatsapp:+14155239999";
     globalThis.fetch = (async (url) => {
       if (String(url).includes("/AvailablePhoneNumbers/IN/")) {
+        return new Response(JSON.stringify({ available_phone_numbers: [] }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (String(url).includes("/AvailablePhoneNumbers/US/Local.json") || String(url).includes("/AvailablePhoneNumbers/US/Mobile.json")) {
         return new Response(JSON.stringify({ available_phone_numbers: [] }), { status: 200, headers: { "content-type": "application/json" } });
       }
       throw new Error(`live provisioning should fall back after inventory miss, not call ${String(url)}`);

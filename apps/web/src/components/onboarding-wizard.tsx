@@ -178,6 +178,24 @@ function workspaceConfigurationFromProfile(profile: OnboardingProfile) {
   };
 }
 
+function senderStatusLabel(status?: string) {
+  switch (status) {
+    case "approved":
+      return "Approved";
+    case "number_reserved":
+      return "Number reserved";
+    case "pending_verification":
+    case "sender_registration_pending":
+      return "Approval pending";
+    case "failed":
+      return "Needs review";
+    case "disabled":
+      return "Disabled";
+    default:
+      return "Pending";
+  }
+}
+
 export function OnboardingWizard({ session }: { session: SessionUser }) {
   const { toast } = useToast();
   const initialProfile = session.onboardingProfile ?? {};
@@ -325,7 +343,13 @@ export function OnboardingWizard({ session }: { session: SessionUser }) {
       if (complete) {
         setCompletionSender(payload.sender);
         setSetupCompleted(true);
-        toast({ title: "Onboarding complete", detail: "Leadsy is preparing your workspace WhatsApp number.", tone: "success" });
+        toast({
+          title: "Onboarding complete",
+          detail: payload.sender?.assignedPhoneNumber
+            ? "Your Leadsy number is assigned. WhatsApp approval status is tracked separately."
+            : "Leadsy is preparing your workspace WhatsApp number.",
+          tone: "success"
+        });
       }
       return true;
     } finally {
@@ -540,9 +564,12 @@ export function OnboardingWizard({ session }: { session: SessionUser }) {
                     </div>
                     <p className="mt-1 text-[var(--muted-2)]">
                       {completionSender?.assignedPhoneNumber
-                        ? "Advertise this number once the sender status is approved. Leads who message it will appear in Inbox."
+                        ? `WhatsApp approval status: ${senderStatusLabel(completionSender.status)}. Leads who message this number will appear in Inbox once the sender is approved.`
                         : completionSender?.statusReason || "Leadsy is checking Twilio India number availability and WhatsApp sender approval."}
                     </p>
+                    {completionSender?.assignedPhoneNumber && completionSender.statusReason ? (
+                      <p className="mt-1 text-xs text-[var(--muted)]">{completionSender.statusReason}</p>
+                    ) : null}
                   </div>
                 </div>
               </div>

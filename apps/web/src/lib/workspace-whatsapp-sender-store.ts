@@ -46,6 +46,12 @@ type TwilioOperationResult<T> =
   | { ok: true; value: T }
   | { ok: false; status: WorkspaceWhatsAppSenderStatus; reason: string };
 
+type TwilioNumberSearchResult = {
+  phoneNumber: string;
+  countryCode: string;
+  numberType: "Mobile" | "Local";
+};
+
 function emptyState(): SenderState {
   return { senders: [] };
 }
@@ -127,6 +133,16 @@ function configuredSenderPool() {
     .filter((entry): entry is NonNullable<ReturnType<typeof normalizeWorkspaceWhatsAppNumber>> => Boolean(entry));
 }
 
+function fallbackInventoryCountries() {
+  const raw = process.env.LEADSY_TWILIO_FALLBACK_COUNTRIES?.trim() || "US";
+  return [...new Set(
+    raw
+      .split(/[,\n]/)
+      .map((country) => country.trim().toUpperCase())
+      .filter((country) => /^[A-Z]{2}$/.test(country) && country !== "IN")
+  )];
+}
+
 function senderMatchesScope(sender: WorkspaceWhatsAppSender, scope: WorkspaceWhatsAppSenderScope) {
   return sender.tenantId === scope.tenantId && sender.ownerId === scope.ownerId;
 }
@@ -200,30 +216,57 @@ function statusFromTwilioSenderStatus(status?: string): WorkspaceWhatsAppSenderS
   return "pending_verification";
 }
 
-export async function searchIndianTwilioNumber(): Promise<TwilioOperationResult<{ phoneNumber: string }>> {
+async function searchTwilioNumberInventory(input: {
+  countries: string[];
+  numberTypes: Array<"Mobile" | "Local">;
+  reasonLabel: string;
+}): Promise<TwilioOperationResult<TwilioNumberSearchResult>> {
   const credentials = twilioCredentials();
   if (!credentials) {
     return {
       ok: false,
       status: "sender_registration_pending",
-      reason: "Twilio credentials are not configured for live India number search."
+      reason: `Twilio credentials are not configured for ${input.reasonLabel}.`
     };
   }
-  const numberTypes = ["Mobile", "Local"] as const;
-  for (const numberType of numberTypes) {
-    const url = new URL(`${twilioApiBase(credentials)}/AvailablePhoneNumbers/IN/${numberType}.json`);
-    url.searchParams.set("SmsEnabled", "true");
-    url.searchParams.set("Limit", "1");
-    const result = await twilioJsonRequest<{ available_phone_numbers?: Array<{ phone_number?: string }> }>(url.toString(), { method: "GET" });
-    if (!result.ok) return result;
-    const phoneNumber = result.value.available_phone_numbers?.find((item) => typeof item.phone_number === "string")?.phone_number;
-    if (phoneNumber) return { ok: true, value: { phoneNumber } };
+  const errors: string[] = [];
+  for (const countryCode of input.countries) {
+    for (const numberType of input.numberTypes) {
+      const url = new URL(`${twilioApiBase(credentials)}/AvailablePhoneNumbers/${countryCode}/${numberType}.json`);
+      url.searchParams.set("SmsEnabled", "true");
+      url.searchParams.set("Limit", "1");
+      const result = await twilioJsonRequest<{ available_phone_numbers?: Array<{ phone_number?: string }> }>(url.toString(), { method: "GET" });
+      if (!result.ok) {
+        errors.push(`${countryCode}/${numberType}: ${result.reason}`);
+        continue;
+      }
+      const phoneNumber = result.value.available_phone_numbers?.find((item) => typeof item.phone_number === "string")?.phone_number;
+      if (phoneNumber) return { ok: true, value: { phoneNumber, countryCode, numberType } };
+    }
   }
   return {
     ok: false,
     status: "sender_registration_pending",
-    reason: "Twilio India SMS-capable inventory did not return an available +91 number."
+    reason: errors.length > 0
+      ? `${input.reasonLabel} did not return an available SMS-capable number. ${errors.slice(0, 3).join(" ")}`
+      : `${input.reasonLabel} did not return an available SMS-capable number.`
   };
+}
+
+export async function searchIndianTwilioNumber(): Promise<TwilioOperationResult<TwilioNumberSearchResult>> {
+  return searchTwilioNumberInventory({
+    countries: ["IN"],
+    numberTypes: ["Mobile", "Local"],
+    reasonLabel: "Twilio India number search"
+  });
+}
+
+export async function searchFallbackTwilioNumber(): Promise<TwilioOperationResult<TwilioNumberSearchResult>> {
+  return searchTwilioNumberInventory({
+    countries: fallbackInventoryCountries(),
+    numberTypes: ["Local", "Mobile"],
+    reasonLabel: "Twilio fallback number search"
+  });
 }
 
 export async function buyTwilioPhoneNumber(phoneNumber: string): Promise<TwilioOperationResult<{ phoneNumber: string; sid: string }>> {
@@ -447,18 +490,20 @@ export async function provisionLeadsyAssignedWhatsAppSender(
 
   await ensureWorkspaceWhatsAppSender({ ...scope, businessName });
   const search = await searchIndianTwilioNumber();
-  if (!search.ok) {
+  const fallbackSearch = search.ok ? undefined : await searchFallbackTwilioNumber();
+  const selectedSearch = search.ok ? search : fallbackSearch;
+  if (!selectedSearch?.ok) {
     return reserveWorkspaceSenderFromPool(
       { ...scope, businessName },
-      `Live India provisioning fallback: ${search.reason}`
+      `Live Twilio provisioning fallback: ${search.ok ? "" : search.reason}${fallbackSearch?.ok ? "" : ` ${fallbackSearch?.reason ?? ""}`}`.trim()
     );
   }
 
-  const purchase = await buyTwilioPhoneNumber(search.value.phoneNumber);
+  const purchase = await buyTwilioPhoneNumber(selectedSearch.value.phoneNumber);
   if (!purchase.ok) {
     return reserveWorkspaceSenderFromPool(
       { ...scope, businessName },
-      `Live India provisioning fallback: ${purchase.reason}`
+      `Live Twilio provisioning fallback: ${purchase.reason}`
     );
   }
 
@@ -468,7 +513,9 @@ export async function provisionLeadsyAssignedWhatsAppSender(
     assignedPhoneNumber: purchase.value.phoneNumber,
     twilioPhoneNumberSid: purchase.value.sid,
     status: "number_reserved",
-    statusReason: "Leadsy purchased this Twilio India number. WhatsApp sender registration is starting."
+    statusReason: selectedSearch.value.countryCode === "IN"
+      ? "Leadsy purchased this Twilio India number. WhatsApp sender registration is starting."
+      : `Leadsy purchased this Twilio ${selectedSearch.value.countryCode} number because India inventory was unavailable. WhatsApp sender registration is starting.`
   });
 
   const registration = await registerTwilioWhatsAppSender(reserved, profile);

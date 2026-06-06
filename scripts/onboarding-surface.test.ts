@@ -54,6 +54,8 @@ async function main() {
   assert(wizard.includes("Leadsy assigns a dedicated WhatsApp lead number"), "onboarding should explain Leadsy-assigned sender provisioning");
   assert(wizard.includes("Your WhatsApp Number is:"), "completion should show the assigned WhatsApp number when provisioning succeeds");
   assert(wizard.includes("Your WhatsApp Number is being prepared"), "completion should show an honest pending state when provisioning is not ready");
+  assert(wizard.includes("WhatsApp approval status:"), "completion should separate WhatsApp approval status from assigned number display");
+  assert(wizard.includes("Your Leadsy number is assigned"), "completion toast should confirm number assignment when onboarding receives a Twilio number");
   assert(wizard.includes("Refresh AI options"), "onboarding should let users refresh AI-generated chip options");
   assert(wizard.includes("Add custom"), "onboarding should preserve compact custom option entry");
   assert(wizard.includes('whatsappTransport: "leadsy_assigned_twilio"'), "workspace configuration should record Leadsy-assigned WhatsApp transport");
