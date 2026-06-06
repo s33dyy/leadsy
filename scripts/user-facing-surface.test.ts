@@ -83,7 +83,18 @@ async function main() {
   for (const route of ["/app/analytics", "/app/capture", "/app/clients", "/app/crm", "/app/inbox", "/app/magnet", "/app/meta", "/app/workflows"]) {
     assert(!appShell.includes(route), `app nav should not include ${route}`);
   }
-  assert(appShell.includes("4 workers running"), "workspace header should frame the Lovable-style worker queue context");
+  assert(appShell.includes('label: "Dashboard"'), "workspace nav should include Dashboard");
+  assert(appShell.includes('label: "Leads"'), "workspace nav should include Leads");
+  assert(appShell.includes('label: "Inbox"'), "workspace nav should include Inbox");
+  assert(appShell.includes('label: "Automations"'), "workspace nav should include Automations");
+  assert(appShell.includes('label: "Team"'), "workspace nav should include Team");
+  assert(appShell.includes('label: "Analytics"'), "workspace nav should include Analytics");
+  assert(appShell.includes('label: "Settings"'), "workspace nav should include Settings");
+  assert(!appShell.includes('label: "CRM"'), "workspace nav should no longer present CRM as a primary product label");
+  assert(!appShell.includes('label: "Workers"'), "workspace nav should no longer present Workers as a primary product label");
+  assert(!appShell.includes('label: "Communications"'), "workspace nav should no longer present Communications as a primary product label");
+  assert(!appShell.includes("4 workers running"), "workspace header should not show fake worker counts");
+  assert(!appShell.includes("queue {82 + pendingApprovalCount}"), "workspace header should not show fake queue counts");
   assert(appShell.includes("hasMetaConnection"), "workspace shell should receive the saved Meta connection state");
   assert(appShell.includes("Meta connection needs attention"), "workspace notifications should still surface missing Meta setup");
   assert(!appShell.includes("WhatsApp leads · browser worker"), "workspace header should not merge Meta connection with worker ops");
@@ -101,16 +112,32 @@ async function main() {
     assert(!loginPage.includes(adminCopy), `login page should not expose admin copy: ${adminCopy}`);
     assert(!authPage.includes(adminCopy), `auth page should not expose admin copy: ${adminCopy}`);
   }
-  assert(authPage.includes("lead intelligence workspace"), "auth page should frame access around lead intelligence");
+  assert(authPage.includes("lead capture, qualification, and conversion workspace"), "auth page should frame access around lead capture, qualification, and conversion");
+  for (const fakePreview of ['value: "38"', 'value: "14"', 'delta: "+12"', 'delta: "+4"', "4 workers running · queue 82", "7 items need your eyes", "[38, 27, 18, 11]"]) {
+    assert(!authPage.includes(fakePreview), `auth preview should not include fake metric ${fakePreview}`);
+  }
 
   const landingPage = await readFile(join(root, "apps/web/src/app/page.tsx"), "utf8");
   assert(landingPage.includes("/login?next=/app/leads"), "landing page should enter the leads page");
   assert(landingPage.includes("/extension"), "landing page should link to the extension download page");
-  assert(landingPage.includes("AI Lead Intelligence & Operations Platform"), "landing page should use the Step 2 product identity");
-  assert(landingPage.includes("Research prospects"), "landing page should lead with prospect research");
-  assert(landingPage.includes("Build lead knowledge"), "landing page should highlight lead knowledge");
-  assert(landingPage.includes("Generate operator tasks"), "landing page should highlight human operator tasks");
+  assert(landingPage.includes("AI Lead Capture, Qualification & Conversion Platform"), "landing page should use the Phase 1 product identity");
+  assert(landingPage.includes("Capture leads"), "landing page should lead with lead capture");
+  assert(landingPage.includes("Qualify conversations"), "landing page should highlight AI qualification");
+  assert(landingPage.includes("Convert with follow-up"), "landing page should highlight conversion follow-up");
+  assert(!landingPage.includes("AI Lead Intelligence & Operations Platform"), "landing page should not use the old lead intelligence identity");
+  assert(!landingPage.includes("Research prospects"), "landing page should not lead with prospect research");
+  assert(!landingPage.includes("Build lead knowledge"), "landing page should not market lead knowledge as the product");
   assert(landingPage.includes("Draft with approval"), "landing page should keep outreach human-approved");
+  for (const fakeLandingMetric of ["knowledge records", "operator tasks", "autonomous sends"]) {
+    assert(!landingPage.includes(fakeLandingMetric), `landing page should not show fake ${fakeLandingMetric} counters`);
+  }
+  const landingScene = await readFile(join(root, "apps/web/src/components/landing-scene.tsx"), "utf8");
+  for (const fakeSceneMetric of ['["Connect", "1"', '["Leads", "0"', '["Knowledge", "0"', '["Worker", "0"', "0 records", "0 intent"]) {
+    assert(!landingScene.includes(fakeSceneMetric), `landing scene should not show fake preview metric ${fakeSceneMetric}`);
+  }
+  for (const oldSceneLabel of ["Worker handoff", "Knowledge base", "Worker Chat"]) {
+    assert(!landingScene.includes(oldSceneLabel), `landing scene should not foreground old ${oldSceneLabel} positioning`);
+  }
   assert(!landingPage.includes("Leadsy Lead OS"), "landing page should not position Leadsy as a Lead OS");
   assert(!landingPage.includes("lead operating system"), "landing page should not position Leadsy as an operating system");
   assert(!landingPage.includes("/app/magnet"), "landing page should not link to archived Magnet");
@@ -159,14 +186,15 @@ async function main() {
   assert(leadsPage.includes("/api/leads/manual-message"), "leads page should allow manual communication logging");
   assert(leadsPage.includes("/api/leads/status"), "leads page should allow lead-level exclude and restore");
   assert(leadsPage.includes("/api/leads/conversation-status"), "leads page should allow conversation-level knowledge exclusion");
-  assert(leadsPage.includes("Lead Intelligence"), "leads page should remain positioned around lead intelligence");
-  assert(leadsPage.includes("CRM workspace"), "leads page should present the CRM workspace as the main inbox");
+  assert(leadsPage.includes("Lead capture, qualification, and conversion"), "leads page should position around the target product workflow");
+  assert(leadsPage.includes("Leads workspace"), "leads page should present Leads as the main workspace");
   assert(leadsPage.includes("AI qualification"), "leads page should expose AI qualification state");
   assert(leadsPage.includes("Qualification fields"), "selected lead details should expose qualification fields");
   assert(leadsPage.includes("Lead source"), "selected lead details should expose CRM lead source");
   assert(leadsPage.includes("Campaign ID"), "selected lead details should expose campaign/source metadata");
   assert(leadsPage.includes("Assignee"), "selected lead details should expose assignee controls");
-  assert(leadsPage.includes("CRM status"), "selected lead details should expose CRM status controls");
+  assert(leadsPage.includes("Pipeline status"), "selected lead details should expose product-facing pipeline status controls");
+  assert(leadsPage.includes("productPipelineStatusForLead"), "leads page should use the product-facing status mapping");
   assert(leadsPage.includes("Conversation chat"), "leads page should present comms as a chat transcript");
   assert(leadsPage.includes('data-testid="lead-comms-chat"'), "comms tab should expose a stable chat transcript pane");
   assert(leadsPage.includes('data-testid="lead-chat-bubble"'), "comms tab should render messages as chat bubbles");
@@ -229,20 +257,24 @@ async function main() {
   assert(!magnetPage.includes("LeadMagnetLab"), "archived Magnet page should not render the old lab");
 
   const rootPackage = await readFile(join(root, "package.json"), "utf8");
-  assert(rootPackage.includes("AI Lead Intelligence & Operations Platform"), "package metadata should use the Step 2 product identity");
+  assert(rootPackage.includes("AI Lead Capture, Qualification & Conversion Platform"), "package metadata should use the Phase 1 product identity");
+  assert(!rootPackage.includes("Lead Intelligence"), "package metadata should not use the old lead intelligence identity");
   assert(!rootPackage.includes("Revenue OS"), "package metadata should not position Leadsy as Revenue OS");
 
   const rootLayout = await readFile(join(root, "apps/web/src/app/layout.tsx"), "utf8");
-  assert(rootLayout.includes("AI Lead Intelligence & Operations Platform"), "app metadata should use the Step 2 product identity");
+  assert(rootLayout.includes("AI Lead Capture, Qualification & Conversion Platform"), "app metadata should use the Phase 1 product identity");
+  assert(!rootLayout.includes("Lead Intelligence"), "app metadata should not use the old lead intelligence identity");
   assert(!rootLayout.includes("Revenue OS"), "app metadata should not position Leadsy as Revenue OS");
 
   const dashboardPage = await readFile(join(root, "apps/web/src/app/app/page.tsx"), "utf8");
   assert(dashboardPage.includes("New leads · 24h"), "dashboard should show compact new lead volume");
   assert(dashboardPage.includes("Lead sources"), "dashboard should show source split from lead records");
   assert(dashboardPage.includes("Qualification funnel"), "dashboard should show the Lovable qualification funnel");
-  assert(dashboardPage.includes("Worker throughput"), "dashboard should show worker throughput");
+  assert(dashboardPage.includes("Follow-up and automation activity"), "dashboard should show real follow-up and automation activity");
   assert(dashboardPage.includes("Needs you"), "dashboard should expose the right-side approval rail");
-  assert(dashboardPage.includes("crmStatus"), "dashboard counts should use CRM status fields");
+  assert(dashboardPage.includes("productPipelineStatusForLead"), "dashboard counts should use product-facing pipeline status mapping");
+  assert(!dashboardPage.includes("convertedCount = 0"), "dashboard should not hardcode a fake converted count");
+  assert(!dashboardPage.includes("delta:"), "dashboard metric cards should not display decorative fake deltas");
   assert(dashboardPage.includes("leadSource"), "dashboard counts should use stored lead source fields");
 
   const workerPage = await readFile(join(root, "apps/web/src/app/app/worker/page.tsx"), "utf8");

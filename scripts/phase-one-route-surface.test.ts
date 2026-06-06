@@ -34,19 +34,20 @@ async function main() {
   }
 
   const appShell = await read("apps/web/src/components/app-shell.tsx");
-  for (const href of ['href: "/app"', 'href: "/app/leads"', 'href: "/app/worker"', 'href: "/app/approvals"', 'href: "/app/communications"', 'href: "/app/tasks"', 'href: "/app/integrations"', 'href: "/app/settings"']) {
+  for (const href of ['href: "/app"', 'href: "/app/leads"', 'href: "/app/communications"', 'href: "/app/worker"', 'href: "/app/settings?panel=team"', 'href: "/app?view=analytics"', 'href: "/app/settings"']) {
     assert(appShell.includes(href), `global sidebar should keep tab navigation inside the authenticated shell with ${href}`);
   }
-  for (const legacyPath of ["/app", "/app/leads", "/app/worker", "/app/connect", "/app/settings"]) {
+  for (const legacyPath of ["/app", "/app/leads", "/app/worker", "/app/approvals", "/app/communications", "/app/tasks", "/app/integrations", "/app/connect", "/app/settings"]) {
     assert(appShell.includes(legacyPath), `app shell should keep ${legacyPath} as a legacy active/preserved route`);
   }
   assert(appShell.includes("isActiveLink"), "app shell should preserve active path matching for existing workspace routes");
   assert(!appShell.includes('href: "/crm", label: "CRM"'), "CRM tab clicks should not leave the authenticated shell first");
   assert(!appShell.includes('href: "/workers", label: "Workers"'), "Worker tab clicks should not leave the authenticated shell first");
   assert(appShell.includes("Quick search"), "app shell should include the Lovable-style quick search control");
-  assert(appShell.includes("Workflow"), "app shell should group navigation by workflow");
-  assert(appShell.includes("Knowledge"), "app shell should keep knowledge navigation visible");
-  assert(appShell.includes("4 workers running"), "app shell top bar should expose worker activity context");
+  assert(appShell.includes("Conversion workflow"), "app shell should group primary navigation by conversion workflow");
+  assert(appShell.includes("Supporting routes"), "app shell should keep preserved legacy routes visible outside primary navigation");
+  assert(!appShell.includes("4 workers running"), "app shell top bar should not expose fake worker activity context");
+  assert(!appShell.includes("queue {82 + pendingApprovalCount}"), "app shell top bar should not expose fake queue counts");
 
   const workspaceIndex = await read("apps/web/src/app/app/page.tsx");
   assert(!workspaceIndex.includes('redirect("/app/leads")'), "Dashboard navigation should not redirect operators into the CRM leads workspace");
@@ -54,7 +55,7 @@ async function main() {
   assert(workspaceIndex.includes("Operations dashboard"), "Dashboard should expose a real operator dashboard surface");
   assert(workspaceIndex.includes("Operator overview"), "Dashboard should match the Lovable operator overview layout");
   assert(workspaceIndex.includes("Qualification funnel"), "Dashboard should include the Lovable qualification funnel surface");
-  assert(workspaceIndex.includes("Worker throughput"), "Dashboard should include worker throughput");
+  assert(workspaceIndex.includes("Follow-up and automation activity"), "Dashboard should include real follow-up and automation activity");
   assert(workspaceIndex.includes("Needs you"), "Dashboard should include the right-side Needs You rail");
 
   const settingsPage = await read("apps/web/src/app/app/settings/page.tsx");
