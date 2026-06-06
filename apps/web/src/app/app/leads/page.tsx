@@ -411,7 +411,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
         </div>
       ) : null}
 
-        <section className="col-span-12 flex min-h-0 flex-col overflow-hidden bg-background md:col-span-4 xl:col-span-3" data-testid="lead-list-pane">
+        <section className="col-span-12 flex min-h-0 flex-col overflow-hidden bg-background md:col-span-4 xl:col-span-4 2xl:col-span-3" data-testid="lead-list-pane">
           <LeadListPane
             leads={filteredLeads}
             selectedLead={selectedLead}
@@ -424,7 +424,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
           />
         </section>
 
-        <section className="col-span-12 flex min-h-0 flex-col overflow-y-auto overflow-x-hidden bg-background md:col-span-8 xl:col-span-6" data-testid="lead-workspace-pane">
+        <section className="col-span-12 flex min-h-0 flex-col overflow-y-auto overflow-x-hidden bg-background md:col-span-8 xl:col-span-8 2xl:col-span-6" data-testid="lead-workspace-pane">
           {selectedLead ? (
             <LeadRecordWorkspace
               lead={selectedLead}
@@ -447,7 +447,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
           )}
         </section>
 
-        <aside className="hidden min-h-0 flex-col overflow-y-auto bg-background xl:col-span-3 xl:flex">
+        <aside className="hidden min-h-0 flex-col overflow-y-auto bg-background 2xl:col-span-3 2xl:flex">
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
             <div className="flex items-center gap-2">
               <NotebookPen className="h-3.5 w-3.5 text-primary" />
@@ -693,8 +693,8 @@ function LeadRecordWorkspace({
         </div>
       </div>
 
-      <div className="grid min-h-0 gap-4 xl:grid-cols-[280px_minmax(0,1fr)_320px]">
-        <aside data-testid="lead-detail-left-column" className="min-h-0 xl:sticky xl:top-4 xl:self-start">
+      <div className="grid min-h-0 min-w-0 gap-4 min-[2200px]:grid-cols-[280px_minmax(0,1fr)_320px]">
+        <aside data-testid="lead-detail-left-column" className="min-h-0 min-w-0 min-[2200px]:sticky min-[2200px]:top-4 min-[2200px]:self-start">
           <LeadContextColumn lead={lead} crmFollowUps={crmFollowUps} />
         </aside>
 
@@ -724,7 +724,7 @@ function LeadRecordWorkspace({
           {activeTab === "timeline" ? <LeadTimelineTab lead={lead} tasks={tasks} crmFollowUps={crmFollowUps} taskEvents={scopedTaskEvents} /> : null}
         </main>
 
-        <aside data-testid="lead-detail-action-column" className="min-h-0 xl:sticky xl:top-4 xl:self-start">
+        <aside data-testid="lead-detail-action-column" className="min-h-0 min-w-0 min-[2200px]:sticky min-[2200px]:top-4 min-[2200px]:self-start">
           <LeadActionPanel lead={lead} href={href} tasks={tasks} crmFollowUps={crmFollowUps} taskEvents={scopedTaskEvents} />
         </aside>
       </div>
@@ -796,7 +796,7 @@ function suggestedReplyDraft(lead: LeadKnowledgeRecord) {
 
 function LeadContextColumn({ lead, crmFollowUps }: { lead: LeadKnowledgeRecord; crmFollowUps: CrmFollowUpTask[] }) {
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4">
       <section className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
         <div className="flex items-center justify-between gap-3">
           <div className="text-sm font-semibold text-white">Lead Context</div>
@@ -1576,11 +1576,11 @@ function LeadActionPanel({
 }) {
   const recommendation = recommendedQualificationAction(lead);
   return (
-    <div className="space-y-4">
-      <section className="rounded-[8px] border border-teal-300/25 bg-teal-300/[0.08] p-4">
+    <div className="min-w-0 space-y-4">
+      <section className="min-w-0 rounded-[8px] border border-teal-300/25 bg-teal-300/[0.08] p-4">
         <div className="text-sm font-semibold text-white">Next Action</div>
-        <p className="mt-2 text-sm leading-6 text-white">{recommendation.action}</p>
-        <p className="mt-2 text-xs leading-5 text-[var(--muted-2)]">Why: {recommendation.why}</p>
+        <p className="mt-2 break-words text-sm leading-6 text-white">{recommendation.action}</p>
+        <p className="mt-2 break-words text-xs leading-5 text-[var(--muted-2)]">Why: {recommendation.why}</p>
         <div className="mt-3 flex flex-wrap gap-2">
           {href ? <a href={href} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-teal-300/30 bg-teal-300/[0.12] px-3 text-xs font-medium text-teal-100">Open channel</a> : null}
           {(lead.contact.phone || lead.contact.waId) ? <a href={`tel:${(lead.contact.phone || lead.contact.waId || "").replace(/\D/g, "")}`} className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-[var(--line)] bg-white/[0.03] px-3 text-xs font-medium text-[var(--muted-2)]">Call Lead</a> : null}
@@ -1588,14 +1588,14 @@ function LeadActionPanel({
           <Badge tone="teal">Human decides</Badge>
         </div>
       </section>
-      <section className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
+      <section className="min-w-0 rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
         <div className="flex items-center justify-between gap-3">
           <div className="text-sm font-semibold text-white">Tasks</div>
           <Badge tone="neutral">Open Tasks {crmFollowUps.length + tasks.length}</Badge>
         </div>
         <div className="mt-3 grid gap-2">
           {crmFollowUps.slice(0, 4).map((task) => (
-            <div key={task.id} className="rounded-[6px] border border-[var(--line)] bg-white/[0.03] p-3">
+            <div key={task.id} className="min-w-0 rounded-[6px] border border-[var(--line)] bg-white/[0.03] p-3">
               <div className="text-sm font-semibold text-white">{task.topic}</div>
               <div className="mt-2 flex flex-wrap gap-2">
                 <Badge tone="neutral">Status {task.status}</Badge>
@@ -1606,7 +1606,7 @@ function LeadActionPanel({
             </div>
           ))}
           {tasks.slice(0, 3).map((task) => (
-            <div key={task.id} className="rounded-[6px] border border-[var(--line)] bg-white/[0.03] p-3">
+            <div key={task.id} className="min-w-0 rounded-[6px] border border-[var(--line)] bg-white/[0.03] p-3">
               <div className="text-sm font-semibold text-white">{task.type.replace(/_/g, " ")}</div>
               <div className="mt-2 flex flex-wrap gap-2">
                 <Badge tone="neutral">Status {task.status.replace(/_/g, " ")}</Badge>
@@ -1618,7 +1618,7 @@ function LeadActionPanel({
           {!crmFollowUps.length && !tasks.length ? <p className="text-sm leading-6 text-[var(--muted-2)]">No open tasks yet.</p> : null}
         </div>
       </section>
-      <section className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
+      <section className="min-w-0 rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
         <div className="text-sm font-semibold text-white">Follow-up Status</div>
         <div className="mt-3 flex flex-wrap gap-2">
           {["Pending", "Scheduled", "Completed", "Overdue"].map((status) => <Badge key={status} tone={followUpStatus(crmFollowUps) === status ? "teal" : "neutral"}>{status}</Badge>)}

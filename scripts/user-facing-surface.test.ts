@@ -196,6 +196,10 @@ async function main() {
   assert(leadsPage.includes("data-testid=\"lead-detail-left-column\""), "Phase 3B lead detail should expose a stable left lead context column");
   assert(leadsPage.includes("data-testid=\"lead-detail-conversation-column\""), "Phase 3B lead detail should expose a stable center conversation column");
   assert(leadsPage.includes("data-testid=\"lead-detail-action-column\""), "Phase 3B lead detail should expose a stable right action column");
+  assert(leadsPage.includes("xl:col-span-8 2xl:col-span-6"), "Lead workspace should keep enough width at normal desktop sizes before the knowledge rail appears");
+  assert(leadsPage.includes("2xl:col-span-3 2xl:flex"), "Knowledge rail should not appear at normal desktop sizes where it squeezes lead detail");
+  assert(leadsPage.includes("min-[2200px]:grid-cols-[280px_minmax(0,1fr)_320px]"), "Lead detail should only use the three-column subgrid on very wide viewports");
+  assert(!leadsPage.includes("xl:grid-cols-[280px_minmax(0,1fr)_320px]"), "Lead detail should not use a viewport xl three-column subgrid inside the constrained workspace pane");
   assert(leadsPage.includes("AI summary card"), "Phase 3B left column should keep the AI summary card always visible");
   for (const goldenField of ["Lead Name", "Company", "Source", "Owner", "Pipeline Status", "Qualification Status", "Created Date", "Last Activity", "Need", "Budget", "Timeline", "Intent", "Risk", "Recommended Action", "Qualification Snapshot", "Decision Maker", "Team Size", "Location", "Service Interest", "Qualification Score"]) {
     assert(leadsPage.includes(goldenField), `Phase 3B lead context should expose ${goldenField}`);
