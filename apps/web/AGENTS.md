@@ -142,6 +142,11 @@ npm run typecheck
 npm run seed
 ```
 
+## Production Handoff
+
+- `@leadsy/web` and `n8n` are separate Railway services. Web CI and the `@leadsy/web` deployment do not prove n8n is healthy.
+- When web behavior depends on n8n workflows or automation health, verify n8n using the root `AGENTS.md` n8n Railway handoff before reporting the production workflow complete.
+
 ## What NOT to Assume
 
 - ❌ No Firebase/Supabase — PostgreSQL only

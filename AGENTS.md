@@ -47,3 +47,15 @@ Rules:
 - Never leave local-only commits at the end of a task unless the user explicitly requested that.
 - Keep commits atomic and small; if a change needs multiple commits, push after each commit so CI/CD can run on every increment.
 - Do not start app work directly on `main`; use a feature branch first. Push `main` only after the feature branch has been verified and merged for deployment.
+
+## n8n railway handoff
+
+n8n is a separate Railway Docker-image service, not a GitHub-repo service.
+
+Rules:
+- Railway production n8n service: `n8n`, service ID `4f5fec76-72ac-4b07-b2c4-452ef03e8449`, environment ID `7b7fa246-b552-4a88-938c-672107c8dca4`, public URL `https://n8n-production-3749.up.railway.app`, image `docker.n8n.io/n8nio/n8n:stable`.
+- GitHub Actions passing for `main` does not prove n8n deployed. n8n has no repo watch path; its CI/CD handoff is Railway service verification, not a web commit hash comparison.
+- Treat n8n as properly deployed only after checking Railway service status, deployment status, persistence config, health, and logs. Minimum checks: `railway service list --json`, `railway deployment list --service 4f5fec76-72ac-4b07-b2c4-452ef03e8449 --environment 7b7fa246-b552-4a88-938c-672107c8dca4 --json`, `curl -fsS https://n8n-production-3749.up.railway.app/healthz`, and recent Railway deploy/HTTP logs for errors.
+- n8n currently has no Railway volume attached, so persistence depends on Postgres. Before declaring n8n healthy after config changes, verify env var presence without printing secrets: `DB_TYPE=postgresdb`, `DB_POSTGRESDB_HOST`, `DB_POSTGRESDB_DATABASE`, `DB_POSTGRESDB_USER`, `DB_POSTGRESDB_PASSWORD`, `N8N_ENCRYPTION_KEY`, `WEBHOOK_URL`, `N8N_HOST`, and `N8N_EDITOR_BASE_URL`.
+- Never paste raw `railway variable list --json` or `--kv` output into chat because it contains secret values. Pipe through a sanitizer that prints key names or boolean presence only.
+- Do not use `railway up` for n8n. If n8n is unhealthy, first gather deployment status, health output, and logs; then use an explicit `railway service redeploy --service 4f5fec76-72ac-4b07-b2c4-452ef03e8449 --environment 7b7fa246-b552-4a88-938c-672107c8dca4` only when the user asks for a manual recovery path or the investigation shows a redeploy is the correct fix.
