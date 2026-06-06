@@ -1,0 +1,218 @@
+{
+  "snapshot": {
+    "date": "2026-06-06",
+    "timezone": "Asia/Kolkata",
+    "sourceBranch": "codex/product-state-freeze",
+    "commit": "bdefede4acdee86f92ba8837509aa55cf38960d2",
+    "originMain": "bdefede4acdee86f92ba8837509aa55cf38960d2"
+  },
+  "product": {
+    "name": "Leadsy",
+    "description": "AI lead intelligence and operations platform for agencies, Indian SMBs, real estate teams, and revenue operators.",
+    "currentPositioning": "Operator-focused lead intelligence workspace with CRM truth, customer conversation tracking, deterministic qualification, and human-approved outreach/task workflows.",
+    "hardGuardrails": [
+      "No autonomous message sending by default.",
+      "No fake operational metrics.",
+      "No invented qualification values.",
+      "Conversation, internal notes, and system events must remain separated.",
+      "Every production-complete claim must verify GitHub Actions and Railway deployment state."
+    ]
+  },
+  "deployment": {
+    "web": {
+      "provider": "Railway",
+      "serviceId": "efa9e589-cdb9-4268-b255-4c663bb32150",
+      "environmentId": "7b7fa246-b552-4a88-938c-672107c8dca4",
+      "url": "https://leadsy.up.railway.app",
+      "deploymentId": "74df3aa4-5b7d-4573-8101-c516ddc6d114",
+      "deploymentStatus": "SUCCESS",
+      "deploymentCommit": "bdefede4acdee86f92ba8837509aa55cf38960d2",
+      "watchPattern": "/apps/web/**",
+      "healthEndpoint": "https://leadsy.up.railway.app/api/health",
+      "healthStatus": "ok"
+    },
+    "n8n": {
+      "provider": "Railway",
+      "serviceId": "4f5fec76-72ac-4b07-b2c4-452ef03e8449",
+      "environmentId": "7b7fa246-b552-4a88-938c-672107c8dca4",
+      "url": "https://n8n-production-3749.up.railway.app",
+      "deploymentId": "47eb448c-a4c2-4866-b9e3-115bc21861af",
+      "deploymentStatus": "SUCCESS",
+      "image": "docker.n8n.io/n8nio/n8n:stable",
+      "healthEndpoint": "https://n8n-production-3749.up.railway.app/healthz",
+      "healthResult": {
+        "status": "ok"
+      }
+    }
+  },
+  "stack": {
+    "monorepo": "npm workspaces",
+    "web": [
+      "Next.js App Router",
+      "React",
+      "TypeScript",
+      "Tailwind CSS"
+    ],
+    "packages": [
+      "packages/domain",
+      "packages/ai",
+      "packages/security",
+      "packages/events",
+      "packages/workflows",
+      "packages/observability",
+      "packages/config",
+      "packages/db"
+    ],
+    "localData": "data/app JSON store",
+    "databaseReady": [
+      "PostgreSQL",
+      "pgvector",
+      "Redis"
+    ]
+  },
+  "productionHealth": {
+    "checkedAt": "2026-06-06T11:20:46.795Z",
+    "modules": {
+      "accounts": 0,
+      "deals": 0,
+      "leads": 971,
+      "campaigns": 0,
+      "agencyClients": 0,
+      "metaLeads": 1,
+      "leadMagnetSources": 0,
+      "discoveredLeads": 0,
+      "whatsappConversations": 130,
+      "extensionTasks": 10,
+      "pendingApprovals": 1,
+      "crmFollowUpTasks": 0,
+      "interestedLeads": 0,
+      "humanReviewLeads": 0
+    },
+    "leadKnowledge": {
+      "records": 971,
+      "activeLeads": 970,
+      "excludedLeads": 1,
+      "needsReply": 290,
+      "conversations": 130,
+      "messages": 722,
+      "metaSourced": 1,
+      "extensionSourced": 54,
+      "manualSourced": 74,
+      "assigneeWorkload": {
+        "Unassigned": 969,
+        "Meta sales owner": 2
+      }
+    },
+    "extension": {
+      "tokens": 9,
+      "conversations": 2,
+      "messages": 1577,
+      "events": 978,
+      "tasks": 147,
+      "visibleTasks": 10,
+      "activeTasks": 6,
+      "pendingApprovals": 1,
+      "taskEvents": 473,
+      "monitorPlatforms": 1
+    },
+    "crm": {
+      "assignmentRules": 0,
+      "followUpTasks": 0,
+      "assigneeWorkload": {
+        "Unassigned": 969,
+        "Meta sales owner": 2
+      }
+    }
+  },
+  "implementedSurfaces": [
+    "/app/leads",
+    "/app/communications",
+    "/app/worker",
+    "/app/team",
+    "/app/approvals",
+    "/app/tasks",
+    "/app/connect",
+    "/app/integrations",
+    "/app/magnet",
+    "/app/settings"
+  ],
+  "implementedCapabilities": [
+    "Auth-protected app workspace",
+    "Lead list/search/filtering",
+    "Lead Detail Workspace",
+    "Customer conversation timeline contract",
+    "Lead-backed inbox previews from customer messages only",
+    "Deterministic qualification engine",
+    "Qualification traceability helper",
+    "Manual lead creation",
+    "Manual communication logging",
+    "Lead/conversation/message exclusion controls",
+    "Read-only team page",
+    "Worker/automation page without fake operational metrics",
+    "Extension task and approval lifecycle routes",
+    "Meta OAuth and webhook route structure",
+    "WhatsApp webhook route structure",
+    "n8n infrastructure status visibility"
+  ],
+  "conversationContract": {
+    "conversationMessages": "Inbound and outbound customer conversation messages.",
+    "internalNotes": "User notes and AI notes.",
+    "systemEvents": "Worker events, task events, audit events, sync events.",
+    "rules": [
+      "Timeline-visible customer conversation must come from conversationMessages.",
+      "Inbox previews must come from conversationMessages.",
+      "Qualification inputs must come from conversationMessages.",
+      "Internal notes and system events must not be shown as customer conversation."
+    ]
+  },
+  "qualification": {
+    "type": "deterministic",
+    "fields": [
+      "Need",
+      "Budget",
+      "Timeline",
+      "Authority",
+      "Location",
+      "Company",
+      "Service Interest",
+      "Intent",
+      "Risk",
+      "Recommended Action"
+    ],
+    "unknownDisplay": "Not Yet Collected",
+    "scoreRange": "0-100",
+    "constraint": "Do not trust values that cannot be traced to customer conversation evidence."
+  },
+  "notBuiltOrNotMature": [
+    "Assignment Engine",
+    "Follow-Up Automation",
+    "Mature Analytics",
+    "Campaigns",
+    "Workflow Builder",
+    "Autonomous outbound sending",
+    "Full team management",
+    "Invitations",
+    "Role editing",
+    "Revenue/deal/account modules",
+    "Broad n8n migration of product logic",
+    "Production-grade CRM reporting"
+  ],
+  "knownRisks": [
+    "UI quality has been fragile; browser verification is required after layout changes.",
+    "CRM truth depends on preserving conversation/internal/system separation.",
+    "Fake metrics previously existed and must not return.",
+    "Large lead/inbox surfaces may still need deeper performance work.",
+    "Railway web deploys only when watched /apps/web/** paths change."
+  ],
+  "verificationCommands": [
+    "npm run typecheck",
+    "npm run lint",
+    "npm run test:user-facing-surface",
+    "npm run test:crm-truth-stabilization",
+    "npm run test:qualification-engine",
+    "npm run test:lead-knowledge",
+    "npm run test:whatsapp-crm-v1",
+    "npm run build"
+  ]
+}
+
