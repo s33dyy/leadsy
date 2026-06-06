@@ -43,9 +43,12 @@ async function main() {
   for (const label of ["About You", "About Your Business", "Your Target Customer", "Integration Verification", "Completion Score"]) {
     assert(wizard.includes(label), `onboarding wizard should include ${label}`);
   }
-  for (const label of ["Business name", "Industry", "Team size", "WhatsApp number", "Twilio connected?", "Lead sources", "Assignment preferences", "Follow-up preferences"]) {
+  for (const label of ["Business name", "Industry", "Team size", "WhatsApp number", "Lead sources", "Assignment preferences", "Follow-up preferences"]) {
     assert(wizard.includes(label), `onboarding wizard should collect ${label}`);
   }
+  assert(!wizard.includes("Twilio connected?"), "onboarding should not ask end users to connect Twilio");
+  assert(wizard.includes("Leadsy manages Twilio internally"), "onboarding should explain that WhatsApp transport is managed by Leadsy");
+  assert(wizard.includes('whatsappTransport: "leadsy_managed_twilio"'), "workspace configuration should record Leadsy-managed WhatsApp transport");
   assert(wizard.includes("workspaceConfiguration"), "onboarding should save CRM setup answers to workspace configuration");
   assert(wizard.includes("/api/onboarding"), "wizard should save progress through the onboarding API");
   assert(

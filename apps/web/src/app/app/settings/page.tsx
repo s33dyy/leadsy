@@ -94,14 +94,14 @@ const sectionSummaries: Record<SettingsSection, {
     primaryLabel: "Open integrations",
     rows: [
       { label: "Meta", value: "OAuth and webhook intake stay in Leadsy" },
-      { label: "Twilio", value: "Primary WhatsApp transport stays in Leadsy" },
+      { label: "Twilio", value: "Leadsy-managed platform transport" },
       { label: "Extension", value: "Browser capture is the Legacy Capture Layer" }
     ]
   },
   twilio: {
     eyebrow: "Settings / Integrations / Twilio",
     title: "Twilio WhatsApp",
-    detail: "Primary WhatsApp transport for inbound messages, outbound sends, and delivery callbacks.",
+    detail: "Leadsy-managed WhatsApp transport for inbound messages, outbound sends, and delivery callbacks.",
     primaryHref: "/app/integrations",
     primaryLabel: "Open integrations",
     rows: [
@@ -159,9 +159,9 @@ const sectionSummaries: Record<SettingsSection, {
   whatsapp: {
     eyebrow: "Settings / WhatsApp",
     title: "WhatsApp",
-    detail: "WhatsApp message storage stays in Leadsy. Twilio is the primary WhatsApp transport.",
+    detail: "WhatsApp message storage stays in Leadsy. Twilio is managed by Leadsy as platform infrastructure.",
     primaryHref: "/app/settings?section=twilio",
-    primaryLabel: "Open Twilio setup",
+    primaryLabel: "Review platform transport",
     rows: [
       { label: "Inbound storage", value: "Leadsy" },
       { label: "Cloud provider", value: "Twilio WhatsApp API" },
@@ -471,7 +471,7 @@ function SettingsSectionPanel({
 
 function TwilioSettingsPanel({ twilio }: { twilio: TwilioIntegrationStatus }) {
   const rows = [
-    { label: "Connection Status", value: twilio.connected ? "Connected" : "Not configured" },
+    { label: "Connection Status", value: twilio.connected ? "Leadsy managed" : "Platform config pending" },
     { label: "Account SID", value: maskTwilioAccountSid(twilio.accountSid) },
     { label: "WhatsApp Number", value: twilio.whatsappNumber ?? "Not configured" },
     {
@@ -495,10 +495,10 @@ function TwilioSettingsPanel({ twilio }: { twilio: TwilioIntegrationStatus }) {
           <div>
             <div className="text-sm font-semibold text-foreground">Twilio WhatsApp API</div>
             <p className="mt-1 max-w-2xl text-[12.5px] leading-6 text-muted-foreground">
-              Twilio is the primary WhatsApp transport for Leadsy conversations. Secrets stay in environment variables and are never shown here.
+              Twilio is Leadsy-managed platform infrastructure for WhatsApp conversations. Clients do not need to connect their own Twilio account, and secrets stay in environment variables.
             </p>
           </div>
-          <Badge tone={twilio.connected ? "lime" : "amber"}>{twilio.connected ? "Connected" : "Needs config"}</Badge>
+          <Badge tone={twilio.connected ? "lime" : "amber"}>{twilio.connected ? "Leadsy managed" : "Platform pending"}</Badge>
         </div>
       </div>
       <div className="grid min-w-0 grid-cols-1 gap-px md:grid-cols-2">
