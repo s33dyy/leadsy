@@ -45,19 +45,21 @@ type ShellLink = {
 
 const workflowNav: ShellLink[] = [
   { href: "/app", label: "Dashboard", icon: LayoutDashboard, end: true },
-  { href: "/app/leads", label: "CRM", icon: Users2, count: "142" },
-  { href: "/app/worker", label: "Workers", icon: Bot, live: true },
-  { href: "/app/approvals", label: "Approvals", icon: CheckSquare, accent: true },
-  { href: "/app/communications", label: "Communications", icon: MessageSquare, count: "3" },
-  { href: "/app/tasks", label: "Tasks", icon: ListChecks },
-  { href: "/app/integrations", label: "Integrations", icon: Plug },
+  { href: "/app/leads", label: "Leads", icon: Users2 },
+  { href: "/app/communications", label: "Inbox", icon: MessageSquare },
+  { href: "/app/worker", label: "Automations", icon: Bot },
+  { href: "/app/settings?panel=team", label: "Team", icon: Users2 },
+  { href: "/app?view=analytics", label: "Analytics", icon: Activity },
   { href: "/app/settings", label: "Settings", icon: SettingsIcon }
 ];
 
-const knowledgeNav: ShellLink[] = [
-  { href: "/app/leads?panel=knowledge&view=icp", label: "ICP & playbooks", icon: BookOpen, count: "12" },
-  { href: "/app/leads?panel=knowledge", label: "Recent AI findings", icon: BookOpen, count: "38" },
-  { href: "/app/leads?panel=knowledge&view=snippets", label: "Snippets", icon: BookOpen, count: "24" }
+const supportingNav: ShellLink[] = [
+  { href: "/app/approvals", label: "Approval queue", icon: CheckSquare, accent: true },
+  { href: "/app/tasks", label: "Follow-up tasks", icon: ListChecks },
+  { href: "/app/integrations", label: "Integrations", icon: Plug },
+  { href: "/app/connect", label: "Connect channels", icon: Plug },
+  { href: "/app/leads?panel=knowledge", label: "Lead context", icon: BookOpen },
+  { href: "/app/worker?view=extension", label: "Extension worker", icon: Bot }
 ];
 
 type SearchParamsLike = Pick<URLSearchParams, "get">;
@@ -85,28 +87,31 @@ function linkPath(href: string) {
 }
 
 function isActiveLink(pathname: string, searchParams: SearchParamsLike, link: ShellLink) {
-  if (link.label === "Dashboard") return pathname === "/app";
+  if (link.label === "Dashboard") return pathname === "/app" && searchParams.get("view") !== "analytics";
+  if (link.label === "Analytics") return pathname === "/app" && searchParams.get("view") === "analytics";
   const path = linkPath(link.href);
   const activePath = pathname === path || pathname.startsWith(`${path}/`);
   if (!activePath) return false;
   if (link.href.includes("?")) return searchParamsMatch(searchParams, link.href);
-  if (link.label === "CRM") return !searchParams.get("tab") && searchParams.get("panel") !== "knowledge";
-  if (link.label === "Workers") return searchParams.get("tab") !== "pending";
+  if (link.label === "Leads") return !searchParams.get("tab") && searchParams.get("panel") !== "knowledge";
+  if (link.label === "Automations") return searchParams.get("tab") !== "pending";
   return true;
 }
 
 function pageTitle(pathname: string, searchParams: SearchParamsLike) {
+  if (pathname === "/app" && searchParams.get("view") === "analytics") return "Analytics";
   if (pathname === "/app") return "Dashboard";
-  if (pathname.startsWith("/app/leads") && searchParams.get("panel") === "knowledge") return "Knowledge";
+  if (pathname.startsWith("/app/leads") && searchParams.get("panel") === "knowledge") return "Lead context";
   if (pathname.startsWith("/app/leads")) {
-    return "CRM";
+    return "Leads";
   }
-  if (pathname.startsWith("/app/worker") && searchParams.get("tab") === "pending") return "Approvals";
-  if (pathname.startsWith("/app/worker")) return "Workers";
+  if (pathname.startsWith("/app/worker") && searchParams.get("tab") === "pending") return "Approval queue";
+  if (pathname.startsWith("/app/worker")) return "Automations";
   if (pathname.startsWith("/app/approvals")) return "Approvals";
-  if (pathname.startsWith("/app/communications")) return "Communications";
-  if (pathname.startsWith("/app/tasks")) return "Tasks";
+  if (pathname.startsWith("/app/communications")) return "Inbox";
+  if (pathname.startsWith("/app/tasks")) return "Follow-up tasks";
   if (pathname.startsWith("/app/integrations")) return "Integrations";
+  if (pathname.startsWith("/app/settings") && searchParams.get("panel") === "team") return "Team";
   if (pathname.startsWith("/app/settings")) return "Settings";
   if (pathname.startsWith("/app/connect")) return "Integrations";
   return "App";
@@ -181,7 +186,7 @@ export function AppShell({
         : [
             {
               title: "Finish onboarding",
-              detail: "Complete the workspace profile so AI workers can produce sharper research and tasks.",
+              detail: "Complete the workspace profile so AI qualification can use the right lead context.",
               href: "/app/leads"
             }
           ]),
@@ -196,8 +201,8 @@ export function AppShell({
           ]),
       {
         title: "Approval queue",
-        detail: pendingApprovalCount ? `${pendingApprovalCount} worker item needs review.` : "Worker approvals will appear before outreach is sent.",
-        href: "/app/worker?tab=pending"
+        detail: pendingApprovalCount ? `${pendingApprovalCount} automation item needs review.` : "Automation approvals will appear before outreach is sent.",
+        href: "/app/approvals"
       }
     ],
     [hasMetaConnection, pendingApprovalCount, session.onboardingCompletedAt]
@@ -221,9 +226,9 @@ export function AppShell({
 
   const nav = (
     <nav className="mt-3 flex flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-3 scrollbar-dark" aria-label="Primary">
-      {!collapsed ? <div className="caption px-2 pb-1 pt-1.5">Workflow</div> : null}
+      {!collapsed ? <div className="caption px-2 pb-1 pt-1.5">Conversion workflow</div> : null}
       {workflowNav.map((link) => {
-        const count = link.label === "Approvals" && pendingApprovalCount ? String(pendingApprovalCount) : link.count;
+        const count = undefined;
         return (
           <SidebarLink
             key={`${link.label}-${link.href}`}
@@ -236,17 +241,20 @@ export function AppShell({
         );
       })}
 
-      {!collapsed ? <div className="caption mt-4 px-2 pb-1">Knowledge</div> : null}
-      {knowledgeNav.map((link) => (
-        <SidebarLink
-          key={`${link.label}-${link.href}`}
-          link={link}
-          active={isActiveLink(pathname, searchParams, link)}
-          count={link.count}
-          collapsed={collapsed}
-          onClick={() => setMobileOpen(false)}
-        />
-      ))}
+      {!collapsed ? <div className="caption mt-4 px-2 pb-1">Supporting routes</div> : null}
+      {supportingNav.map((link) => {
+        const count = link.label === "Approval queue" && pendingApprovalCount ? String(pendingApprovalCount) : undefined;
+        return (
+          <SidebarLink
+            key={`${link.label}-${link.href}`}
+            link={link}
+            active={isActiveLink(pathname, searchParams, link)}
+            count={count}
+            collapsed={collapsed}
+            onClick={() => setMobileOpen(false)}
+          />
+        );
+      })}
     </nav>
   );
 
@@ -277,7 +285,7 @@ export function AppShell({
 
           {!collapsed ? (
             <div className="px-2.5 pt-2.5">
-              <Link href="/app/leads?search=open" className="flex h-7 w-full items-center gap-2 rounded-[5px] border border-sidebar-border bg-background/40 px-2 text-left text-[12px] text-muted-foreground hover:bg-sidebar-accent">
+              <Link href="/app/leads?q=" className="flex h-7 w-full items-center gap-2 rounded-[5px] border border-sidebar-border bg-background/40 px-2 text-left text-[12px] text-muted-foreground hover:bg-sidebar-accent">
                 <Search className="h-3.5 w-3.5" />
                 <span className="flex-1">Quick search</span>
                 <span className="kbd">
@@ -370,14 +378,12 @@ export function AppShell({
               <span className="truncate text-foreground">{title}</span>
             </div>
             <div className="relative flex items-center gap-1.5">
-              <Link href="/app/worker" className="hidden items-center gap-1.5 rounded-[5px] border border-border bg-surface-2 px-2 py-1 font-mono text-[10.5px] text-muted-foreground hover:bg-surface-3 md:flex">
+              <Link href="/app/approvals" className="hidden items-center gap-1.5 rounded-[5px] border border-border bg-surface-2 px-2 py-1 font-mono text-[10.5px] text-muted-foreground hover:bg-surface-3 md:flex">
                 <Activity className="h-3 w-3 text-primary" />
-                <span>4 workers running</span>
-                <span className="opacity-40">·</span>
-                <span>queue {82 + pendingApprovalCount}</span>
+                <span>{pendingApprovalCount ? `${pendingApprovalCount} approvals` : "No pending approvals"}</span>
               </Link>
-              <Link href="/app/leads?filters=open" className="hidden h-7 items-center gap-1.5 rounded-[5px] border border-border bg-surface-2 px-2 text-[12px] hover:bg-surface-3 sm:flex">
-                <span>Filter</span>
+              <Link href="/app/leads?view=needs-reply" className="hidden h-7 items-center gap-1.5 rounded-[5px] border border-border bg-surface-2 px-2 text-[12px] hover:bg-surface-3 sm:flex">
+                <span>Needs reply</span>
                 <ChevronDown className="h-3 w-3 opacity-60" />
               </Link>
               <Link href="/app/leads?new=lead" className="flex h-7 items-center gap-1.5 rounded-[5px] bg-primary px-2 text-[12px] font-medium text-primary-foreground hover:bg-primary/90">

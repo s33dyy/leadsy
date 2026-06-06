@@ -24,19 +24,21 @@ async function main() {
   const appShell = await read("apps/web/src/components/app-shell.tsx");
   const expectedNavLabels = [
     "Dashboard",
-    "CRM",
-    "Workers",
-    "Approvals",
-    "Communications",
-    "Tasks",
-    "Integrations",
-    "Settings",
-    "ICP & playbooks",
-    "Recent AI findings",
-    "Snippets"
+    "Leads",
+    "Inbox",
+    "Automations",
+    "Team",
+    "Analytics",
+    "Settings"
   ];
   for (const label of expectedNavLabels) {
     assert(appShell.includes(`label: "${label}"`), `global sidebar should include ${label}`);
+  }
+  for (const legacyPrimaryLabel of ['label: "CRM"', 'label: "Workers"', 'label: "Communications"']) {
+    assert(!appShell.includes(legacyPrimaryLabel), `global sidebar primary nav should not include ${legacyPrimaryLabel}`);
+  }
+  for (const fakeCounter of ['count: "142"', 'count: "3"', 'count: "12"', 'count: "38"', 'count: "24"', "4 workers running", "queue {82 + pendingApprovalCount}"]) {
+    assert(!appShell.includes(fakeCounter), `app shell should not display fake counter ${fakeCounter}`);
   }
 
   assert(appShell.includes('"use client"'), "app shell should be interactive for collapse, drawers, and menus");
