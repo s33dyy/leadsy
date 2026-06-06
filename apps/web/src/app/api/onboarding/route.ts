@@ -3,6 +3,7 @@ import { z } from "zod";
 import { audit, rateLimit } from "@leadsy/security";
 import { requireApiSession } from "@/lib/api-auth";
 import { completeUserOnboarding, saveUserOnboarding } from "@/lib/auth-store";
+import { upsertWorkspaceWhatsAppSender } from "@/lib/workspace-whatsapp-sender-store";
 
 export const runtime = "nodejs";
 
@@ -27,6 +28,21 @@ export async function POST(request: NextRequest) {
 
   if (!user) {
     return NextResponse.json({ error: "user_not_found" }, { status: 404 });
+  }
+
+  const workspaceConfiguration = input.profile.workspaceConfiguration;
+  if (workspaceConfiguration && typeof workspaceConfiguration === "object" && !Array.isArray(workspaceConfiguration)) {
+    const config = workspaceConfiguration as Record<string, unknown>;
+    const whatsappNumber = typeof config.whatsappNumber === "string" ? config.whatsappNumber.trim() : "";
+    if (whatsappNumber) {
+      await upsertWorkspaceWhatsAppSender({
+        tenantId: auth.session.tenantId,
+        ownerId: auth.session.id,
+        businessName: typeof config.businessName === "string" ? config.businessName : undefined,
+        countryCode: typeof config.countryCode === "string" ? config.countryCode : undefined,
+        whatsappNumber
+      });
+    }
   }
 
   audit({

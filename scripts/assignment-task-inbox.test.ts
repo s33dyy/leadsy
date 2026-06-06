@@ -137,6 +137,9 @@ async function main() {
     assert.equal(allTasks[0].createdByRole, "manager");
 
     const leads = await listLeadKnowledgeRecords(scope);
+    const trackedManualLead = leads.find((lead) => lead.id === manualLead.id);
+    assert.equal(trackedManualLead?.conversations.length, 1, "manual lead creation should create a tracked conversation");
+    assert.equal(trackedManualLead?.messages.length, 1, "manual lead creation should create an initial tracked message");
     const inboxItems = buildLeadBackedInboxItems(leads);
     const sourceInboxItem = inboxItems.find((item) => item.leadId === sourceLead.id);
     const manualInboxItem = inboxItems.find((item) => item.leadId === manualLead.id);

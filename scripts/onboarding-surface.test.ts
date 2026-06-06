@@ -21,6 +21,7 @@ async function fileExists(path: string) {
 async function main() {
   assert.equal(await fileExists("apps/web/src/components/onboarding-wizard.tsx"), true, "first-login onboarding wizard should exist");
   assert.equal(await fileExists("apps/web/src/app/api/onboarding/route.ts"), true, "onboarding progress API should exist");
+  assert.equal(await fileExists("apps/web/src/lib/workspace-whatsapp-sender-store.ts"), true, "workspace WhatsApp sender registry should exist");
 
   const authStore = await read("apps/web/src/lib/auth-store.ts");
   assert(authStore.includes("onboardingCompletedAt?"), "auth users should store onboarding completion without a migration");
@@ -51,6 +52,8 @@ async function main() {
   assert(wizard.includes('whatsappTransport: "leadsy_managed_twilio"'), "workspace configuration should record Leadsy-managed WhatsApp transport");
   assert(wizard.includes("workspaceConfiguration"), "onboarding should save CRM setup answers to workspace configuration");
   assert(wizard.includes("/api/onboarding"), "wizard should save progress through the onboarding API");
+  const onboardingRoute = await read("apps/web/src/app/api/onboarding/route.ts");
+  assert(onboardingRoute.includes("upsertWorkspaceWhatsAppSender"), "onboarding API should register the workspace WhatsApp sender");
   assert(
     /fetch\("\/api\/onboarding",\s*{[\s\S]*credentials:\s*"include"/.test(wizard),
     "wizard should preserve the authenticated session when saving onboarding progress"

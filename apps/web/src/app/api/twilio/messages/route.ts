@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { audit, rateLimit } from "@leadsy/security";
 import { requireApiSession } from "@/lib/api-auth";
-import { sendAndStoreTwilioWhatsAppMessage } from "@/lib/twilio-transport";
+import { sendAndStoreTwilioWhatsAppMessage, TwilioWorkspaceSenderError } from "@/lib/twilio-transport";
 
 export const runtime = "nodejs";
 
@@ -26,15 +26,23 @@ export async function POST(request: NextRequest) {
           .filter((entry): entry is [string, string] => typeof entry[1] === "string")
       )
     : undefined;
-  const result = await sendAndStoreTwilioWhatsAppMessage({
-    tenantId: auth.session.tenantId,
-    ownerId: auth.session.id,
-    leadId: typeof body.leadId === "string" ? body.leadId : undefined,
-    to,
-    body: typeof body.body === "string" ? body.body : undefined,
-    contentSid: typeof body.contentSid === "string" ? body.contentSid : undefined,
-    contentVariables
-  });
+  let result: Awaited<ReturnType<typeof sendAndStoreTwilioWhatsAppMessage>>;
+  try {
+    result = await sendAndStoreTwilioWhatsAppMessage({
+      tenantId: auth.session.tenantId,
+      ownerId: auth.session.id,
+      leadId: typeof body.leadId === "string" ? body.leadId : undefined,
+      to,
+      body: typeof body.body === "string" ? body.body : undefined,
+      contentSid: typeof body.contentSid === "string" ? body.contentSid : undefined,
+      contentVariables
+    });
+  } catch (error) {
+    if (error instanceof TwilioWorkspaceSenderError) {
+      return NextResponse.json({ error: error.code }, { status: 409 });
+    }
+    throw error;
+  }
 
   audit({
     tenantId: auth.session.tenantId,

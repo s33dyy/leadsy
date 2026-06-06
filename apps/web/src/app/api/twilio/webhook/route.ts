@@ -1,8 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { rateLimit } from "@leadsy/security";
-import { defaultWebhookScope } from "@/lib/lead-knowledge-store";
 import {
+  resolveTwilioInboundScopeFromForm,
   saveTwilioInboundFromForm,
+  TwilioWorkspaceSenderError,
   twilioParamsFromBody,
   verifyTwilioSignature
 } from "@/lib/twilio-transport";
@@ -23,7 +24,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "invalid_signature" }, { status: 401 });
   }
 
-  await saveTwilioInboundFromForm({ ...defaultWebhookScope(), form });
+  try {
+    const scope = await resolveTwilioInboundScopeFromForm(form);
+    await saveTwilioInboundFromForm({ tenantId: scope.tenantId, ownerId: scope.ownerId, form });
+  } catch (error) {
+    if (error instanceof TwilioWorkspaceSenderError) {
+      return NextResponse.json({ error: error.code }, { status: error.code === "unknown_whatsapp_sender" ? 400 : 409 });
+    }
+    throw error;
+  }
   return new NextResponse("<Response></Response>", {
     status: 200,
     headers: { "content-type": "text/xml" }
