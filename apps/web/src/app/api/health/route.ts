@@ -23,6 +23,7 @@ export async function GET() {
   return NextResponse.json({
     ok: true,
     service: "leadsy-web",
+    release: "twilio-crm-transformation",
     checkedAt: new Date().toISOString(),
     modules: {
       accounts: accounts.length,
