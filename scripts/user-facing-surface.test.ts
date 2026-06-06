@@ -188,6 +188,11 @@ async function main() {
   assert(leadsPage.includes("/api/leads/conversation-status"), "leads page should allow conversation-level knowledge exclusion");
   assert(leadsPage.includes("Lead capture, qualification, and conversion"), "leads page should position around the target product workflow");
   assert(leadsPage.includes("Leads workspace"), "leads page should present Leads as the main workspace");
+  assert(leadsPage.includes("Lead → Conversation → Qualification → Action"), "Phase 3 lead workspace should foreground the conversion flow");
+  assert(leadsPage.includes("15-second lead brief"), "selected lead should expose a fast lead detail brief before admin controls");
+  for (const goldenField of ["Current status", "Last conversation", "Qualification summary", "Owner", "Follow-up status"]) {
+    assert(leadsPage.includes(goldenField), `selected lead brief should expose ${goldenField}`);
+  }
   assert(leadsPage.includes("AI qualification"), "leads page should expose AI qualification state");
   assert(leadsPage.includes("Qualification fields"), "selected lead details should expose qualification fields");
   assert(leadsPage.includes("Lead source"), "selected lead details should expose CRM lead source");
@@ -248,6 +253,16 @@ async function main() {
   assert(leadsPage.includes("Archive lead"), "selected lead details should expose soft-delete controls");
   assert(leadsPage.includes('data-testid="lead-chat-hide-message"'), "chat bubbles should expose soft-delete controls for comm records");
   assert(!leadsPage.includes("Incoming WhatsApp leads from Meta ads"), "leads page should not imply only Meta ad leads are tracked");
+
+  const communicationsPage = await readFile(join(root, "apps/web/src/app/app/communications/page.tsx"), "utf8");
+  assert(communicationsPage.includes("conversion workspace"), "Inbox should be positioned as a conversion workspace, not a generic messaging app");
+  assert(communicationsPage.includes("conversionUrgency"), "Inbox should sort conversations by conversion urgency");
+  assert(communicationsPage.includes("leadBackedIds"), "Inbox should avoid duplicating lead-backed conversations as separate raw inbox items");
+  assert(communicationsPage.includes("tab=comms"), "Inbox should route lead-backed conversations to the selected lead comms tab");
+  assert(communicationsPage.includes("Suggested next action"), "Inbox detail should show a suggested next action when lead context exists");
+  assert(communicationsPage.includes("Owner"), "Inbox detail should show the lead owner when lead context exists");
+  assert(communicationsPage.includes("Qualification"), "Inbox detail should show qualification context before advanced messaging features");
+
   for (const adminCopy of ["Raw webhook message", "rawPreview", "message.raw"]) {
     assert(!leadsPage.includes(adminCopy), `leads page should not expose admin/raw webhook copy: ${adminCopy}`);
   }

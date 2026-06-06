@@ -679,6 +679,8 @@ function LeadRecordWorkspace({
         </div>
       </div>
 
+      <FifteenSecondLeadBrief lead={lead} crmFollowUps={crmFollowUps} />
+
       <div className="flex max-w-full gap-2 overflow-x-auto border-b border-[var(--line)] pb-3">
         {workspaceTabs.map((tab) => (
           <Link
@@ -709,6 +711,32 @@ function LeadRecordWorkspace({
         />
       ) : null}
     </div>
+  );
+}
+
+function FifteenSecondLeadBrief({ lead, crmFollowUps }: { lead: LeadKnowledgeRecord; crmFollowUps: CrmFollowUpTask[] }) {
+  const qualificationSummary = lead.summary || lead.qualificationFields.need || "Qualification not captured yet.";
+  const owner = lead.assigneeName || "Unassigned";
+  const followUpStatus = crmFollowUps.length ? `${crmFollowUps.length} open follow-up${crmFollowUps.length === 1 ? "" : "s"}` : "No follow-up scheduled";
+  return (
+    <section className="rounded-[8px] border border-teal-300/25 bg-teal-300/[0.08] p-4" aria-label="15-second lead brief">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="mono text-[11px] uppercase tracking-[0.18em] text-[var(--teal)]">15-second lead brief</div>
+          <h4 className="mt-1 text-lg font-semibold text-white">Lead → Conversation → Qualification → Action</h4>
+          <p className="mt-1 text-xs leading-5 text-[var(--muted-2)]">Open this lead and decide the next conversion move without switching screens.</p>
+        </div>
+        <Badge tone={stageTone(crmStage(lead))}>{crmStage(lead)}</Badge>
+      </div>
+      <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+        <DetailLine label="Current status" value={crmStage(lead)} />
+        <DetailLine label="Last conversation" value={latestMessage(lead)} />
+        <DetailLine label="Qualification summary" value={qualificationSummary} />
+        <DetailLine label="Next action" value={nextAction(lead)} />
+        <DetailLine label="Owner" value={owner} />
+        <DetailLine label="Follow-up status" value={followUpStatus} />
+      </div>
+    </section>
   );
 }
 

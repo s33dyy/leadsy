@@ -10,11 +10,14 @@ export const dynamic = "force-dynamic";
 
 type InboxItem = {
   id: string;
+  leadId?: string;
   contact: string;
   company: string;
   channel: "WhatsApp" | "Instagram" | "Messenger" | "Email" | "Extension";
   preview: string;
   time: string;
+  sortAt: number;
+  conversionUrgency: number;
   unread: number;
   important: boolean;
   href: string;
@@ -43,6 +46,22 @@ function extensionChannel(platform: string): InboxItem["channel"] {
   if (platform === "instagram-web") return "Instagram";
   if (platform === "facebook-web") return "Messenger";
   return "Extension";
+}
+
+function timestampValue(value?: string) {
+  const parsed = value ? Date.parse(value) : 0;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function leadIdentityKeys(input: {
+  id?: string;
+  contactId?: string;
+  waId?: string;
+  contact?: { phone?: string; waId?: string; email?: string; handle?: string };
+}) {
+  return [input.id, input.contactId, input.waId, input.contact?.phone, input.contact?.waId, input.contact?.email, input.contact?.handle]
+    .map((value) => value?.trim().toLowerCase())
+    .filter(Boolean) as string[];
 }
 
 function channelIcon(channel: InboxItem["channel"]) {
@@ -76,62 +95,78 @@ export default async function CommunicationsPage() {
     );
   const whatsappConversations = (await Promise.all(whatsappScopes)).flat();
 
-  const extensionItems: InboxItem[] = extensionBundles.map((bundle) => {
-    const contact = bundle.conversation.contact.displayName || bundle.conversation.contact.handle || bundle.conversation.contact.phone || bundle.conversation.contact.email || "Unknown contact";
-    return {
-      id: bundle.conversation.id,
-      contact,
-      company: bundle.conversation.leadSource || "Captured by extension",
-      channel: extensionChannel(bundle.conversation.platform),
-      preview: bundle.conversation.lastMessagePreview || bundle.conversation.summary || "No preview yet.",
-      time: relativeTime(bundle.conversation.lastMessageAt ?? bundle.conversation.updatedAt),
-      unread: bundle.conversation.status === "needs-human" ? 1 : 0,
-      important: bundle.conversation.status === "needs-human",
-      href: bundle.conversation.leadId ? `/app/leads?contact=${bundle.conversation.leadId}` : "/app/worker",
-      messages: bundle.messages.slice(-8).map((message) => ({
+  const leadBackedIds = new Set(leads.map((lead) => lead.id));
+  const leadBackedKeys = new Set(leads.flatMap((lead) => leadIdentityKeys({ id: lead.id, contact: lead.contact })));
+
+  const extensionItems: InboxItem[] = extensionBundles
+    .filter((bundle) => !bundle.conversation.leadId || !leadBackedIds.has(bundle.conversation.leadId))
+    .map((bundle) => {
+      const contact = bundle.conversation.contact.displayName || bundle.conversation.contact.handle || bundle.conversation.contact.phone || bundle.conversation.contact.email || "Unknown contact";
+      const lastAt = bundle.conversation.lastMessageAt ?? bundle.conversation.updatedAt;
+      return {
+        id: bundle.conversation.id,
+        leadId: bundle.conversation.leadId,
+        contact,
+        company: bundle.conversation.leadSource || "Captured by extension",
+        channel: extensionChannel(bundle.conversation.platform),
+        preview: bundle.conversation.lastMessagePreview || bundle.conversation.summary || "No preview yet.",
+        time: relativeTime(lastAt),
+        sortAt: timestampValue(lastAt),
+        conversionUrgency: bundle.conversation.status === "needs-human" ? 70 : 20,
+        unread: bundle.conversation.status === "needs-human" ? 1 : 0,
+        important: bundle.conversation.status === "needs-human",
+        href: bundle.conversation.leadId ? `/app/leads?contact=${bundle.conversation.leadId}&tab=comms` : "/app/worker",
+        messages: bundle.messages.slice(-8).map((message) => ({
+          id: message.id,
+          author: message.direction === "outbound" ? "Leadsy" : contact,
+          from: message.generatedBy === "leadsy" ? "ai" : message.direction === "outbound" ? "us" : "lead",
+          text: message.body,
+          time: relativeTime(message.sentAt)
+        }))
+      };
+    });
+
+  const whatsappItems: InboxItem[] = whatsappConversations
+    .filter((conversation) => !leadIdentityKeys({ contactId: conversation.contactId, waId: conversation.waId }).some((key) => leadBackedKeys.has(key)))
+    .map((conversation) => ({
+      id: `wa_${conversation.contactId}`,
+      contact: conversation.profileName || conversation.waId || conversation.contactId,
+      company: conversation.adOriginated ? "Meta Lead Ad" : "WhatsApp Business",
+      channel: "WhatsApp",
+      preview: conversation.lastMessageText || conversation.lastMessageType,
+      time: relativeTime(conversation.lastMessageAt),
+      sortAt: timestampValue(conversation.lastMessageAt),
+      conversionUrgency: conversation.leadStatus === "lead" && conversation.adOriginated ? 60 : 30,
+      unread: conversation.inboundCount,
+      important: conversation.leadStatus === "lead" && conversation.adOriginated,
+      href: conversation.whatsappUrl,
+      messages: conversation.messages.slice(-8).map((message) => ({
         id: message.id,
-        author: message.direction === "outbound" ? "Leadsy" : contact,
-        from: message.generatedBy === "leadsy" ? "ai" : message.direction === "outbound" ? "us" : "lead",
-        text: message.body,
+        author: message.direction === "outbound" ? "Leadsy" : message.profileName || message.from,
+        from: message.direction === "outbound" ? "us" : "lead",
+        text: message.messageText || message.messageType,
         time: relativeTime(message.sentAt)
       }))
-    };
-  });
-
-  const whatsappItems: InboxItem[] = whatsappConversations.map((conversation) => ({
-    id: `wa_${conversation.contactId}`,
-    contact: conversation.profileName || conversation.waId || conversation.contactId,
-    company: conversation.adOriginated ? "Meta Lead Ad" : "WhatsApp Business",
-    channel: "WhatsApp",
-    preview: conversation.lastMessageText || conversation.lastMessageType,
-    time: relativeTime(conversation.lastMessageAt),
-    unread: conversation.inboundCount,
-    important: conversation.leadStatus === "lead" && conversation.adOriginated,
-    href: conversation.whatsappUrl,
-    messages: conversation.messages.slice(-8).map((message) => ({
-      id: message.id,
-      author: message.direction === "outbound" ? "Leadsy" : message.profileName || message.from,
-      from: message.direction === "outbound" ? "us" : "lead",
-      text: message.messageText || message.messageType,
-      time: relativeTime(message.sentAt)
-    }))
-  }));
+    }));
 
   const leadItems: InboxItem[] = leads
     .filter((lead) => lead.messages.length)
-    .slice(0, 8)
     .map((lead) => {
       const contact = lead.contact.displayName || lead.contact.handle || lead.contact.phone || lead.contact.email || "Unknown lead";
+      const lastAt = lead.lastMessageAt ?? lead.updatedAt;
       return {
         id: `lead_${lead.id}`,
+        leadId: lead.id,
         contact,
         company: lead.leadSource || "Lead knowledge",
         channel: lead.channels.includes("email") ? "Email" : lead.channels.includes("instagram") ? "Instagram" : lead.channels.includes("facebook") ? "Messenger" : "WhatsApp",
         preview: lead.lastMessagePreview || lead.messages.at(-1)?.body || lead.summary || "Lead conversation captured.",
-        time: relativeTime(lead.lastMessageAt ?? lead.updatedAt),
+        time: relativeTime(lastAt),
+        sortAt: timestampValue(lastAt),
+        conversionUrgency: lead.crmStatus === "needs_reply" ? 100 : lead.crmStatus === "human_review" ? 90 : lead.leadStatus === "lead" ? 50 : 10,
         unread: lead.crmStatus === "needs_reply" ? 1 : 0,
         important: lead.crmStatus === "human_review" || lead.crmStatus === "needs_reply",
-        href: `/app/leads?contact=${lead.id}`,
+        href: `/app/leads?contact=${lead.id}&tab=comms`,
         messages: lead.messages.slice(-8).map((message) => ({
           id: message.id,
           author: message.direction === "outbound" ? "Leadsy" : contact,
@@ -142,9 +177,11 @@ export default async function CommunicationsPage() {
       };
     });
 
-  const items = [...whatsappItems, ...extensionItems, ...leadItems].slice(0, 40);
+  const items = [...leadItems, ...whatsappItems, ...extensionItems]
+    .sort((left, right) => right.conversionUrgency - left.conversionUrgency || right.sortAt - left.sortAt)
+    .slice(0, 40);
   const active = items[0];
-  const contextLead = active ? leads.find((lead) => active.href.includes(lead.id)) : undefined;
+  const contextLead = active ? leads.find((lead) => active.leadId === lead.id || active.href.includes(lead.id)) : undefined;
 
   return (
     <div className="grid h-full min-h-0 grid-cols-12 gap-px bg-border">
@@ -162,6 +199,7 @@ export default async function CommunicationsPage() {
               </span>
             ))}
           </div>
+          <p className="mt-2 text-[11.5px] leading-5 text-muted-foreground">Inbox is a conversion workspace: prioritize reply, qualification, owner, and next action.</p>
         </div>
         <ul className="min-h-0 flex-1 overflow-y-auto">
           {items.length ? (
@@ -224,6 +262,22 @@ export default async function CommunicationsPage() {
                 <span className="ml-auto font-mono text-[10.5px] text-muted-foreground">{active.time}</span>
               </div>
               <p className="mt-1 text-[12.5px] text-foreground/90">{contextLead?.summary || active.preview}</p>
+              {contextLead ? (
+                <div className="mt-3 grid gap-2 md:grid-cols-3">
+                  <div className="rounded-[5px] border border-border/80 bg-background/60 p-2">
+                    <div className="caption">Qualification</div>
+                    <div className="mt-1 text-[12px] text-foreground/90">{contextLead.qualificationStage.replace(/_/g, " ")}</div>
+                  </div>
+                  <div className="rounded-[5px] border border-border/80 bg-background/60 p-2">
+                    <div className="caption">Owner</div>
+                    <div className="mt-1 text-[12px] text-foreground/90">{contextLead.assigneeName || "Unassigned"}</div>
+                  </div>
+                  <div className="rounded-[5px] border border-border/80 bg-background/60 p-2">
+                    <div className="caption">Suggested next action</div>
+                    <div className="mt-1 text-[12px] text-foreground/90">{contextLead.nextAction || (contextLead.crmStatus === "needs_reply" ? "Reply and qualify intent." : "Open lead workspace and continue qualification.")}</div>
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
