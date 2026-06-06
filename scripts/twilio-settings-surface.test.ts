@@ -19,6 +19,8 @@ async function main() {
 
   const integrationsPage = await readFile(join(root, "apps/web/src/app/app/integrations/page.tsx"), "utf8");
   assert(integrationsPage.includes("Twilio WhatsApp"), "integrations page should list Twilio WhatsApp as the primary WhatsApp transport");
+  assert(integrationsPage.includes("Leadsy-managed WhatsApp transport"), "integrations page should position Twilio as Leadsy-managed infrastructure");
+  assert(integrationsPage.includes("Clients do not connect their own Twilio account"), "integrations page should not ask clients to connect Twilio");
   assert(integrationsPage.includes("/app/settings?section=twilio"), "integrations page should link Twilio to settings");
   assert(!integrationsPage.includes("TWILIO_AUTH_TOKEN"), "integrations page should not expose Twilio secrets");
 

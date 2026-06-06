@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 type IntegrationItem = {
   name: string;
   desc: string;
-  status: "Connected" | "Available" | "Needs config" | "Warning" | "Managed in n8n";
+  status: "Connected" | "Available" | "Needs config" | "Warning" | "Managed in n8n" | "Leadsy managed" | "Platform pending";
   scope?: string;
   href: string;
   externalHref?: string;
@@ -56,9 +56,9 @@ export default async function IntegrationsPage() {
     },
     {
       name: "Twilio WhatsApp",
-      desc: "Primary WhatsApp transport. Leadsy owns inbound storage, outbound sends, and delivery callbacks.",
-      status: twilio.connected ? "Connected" : "Needs config",
-      scope: twilio.whatsappNumber || latestMeta?.phoneNumberId || latestMeta?.whatsappBusinessAccountId || whatsappConfig?.detail || "Add Twilio WhatsApp env config",
+      desc: "Leadsy-managed WhatsApp transport. Clients do not connect their own Twilio account.",
+      status: twilio.connected ? "Leadsy managed" : "Platform pending",
+      scope: twilio.whatsappNumber || latestMeta?.phoneNumberId || latestMeta?.whatsappBusinessAccountId || whatsappConfig?.detail || "Leadsy platform config pending",
       href: "/app/settings?section=twilio"
     },
     {
@@ -133,7 +133,7 @@ export default async function IntegrationsPage() {
                     <Check className="h-3 w-3" /> {item.status}
                   </span>
                 ) : (
-                  <Badge tone={item.status === "Warning" ? "rose" : item.status === "Needs config" ? "amber" : "neutral"}>{item.status}</Badge>
+                  <Badge tone={item.status === "Warning" ? "rose" : item.status === "Needs config" || item.status === "Platform pending" ? "amber" : item.status === "Leadsy managed" ? "lime" : "neutral"}>{item.status}</Badge>
                 )}
               </div>
               {item.scope ? (

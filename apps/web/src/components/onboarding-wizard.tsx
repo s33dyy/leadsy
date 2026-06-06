@@ -50,7 +50,7 @@ function workspaceConfigurationFromProfile(profile: OnboardingProfile) {
     industry: profile.industry,
     teamSize: profile.teamSize,
     whatsappNumber: profile.whatsappNumber,
-    twilioConnected: profile.twilioConnected,
+    whatsappTransport: "leadsy_managed_twilio",
     leadSources: profile.leadSources,
     assignmentPreferences: profile.assignmentPreferences,
     followUpPreferences: profile.followUpPreferences
@@ -78,7 +78,6 @@ export function OnboardingWizard({
     industry: textFromProfile(initialProfile, "industry"),
     teamSize: textFromProfile(initialProfile, "teamSize"),
     whatsappNumber: textFromProfile(initialProfile, "whatsappNumber"),
-    twilioConnected: textFromProfile(initialProfile, "twilioConnected"),
     leadSources: textFromProfile(initialProfile, "leadSources"),
     assignmentPreferences: textFromProfile(initialProfile, "assignmentPreferences"),
     followUpPreferences: textFromProfile(initialProfile, "followUpPreferences"),
@@ -104,7 +103,6 @@ export function OnboardingWizard({
     "industry",
     "teamSize",
     "whatsappNumber",
-    "twilioConnected",
     "leadSources",
     "assignmentPreferences",
     "followUpPreferences",
@@ -165,7 +163,7 @@ export function OnboardingWizard({
     const nextErrors: Record<string, string> = {};
     const keysByStep: Record<number, string[]> = {
       0: ["fullName", "role", "phone"],
-      1: ["businessName", "industry", "teamSize", "whatsappNumber", "twilioConnected", "leadSources", "assignmentPreferences", "followUpPreferences", "services", "markets", "website"],
+      1: ["businessName", "industry", "teamSize", "whatsappNumber", "leadSources", "assignmentPreferences", "followUpPreferences", "services", "markets", "website"],
       2: ["targetQuestion0", "targetQuestion1", "targetQuestion2"]
     };
     for (const key of keysByStep[step] ?? []) {
@@ -320,7 +318,6 @@ export function OnboardingWizard({
                 ["industry", "Industry"],
                 ["teamSize", "Team size"],
                 ["whatsappNumber", "WhatsApp number"],
-                ["twilioConnected", "Twilio connected?"],
                 ["leadSources", "Lead sources"],
                 ["assignmentPreferences", "Assignment preferences"],
                 ["followUpPreferences", "Follow-up preferences"],
@@ -330,14 +327,7 @@ export function OnboardingWizard({
               ].map(([key, label]) => (
                 <label key={key} className={key === "services" || key === "markets" || key === "leadSources" || key === "assignmentPreferences" || key === "followUpPreferences" ? "block md:col-span-2" : "block"}>
                   <span className="mono text-[10px] uppercase text-[var(--muted)]">{label}</span>
-                  {key === "twilioConnected" ? (
-                    <select value={profile[key]} onChange={(event) => updateField(key, event.target.value)} aria-invalid={Boolean(fieldErrors[key])} className={inputClass}>
-                      <option value="">Select status</option>
-                      <option value="connected">Connected</option>
-                      <option value="not_connected">Not connected</option>
-                      <option value="needs_help">Needs help</option>
-                    </select>
-                  ) : key === "services" || key === "markets" || key === "leadSources" || key === "assignmentPreferences" || key === "followUpPreferences" ? (
+                  {key === "services" || key === "markets" || key === "leadSources" || key === "assignmentPreferences" || key === "followUpPreferences" ? (
                     <textarea value={profile[key]} onChange={(event) => updateField(key, event.target.value)} aria-invalid={Boolean(fieldErrors[key])} className={textareaClass} />
                   ) : (
                     <input value={profile[key]} onChange={(event) => updateField(key, event.target.value)} aria-invalid={Boolean(fieldErrors[key])} className={inputClass} />
@@ -345,6 +335,12 @@ export function OnboardingWizard({
                   {fieldErrors[key] ? <span className="mt-2 block text-xs text-rose-200">{fieldErrors[key]}</span> : null}
                 </label>
               ))}
+              <div className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-4 md:col-span-2">
+                <div className="mono text-[10px] uppercase text-[var(--muted)]">WhatsApp transport</div>
+                <p className="mt-2 text-sm leading-6 text-[var(--muted-2)]">
+                  Leadsy manages Twilio internally for WhatsApp messaging. Your team only needs to provide the business WhatsApp number and lead-source preferences.
+                </p>
+              </div>
             </div>
           ) : null}
 
