@@ -44,6 +44,19 @@ function textFromProfile(profile: Record<string, unknown> | undefined, key: stri
   return typeof value === "string" ? value : "";
 }
 
+function workspaceConfigurationFromProfile(profile: OnboardingProfile) {
+  return {
+    businessName: profile.businessName,
+    industry: profile.industry,
+    teamSize: profile.teamSize,
+    whatsappNumber: profile.whatsappNumber,
+    twilioConnected: profile.twilioConnected,
+    leadSources: profile.leadSources,
+    assignmentPreferences: profile.assignmentPreferences,
+    followUpPreferences: profile.followUpPreferences
+  };
+}
+
 export function OnboardingWizard({
   session,
   hasMetaConnection
@@ -63,6 +76,12 @@ export function OnboardingWizard({
     phone: textFromProfile(initialProfile, "phone"),
     businessName: textFromProfile(initialProfile, "businessName"),
     industry: textFromProfile(initialProfile, "industry"),
+    teamSize: textFromProfile(initialProfile, "teamSize"),
+    whatsappNumber: textFromProfile(initialProfile, "whatsappNumber"),
+    twilioConnected: textFromProfile(initialProfile, "twilioConnected"),
+    leadSources: textFromProfile(initialProfile, "leadSources"),
+    assignmentPreferences: textFromProfile(initialProfile, "assignmentPreferences"),
+    followUpPreferences: textFromProfile(initialProfile, "followUpPreferences"),
     services: textFromProfile(initialProfile, "services"),
     markets: textFromProfile(initialProfile, "markets"),
     website: textFromProfile(initialProfile, "website"),
@@ -77,7 +96,25 @@ export function OnboardingWizard({
   const [extensionNotice, setExtensionNotice] = useState("");
   const [extensionLoading, setExtensionLoading] = useState(false);
 
-  const requiredKeys = ["fullName", "role", "phone", "businessName", "industry", "services", "markets", "website", "targetQuestion0", "targetQuestion1", "targetQuestion2"];
+  const requiredKeys = [
+    "fullName",
+    "role",
+    "phone",
+    "businessName",
+    "industry",
+    "teamSize",
+    "whatsappNumber",
+    "twilioConnected",
+    "leadSources",
+    "assignmentPreferences",
+    "followUpPreferences",
+    "services",
+    "markets",
+    "website",
+    "targetQuestion0",
+    "targetQuestion1",
+    "targetQuestion2"
+  ];
   const completedFields = requiredKeys.filter((key) => profile[key]?.trim()).length;
   const completionScore = Math.round(((completedFields + (hasMetaConnection ? 1 : 0)) / (requiredKeys.length + 1)) * 100);
 
@@ -128,7 +165,7 @@ export function OnboardingWizard({
     const nextErrors: Record<string, string> = {};
     const keysByStep: Record<number, string[]> = {
       0: ["fullName", "role", "phone"],
-      1: ["businessName", "industry", "services", "markets", "website"],
+      1: ["businessName", "industry", "teamSize", "whatsappNumber", "twilioConnected", "leadSources", "assignmentPreferences", "followUpPreferences", "services", "markets", "website"],
       2: ["targetQuestion0", "targetQuestion1", "targetQuestion2"]
     };
     for (const key of keysByStep[step] ?? []) {
@@ -148,7 +185,13 @@ export function OnboardingWizard({
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ profile, complete })
+        body: JSON.stringify({
+          profile: {
+            ...profile,
+            workspaceConfiguration: workspaceConfigurationFromProfile(profile)
+          },
+          complete
+        })
       });
       if (response.status === 401) {
         toast({ title: "Onboarding session expired", detail: "Refresh the page, then continue setup.", tone: "error" });
@@ -275,13 +318,26 @@ export function OnboardingWizard({
               {[
                 ["businessName", "Business name"],
                 ["industry", "Industry"],
+                ["teamSize", "Team size"],
+                ["whatsappNumber", "WhatsApp number"],
+                ["twilioConnected", "Twilio connected?"],
+                ["leadSources", "Lead sources"],
+                ["assignmentPreferences", "Assignment preferences"],
+                ["followUpPreferences", "Follow-up preferences"],
                 ["services", "Services/products offered"],
                 ["markets", "Geography / target markets"],
                 ["website", "Business website URL"]
               ].map(([key, label]) => (
-                <label key={key} className={key === "services" || key === "markets" ? "block md:col-span-2" : "block"}>
+                <label key={key} className={key === "services" || key === "markets" || key === "leadSources" || key === "assignmentPreferences" || key === "followUpPreferences" ? "block md:col-span-2" : "block"}>
                   <span className="mono text-[10px] uppercase text-[var(--muted)]">{label}</span>
-                  {key === "services" || key === "markets" ? (
+                  {key === "twilioConnected" ? (
+                    <select value={profile[key]} onChange={(event) => updateField(key, event.target.value)} aria-invalid={Boolean(fieldErrors[key])} className={inputClass}>
+                      <option value="">Select status</option>
+                      <option value="connected">Connected</option>
+                      <option value="not_connected">Not connected</option>
+                      <option value="needs_help">Needs help</option>
+                    </select>
+                  ) : key === "services" || key === "markets" || key === "leadSources" || key === "assignmentPreferences" || key === "followUpPreferences" ? (
                     <textarea value={profile[key]} onChange={(event) => updateField(key, event.target.value)} aria-invalid={Boolean(fieldErrors[key])} className={textareaClass} />
                   ) : (
                     <input value={profile[key]} onChange={(event) => updateField(key, event.target.value)} aria-invalid={Boolean(fieldErrors[key])} className={inputClass} />

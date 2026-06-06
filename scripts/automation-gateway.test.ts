@@ -12,7 +12,7 @@ async function main() {
   const unauthorized = await validateN8nAutomationRequest(
     new Request("https://leadsy.test/api/automation/executions", {
       method: "POST",
-      body: JSON.stringify({ workflowKey: "lead-added", n8nExecutionId: "exec-1", status: "started" })
+      body: JSON.stringify({ workflowKey: "task-created", n8nExecutionId: "exec-1", status: "started" })
     }),
     ["workflowKey", "n8nExecutionId", "status"]
   );
@@ -24,7 +24,7 @@ async function main() {
     new Request("https://leadsy.test/api/automation/agent", {
       method: "POST",
       headers: { authorization: "Bearer test-secret" },
-      body: JSON.stringify({ workflowKey: "lead-added" })
+      body: JSON.stringify({ workflowKey: "task-created" })
     }),
     ["workflowKey", "n8nExecutionId", "idempotencyKey"]
   );
@@ -38,7 +38,7 @@ async function main() {
       method: "POST",
       headers: { authorization: "Bearer test-secret" },
       body: JSON.stringify({
-        workflowKey: "lead-added",
+        workflowKey: "task-created",
         n8nExecutionId: "exec-2",
         status: "started",
         metadata: { source: "n8n" }
@@ -51,7 +51,7 @@ async function main() {
   assert.deepEqual(buildN8nExecutionReceipt(executionRequest.body, new Date("2026-06-06T00:00:00.000Z")), {
     ok: true,
     accepted: true,
-    workflowKey: "lead-added",
+    workflowKey: "task-created",
     n8nExecutionId: "exec-2",
     status: "started",
     stateBoundary: "leadsy-postgres-via-next-api",
@@ -63,12 +63,12 @@ async function main() {
       method: "POST",
       headers: { authorization: "Bearer test-secret" },
       body: JSON.stringify({
-        workflowKey: "whatsapp-message-received",
+        workflowKey: "reminder-generated",
         n8nExecutionId: "exec-3",
         idempotencyKey: "idem-3",
-        providerConfigMissing: ["whatsapp"],
+        providerConfigMissing: [],
         n8nLogicPlan: {
-          actionQueue: [{ action: "draft-follow-up" }, { action: "write-audit-event" }]
+          actionQueue: [{ action: "generate-reminder" }, { action: "write-audit-event" }]
         }
       })
     }),
@@ -79,11 +79,11 @@ async function main() {
   assert.deepEqual(buildN8nAgentReceipt(agentRequest.body, new Date("2026-06-06T00:00:00.000Z")), {
     ok: true,
     accepted: true,
-    workflowKey: "whatsapp-message-received",
+    workflowKey: "reminder-generated",
     n8nExecutionId: "exec-3",
     idempotencyKey: "idem-3",
     actionCount: 2,
-    providerConfigMissing: ["whatsapp"],
+    providerConfigMissing: [],
     stateBoundary: "leadsy-postgres-via-next-api",
     recordedAt: "2026-06-06T00:00:00.000Z"
   });

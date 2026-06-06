@@ -28,7 +28,7 @@ export type LeadKnowledgeChannel =
   | "email"
   | "call"
   | "manual";
-export type LeadKnowledgeSource = "meta-webhook" | "extension" | "manual";
+export type LeadKnowledgeSource = "meta-webhook" | "twilio" | "extension" | "manual";
 export type LeadKnowledgeDirection = "inbound" | "outbound" | "system" | "note";
 export type LeadKnowledgeStatus = "lead" | "excluded";
 export type LeadConversationKnowledgeStatus = "included" | "excluded";
@@ -126,12 +126,15 @@ export type LeadKnowledgeMessage = {
   source: LeadKnowledgeSource;
   channel: LeadKnowledgeChannel;
   externalId: string;
+  providerMessageSid?: string;
   direction: LeadKnowledgeDirection;
   body: string;
   messageType: string;
   sentAt: string;
   receivedAt: string;
   generatedBy?: ExtensionMessageGeneratedBy | "manual";
+  deliveryStatus?: string;
+  statusUpdatedAt?: string;
   hiddenAt?: string;
   raw?: unknown;
 };
@@ -1358,6 +1361,156 @@ export async function appendManualLeadMessage(input: Scope & {
   updateLeadFromConversation(state, lead.id);
   await writeState(state);
   return recordForLead(state, input, lead.id);
+}
+
+export async function saveTwilioInboundMessage(input: Scope & {
+  messageSid: string;
+  from: string;
+  to: string;
+  body: string;
+  profileName?: string;
+  waId?: string;
+  sentAt?: string;
+  receivedAt?: string;
+  deliveryStatus?: string;
+  raw?: unknown;
+}) {
+  const state = await readState();
+  const receivedAt = input.receivedAt ?? nowIso();
+  const sentAt = input.sentAt ?? receivedAt;
+  const phone = input.waId || input.from.replace(/^whatsapp:/i, "");
+  const contact = cleanContact({
+    displayName: input.profileName,
+    phone,
+    waId: input.waId
+  });
+  const lead = upsertLead(state, input, {
+    identityKeys: identityKeysForContact("whatsapp", contact),
+    contact,
+    facts: [input.body],
+    nextAction: "Reply in Leadsy-approved channel and qualify intent.",
+    leadSource: "Twilio WhatsApp"
+  });
+  const conversation = upsertConversation(state, input, {
+    leadId: lead.id,
+    channel: "whatsapp",
+    source: "twilio",
+    externalKey: phoneKey(contact.phone) || input.from,
+    contact
+  });
+  const result = addMessage(state, input, {
+    leadId: lead.id,
+    conversationId: conversation.id,
+    source: "twilio",
+    channel: "whatsapp",
+    externalId: input.messageSid,
+    providerMessageSid: input.messageSid,
+    direction: "inbound",
+    body: input.body,
+    messageType: "text",
+    sentAt,
+    receivedAt,
+    deliveryStatus: input.deliveryStatus ?? "received",
+    statusUpdatedAt: receivedAt,
+    raw: input.raw
+  });
+  recalculateConversation(state, conversation.id);
+  updateLeadFromConversation(state, lead.id);
+  if (result.saved) await writeState(state);
+  return {
+    saved: result.saved ? [result.message] : [],
+    ignored: result.saved ? 0 : 1,
+    lead: recordForLead(state, input, lead.id),
+    conversation
+  };
+}
+
+export async function appendTwilioOutboundMessage(input: Scope & {
+  messageSid: string;
+  to: string;
+  from: string;
+  body?: string;
+  leadId?: string;
+  contact?: LeadKnowledgeContact;
+  sentAt?: string;
+  receivedAt?: string;
+  deliveryStatus?: string;
+  contentSid?: string;
+  contentVariables?: Record<string, string>;
+  raw?: unknown;
+}) {
+  const state = await readState();
+  const receivedAt = input.receivedAt ?? nowIso();
+  const sentAt = input.sentAt ?? receivedAt;
+  const phone = input.to.replace(/^whatsapp:/i, "");
+  const contact = cleanContact({ ...input.contact, phone: input.contact?.phone || phone });
+  const messageBody = input.body?.trim() || (input.contentSid ? `Twilio template ${input.contentSid}` : "Twilio WhatsApp message");
+  const lead = upsertLead(state, input, {
+    leadId: input.leadId,
+    identityKeys: identityKeysForContact("whatsapp", contact),
+    contact,
+    leadSource: "Twilio WhatsApp"
+  });
+  const conversation = upsertConversation(state, input, {
+    leadId: lead.id,
+    channel: "whatsapp",
+    source: "twilio",
+    externalKey: phoneKey(contact.phone) || input.to,
+    contact
+  });
+  const result = addMessage(state, input, {
+    leadId: lead.id,
+    conversationId: conversation.id,
+    source: "twilio",
+    channel: "whatsapp",
+    externalId: input.messageSid,
+    providerMessageSid: input.messageSid,
+    direction: "outbound",
+    body: messageBody,
+    messageType: input.contentSid ? "template" : "text",
+    sentAt,
+    receivedAt,
+    deliveryStatus: input.deliveryStatus ?? "queued",
+    statusUpdatedAt: receivedAt,
+    raw: {
+      contentSid: input.contentSid,
+      contentVariables: input.contentVariables,
+      twilio: input.raw
+    }
+  });
+  recalculateConversation(state, conversation.id);
+  updateLeadFromConversation(state, lead.id);
+  if (result.saved) await writeState(state);
+  return {
+    message: result.message,
+    saved: result.saved,
+    lead: recordForLead(state, input, lead.id),
+    conversation
+  };
+}
+
+export async function updateTwilioMessageDeliveryStatus(input: {
+  messageSid: string;
+  deliveryStatus: string;
+  statusUpdatedAt?: string;
+  raw?: unknown;
+}) {
+  const state = await readState();
+  const message = state.messages.find(
+    (candidate) =>
+      candidate.source === "twilio" &&
+      (candidate.providerMessageSid === input.messageSid || candidate.externalId === input.messageSid)
+  );
+  if (!message) return { updated: false, message: undefined as LeadKnowledgeMessage | undefined };
+
+  message.deliveryStatus = input.deliveryStatus;
+  message.statusUpdatedAt = input.statusUpdatedAt ?? nowIso();
+  message.raw = {
+    ...(message.raw && typeof message.raw === "object" && !Array.isArray(message.raw) ? (message.raw as Record<string, unknown>) : {}),
+    deliveryCallback: input.raw
+  };
+  await writeState(state);
+  return { updated: true, message };
 }
 
 function recordForLead(state: LeadKnowledgeState, scope: Scope, leadId: string): LeadKnowledgeRecord {

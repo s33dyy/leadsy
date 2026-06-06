@@ -15,6 +15,8 @@ import { listMetaOAuthConnections } from "@/lib/meta-oauth-store";
 
 export const dynamic = "force-dynamic";
 
+const legacyCaptureLayer = "Legacy Capture Layer";
+
 type WorkerPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
@@ -67,7 +69,7 @@ function workerRows({
     },
     {
       name: "extension-capture",
-      kind: "Capture",
+      kind: legacyCaptureLayer,
       dataState: monitorHealth.length ? "Real Data" : "Not Configured",
       evidence: `${monitorHealth.length} stored monitor records, ${conversations.length} stored conversations`,
       lastSync: timeLabel(lastSyncedAt),
@@ -183,14 +185,17 @@ export default async function WorkerPage({ searchParams }: WorkerPageProps) {
         </div>
 
         <div className="border-b border-border p-4">
-          <div className="caption">Extension pairing</div>
+          <div className="caption">Extension pairing · {legacyCaptureLayer}</div>
           <div className="mt-3">
             <ExtensionPairing initialTokens={tokens} />
           </div>
         </div>
 
         <div className="border-b border-border p-4">
-          <div className="caption">Browser extension fallback</div>
+          <div className="caption">Browser extension fallback · {legacyCaptureLayer}</div>
+          <p className="mt-2 text-[12.5px] leading-6 text-muted-foreground">
+            Existing extension users can keep pairing and monitoring browser surfaces here. New conversation transport should use official channel integrations first.
+          </p>
           <div className="mt-3 grid gap-2">
             {monitorHealth.map((item) => (
               <MonitorHealthCard key={item.platform} item={item} />

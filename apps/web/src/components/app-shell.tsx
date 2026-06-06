@@ -58,8 +58,7 @@ const supportingNav: ShellLink[] = [
   { href: "/app/tasks", label: "Follow-up tasks", icon: ListChecks },
   { href: "/app/integrations", label: "Integrations", icon: Plug },
   { href: "/app/connect", label: "Connect channels", icon: Plug },
-  { href: "/app/leads?panel=knowledge", label: "Lead context", icon: BookOpen },
-  { href: "/app/worker?view=extension", label: "Extension worker", icon: Bot }
+  { href: "/app/leads?panel=knowledge", label: "Lead context", icon: BookOpen }
 ];
 
 type SearchParamsLike = Pick<URLSearchParams, "get">;

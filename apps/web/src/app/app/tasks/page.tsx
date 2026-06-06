@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic";
 type TaskRow = {
   id: string;
   title: string;
+  typeLabel: string;
   status: string;
   priority: "Urgent" | "High" | "Medium" | "Low";
   owner: string;
@@ -44,12 +45,26 @@ function statusLabel(value: string) {
     .join(" ");
 }
 
+function taskTypeLabel(value: string) {
+  const labels: Record<string, string> = {
+    follow_up: "WhatsApp Follow-Up",
+    call: "Call",
+    whatsapp_follow_up: "WhatsApp Follow-Up",
+    meeting: "Meeting",
+    site_visit: "Site Visit",
+    review_lead: "Review Lead",
+    custom: "Custom"
+  };
+  return labels[value] ?? statusLabel(value);
+}
+
 function rowFromExtensionTask(task: ExtensionTask): TaskRow {
   const owner = task.platform === "whatsapp-web" ? "WhatsApp worker" : task.platform === "instagram-web" ? "Instagram worker" : "Extension worker";
   const needsApproval = ["awaiting_send_approval", "awaiting_approval", "draft"].includes(task.status);
   return {
     id: task.id,
     title: task.contextSummary || task.draftMessage || task.type.replace(/_/g, " "),
+    typeLabel: taskTypeLabel(task.type),
     status: statusLabel(task.status),
     priority: priorityLabel(task.priority),
     owner,
@@ -66,6 +81,7 @@ function rowFromCrmTask(task: CrmFollowUpTask): TaskRow {
   return {
     id: task.id,
     title: task.topic,
+    typeLabel: taskTypeLabel(task.type),
     status: statusLabel(task.status),
     priority: priorityLabel(task.priority),
     owner,
@@ -147,6 +163,7 @@ export default async function TasksPage() {
                       <input type="checkbox" aria-label={`Complete ${task.title}`} className="h-3.5 w-3.5 accent-primary" defaultChecked={task.status === "Done" || task.status === "Sent"} />
                       <span className="font-mono text-[10.5px] text-muted-foreground">{task.id.slice(0, 10)}</span>
                       <span className={`dot ${priorityClass(task.priority)}`} title={task.priority} />
+                      <span className="rounded-[3px] bg-surface-3 px-1.5 font-mono text-[10px] text-muted-foreground">{task.typeLabel}</span>
                       <Link href={task.href} className="truncate text-[12.5px] hover:text-primary">
                         {task.title}
                       </Link>
