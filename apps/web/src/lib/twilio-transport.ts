@@ -8,6 +8,11 @@ import {
   updateTwilioMessageDeliveryStatus,
   type LeadKnowledgeContact
 } from "./lead-knowledge-store";
+import {
+  getWorkspaceWhatsAppSender,
+  resolveWorkspaceWhatsAppSenderByTwilioTo,
+  type WorkspaceWhatsAppSender
+} from "./workspace-whatsapp-sender-store";
 
 const twilioStateFile = join(leadsyDataDir, "twilio-integration.json");
 
@@ -23,6 +28,15 @@ type TwilioIntegrationState = {
   lastDeliveryMessageSid?: string;
   lastDeliveryStatus?: string;
 };
+
+export class TwilioWorkspaceSenderError extends Error {
+  constructor(
+    public readonly code: "workspace_whatsapp_sender_required" | "workspace_whatsapp_sender_not_approved" | "unknown_whatsapp_sender",
+    message: string
+  ) {
+    super(message);
+  }
+}
 
 export type TwilioIntegrationStatus = {
   connected: boolean;
@@ -131,6 +145,22 @@ export async function saveTwilioInboundFromForm(input: Scope & {
   });
 }
 
+export async function resolveTwilioInboundScopeFromForm(form: URLSearchParams) {
+  const to = value(form, "To");
+  const sender = await resolveWorkspaceWhatsAppSenderByTwilioTo(to);
+  if (!sender) {
+    throw new TwilioWorkspaceSenderError("unknown_whatsapp_sender", "No Leadsy workspace sender is registered for this Twilio recipient.");
+  }
+  if (sender.status !== "approved") {
+    throw new TwilioWorkspaceSenderError("workspace_whatsapp_sender_not_approved", "The workspace WhatsApp sender is not approved.");
+  }
+  return {
+    tenantId: sender.tenantId,
+    ownerId: sender.ownerId,
+    sender
+  };
+}
+
 export async function sendTwilioWhatsAppMessage(input: {
   to: string;
   body?: string;
@@ -182,8 +212,10 @@ export async function sendAndStoreTwilioWhatsAppMessage(input: Scope & {
   contentSid?: string;
   contentVariables?: Record<string, string>;
 }) {
+  const sender = await resolveOutboundSender(input);
   const twilio = await sendTwilioWhatsAppMessage({
     to: input.to,
+    from: sender.twilioFrom,
     body: input.body,
     contentSid: input.contentSid || process.env.TWILIO_CONTENT_SID?.trim(),
     contentVariables: input.contentVariables
@@ -203,6 +235,17 @@ export async function sendAndStoreTwilioWhatsAppMessage(input: Scope & {
     raw: twilio.raw
   });
   return { twilio, ...stored };
+}
+
+async function resolveOutboundSender(scope: Scope): Promise<WorkspaceWhatsAppSender> {
+  const sender = await getWorkspaceWhatsAppSender(scope);
+  if (!sender) {
+    throw new TwilioWorkspaceSenderError("workspace_whatsapp_sender_required", "A workspace WhatsApp sender is required before replying through Twilio.");
+  }
+  if (sender.status !== "approved") {
+    throw new TwilioWorkspaceSenderError("workspace_whatsapp_sender_not_approved", "The workspace WhatsApp sender is not approved for outbound replies.");
+  }
+  return sender;
 }
 
 export async function updateTwilioDeliveryStatusFromForm(input: {

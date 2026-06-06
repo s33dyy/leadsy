@@ -50,6 +50,7 @@ function workspaceConfigurationFromProfile(profile: OnboardingProfile) {
     industry: profile.industry,
     teamSize: profile.teamSize,
     whatsappNumber: profile.whatsappNumber,
+    countryCode: profile.whatsappNumber.trim().startsWith("+") ? "" : "+91",
     whatsappTransport: "leadsy_managed_twilio",
     leadSources: profile.leadSources,
     assignmentPreferences: profile.assignmentPreferences,

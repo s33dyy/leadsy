@@ -23,6 +23,7 @@ async function main() {
   try {
     const {
       createTwilioSignature,
+      resolveTwilioInboundScopeFromForm,
       saveTwilioInboundFromForm,
       sendAndStoreTwilioWhatsAppMessage,
       updateTwilioDeliveryStatusFromForm,
@@ -30,8 +31,21 @@ async function main() {
       getTwilioIntegrationStatus
     } = await import("../apps/web/src/lib/twilio-transport");
     const { conversationMessages, listLeadKnowledgeRecords } = await import("../apps/web/src/lib/lead-knowledge-store");
+    const {
+      normalizeWorkspaceWhatsAppNumber,
+      resolveWorkspaceWhatsAppSenderByTwilioTo,
+      upsertWorkspaceWhatsAppSender
+    } = await import("../apps/web/src/lib/workspace-whatsapp-sender-store");
 
     const scope = { tenantId: "tenant_twilio", ownerId: "owner_twilio" };
+    assert.equal(normalizeWorkspaceWhatsAppNumber({ whatsappNumber: "9123374792" })?.twilioFrom, "whatsapp:+919123374792");
+    assert.equal(normalizeWorkspaceWhatsAppNumber({ whatsappNumber: "+919123374792" })?.twilioFrom, "whatsapp:+919123374792");
+    assert.equal(normalizeWorkspaceWhatsAppNumber({ whatsappNumber: "whatsapp:+919123374792" })?.twilioFrom, "whatsapp:+919123374792");
+    await upsertWorkspaceWhatsAppSender({
+      ...scope,
+      businessName: "Leadsy Test Workspace",
+      whatsappNumber: "+14155238886"
+    });
     const webhookUrl = "https://leadsy.test/api/twilio/webhook";
     const inboundForm = new URLSearchParams({
       AccountSid: process.env.TWILIO_ACCOUNT_SID,
@@ -58,6 +72,21 @@ async function main() {
     assert.equal(
       verifyTwilioSignature({ url: webhookUrl, params: inboundForm, signature: "bad", authToken: process.env.TWILIO_AUTH_TOKEN }),
       false
+    );
+    const resolvedSender = await resolveWorkspaceWhatsAppSenderByTwilioTo("whatsapp:+14155238886");
+    assert.equal(resolvedSender?.tenantId, scope.tenantId);
+    const inboundScope = await resolveTwilioInboundScopeFromForm(inboundForm);
+    assert.equal(inboundScope.ownerId, scope.ownerId);
+
+    await assert.rejects(
+      () =>
+        resolveTwilioInboundScopeFromForm(
+          new URLSearchParams({
+            ...Object.fromEntries(inboundForm.entries()),
+            To: "whatsapp:+15550000000"
+          })
+        ),
+      /No Leadsy workspace sender/
     );
 
     const inbound = await saveTwilioInboundFromForm({ ...scope, form: inboundForm, receivedAt: "2026-06-06T09:00:00.000Z" });
@@ -116,6 +145,16 @@ async function main() {
     } finally {
       globalThis.fetch = originalFetch;
     }
+    await assert.rejects(
+      () =>
+        sendAndStoreTwilioWhatsAppMessage({
+          tenantId: "tenant_without_sender",
+          ownerId: "owner_without_sender",
+          to: "whatsapp:+919123374792",
+          body: "No sender should block this"
+        }),
+      /workspace WhatsApp sender is required/i
+    );
 
     [lead] = await listLeadKnowledgeRecords(scope);
     assert.equal(lead.conversations.length, 1, "outbound Twilio send should link to the existing lead conversation");
