@@ -1,76 +1,19 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { rateLimit } from "@leadsy/security";
 import { requireApiSession } from "@/lib/api-auth";
+import {
+  normalizeOnboardingOptionGroups,
+  onboardingFallbackOptions,
+  type OnboardingOptionGroups
+} from "@/lib/onboarding-options";
 
 export const runtime = "nodejs";
-
-type OptionGroupKey =
-  | "role"
-  | "industry"
-  | "teamSize"
-  | "leadSources"
-  | "assignmentPreferences"
-  | "followUpPreferences"
-  | "services"
-  | "markets"
-  | "targetQuestion0"
-  | "targetQuestion1"
-  | "targetQuestion2";
-
-type OptionGroups = Record<OptionGroupKey, string[]>;
-
-const fallbackOptions: OptionGroups = {
-  role: ["Founder", "Sales Manager", "Marketing Manager", "Operations Manager", "Admissions Lead", "Customer Support Lead"],
-  industry: ["Real Estate", "Education", "Healthcare", "Local Services", "Retail", "Hospitality", "SaaS", "Financial Services"],
-  teamSize: ["1-5", "6-15", "16-50", "51-100", "100+"],
-  leadSources: ["WhatsApp Ads", "Website", "Instagram", "Facebook", "Google Business Profile", "Manual Imports", "Referrals"],
-  assignmentPreferences: ["Unassigned queue", "Round robin", "Source-based routing", "Manager assigns manually", "Assign to current owner"],
-  followUpPreferences: ["Reply within 5 minutes", "Same-day follow-up", "Reminder after 24 hours", "Escalate hot leads", "Create task after missed reply"],
-  services: ["Lead qualification", "WhatsApp follow-up", "Appointment booking", "Sales handoff", "Site visit coordination", "Customer support triage"],
-  markets: ["Local city", "Statewide", "Pan-India", "International", "Tier 1 cities", "Tier 2 cities"],
-  targetQuestion0: ["Consumers", "Small businesses", "Mid-market", "Enterprise", "Parents/students"],
-  targetQuestion1: ["Under ₹10k", "₹10k-₹50k", "₹50k-₹2L", "₹2L+"],
-  targetQuestion2: ["Same day", "1-7 days", "2-4 weeks", "1-3 months"]
-};
-
-const targetAnswerKeys = new Set<OptionGroupKey>(["targetQuestion0", "targetQuestion1", "targetQuestion2"]);
 
 function cleanText(value: unknown) {
   return typeof value === "string" ? value.trim().slice(0, 240) : "";
 }
 
-function questionLikeOption(value: string) {
-  const normalized = value.trim().toLowerCase();
-  return (
-    normalized.endsWith("?") ||
-    /^(what|who|where|when|why|how|do|does|can|should|which)\b/.test(normalized)
-  );
-}
-
-function sanitizeTargetAnswerOptions(key: OptionGroupKey, options: string[] | undefined) {
-  if (!targetAnswerKeys.has(key)) return options;
-  const answers = (options ?? []).filter((option) => !questionLikeOption(option));
-  return answers.length ? answers : fallbackOptions[key];
-}
-
-function normalizeGroups(value: unknown): OptionGroups | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const record = value as Partial<Record<OptionGroupKey, unknown>>;
-  const entries = Object.keys(fallbackOptions).map((key) => {
-    const typedKey = key as OptionGroupKey;
-    const options = Array.isArray(record[typedKey])
-      ? record[typedKey]
-          ?.filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
-          .map((item) => item.trim().slice(0, 64))
-          .slice(0, 8)
-      : undefined;
-    const sanitizedOptions = sanitizeTargetAnswerOptions(typedKey, options);
-    return [typedKey, sanitizedOptions?.length ? sanitizedOptions : fallbackOptions[typedKey]] as const;
-  });
-  return Object.fromEntries(entries) as OptionGroups;
-}
-
-async function aiOptions(input: Record<string, unknown>): Promise<OptionGroups | undefined> {
+async function aiOptions(input: Record<string, unknown>): Promise<OnboardingOptionGroups | undefined> {
   const apiKey = process.env.OPENROUTER_API_KEY?.trim();
   if (!apiKey || process.env.AI_PROVIDER === "deterministic") return undefined;
   const model = process.env.OPENROUTER_FAST_MODEL || process.env.AI_DEFAULT_MODEL || "openrouter/free";
@@ -91,7 +34,7 @@ async function aiOptions(input: Record<string, unknown>): Promise<OptionGroups |
       messages: [
         {
           role: "system",
-          content: "Return compact JSON only. Generate practical onboarding chip options for an SMB CRM. Keys: role, industry, teamSize, leadSources, assignmentPreferences, followUpPreferences, services, markets, targetQuestion0, targetQuestion1, targetQuestion2. Values are arrays of short answer strings. For targetQuestion0, targetQuestion1, and targetQuestion2, never return questions; return selectable answers only."
+          content: "Return compact JSON only. Generate practical onboarding chip options for an SMB CRM. Keys: role, industry, teamSize, leadSources, assignmentPreferences, followUpPreferences, services, markets, targetQuestion0, targetQuestion1, targetQuestion2. Values are arrays of short answer strings. Never return questions as options for any key; return selectable answers only."
         },
         {
           role: "user",
@@ -106,7 +49,7 @@ async function aiOptions(input: Record<string, unknown>): Promise<OptionGroups |
   const content = payload?.choices?.[0]?.message?.content;
   if (!content) return undefined;
   const parsed = JSON.parse(content.replace(/^```json\s*|\s*```$/g, ""));
-  return normalizeGroups(parsed);
+  return normalizeOnboardingOptionGroups(parsed);
 }
 
 export async function POST(request: NextRequest) {
@@ -123,6 +66,6 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     ok: true,
     source: options ? "ai" : "fallback",
-    options: options ?? fallbackOptions
+    options: options ?? onboardingFallbackOptions
   });
 }

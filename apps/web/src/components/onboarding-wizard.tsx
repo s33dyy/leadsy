@@ -33,11 +33,10 @@ const steps = [
   "Completion Score"
 ];
 
-const targetQuestions = [
-  "What company size do you typically sell to?",
-  "What is your average deal size?",
-  "What is your typical sales cycle?"
-];
+const targetFields = [
+  { key: "targetQuestion0", label: "Customer segment" },
+  { key: "targetQuestion2", label: "Sales cycle" }
+] as const;
 
 const defaultOptions: OptionGroups = {
   role: ["Founder", "Sales Manager", "Marketing Manager", "Operations Manager", "Admissions Lead", "Customer Support Lead"],
@@ -237,11 +236,7 @@ export function OnboardingWizard({ session }: { session: SessionUser }) {
     "leadSources",
     "assignmentPreferences",
     "followUpPreferences",
-    "services",
-    "markets",
-    "website",
     "targetQuestion0",
-    "targetQuestion1",
     "targetQuestion2"
   ];
   const completedFields = requiredKeys.filter((key) => profile[key]?.trim()).length;
@@ -303,8 +298,8 @@ export function OnboardingWizard({ session }: { session: SessionUser }) {
     const nextErrors: Record<string, string> = {};
     const keysByStep: Record<number, string[]> = {
       0: ["fullName", "role"],
-      1: ["businessName", "industry", "teamSize", "leadSources", "assignmentPreferences", "followUpPreferences", "services", "markets", "website"],
-      2: ["targetQuestion0", "targetQuestion1", "targetQuestion2"]
+      1: ["businessName", "industry", "teamSize", "leadSources", "assignmentPreferences", "followUpPreferences"],
+      2: ["targetQuestion0", "targetQuestion2"]
     };
     for (const key of keysByStep[step] ?? []) {
       if (!profile[key]?.trim()) nextErrors[key] = "Required for first-login setup.";
@@ -444,11 +439,6 @@ export function OnboardingWizard({ session }: { session: SessionUser }) {
                 <input value={profile.businessName} onChange={(event) => updateField("businessName", event.target.value)} aria-invalid={Boolean(fieldErrors.businessName)} className={inputClass} />
                 {fieldErrors.businessName ? <span className="mt-2 block text-xs text-rose-200">{fieldErrors.businessName}</span> : null}
               </label>
-              <label className="block">
-                <span className="mono text-[10px] uppercase text-[var(--muted)]">Business website URL</span>
-                <input value={profile.website} onChange={(event) => updateField("website", event.target.value)} aria-invalid={Boolean(fieldErrors.website)} className={inputClass} />
-                {fieldErrors.website ? <span className="mt-2 block text-xs text-rose-200">{fieldErrors.website}</span> : null}
-              </label>
               <MultiSelectField
                 keyName="industry"
                 label="Industry"
@@ -496,24 +486,6 @@ export function OnboardingWizard({ session }: { session: SessionUser }) {
                 customValue={customOptions.followUpPreferences}
                 {...multiSelectHandlers}
               />
-              <MultiSelectField
-                keyName="services"
-                label="Services/products offered"
-                value={profile.services}
-                options={options.services}
-                error={fieldErrors.services}
-                customValue={customOptions.services}
-                {...multiSelectHandlers}
-              />
-              <MultiSelectField
-                keyName="markets"
-                label="Geography / target markets"
-                value={profile.markets}
-                options={options.markets}
-                error={fieldErrors.markets}
-                customValue={customOptions.markets}
-                {...multiSelectHandlers}
-              />
               <div className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-4 md:col-span-2">
                 <div className="mono text-[10px] uppercase text-[var(--muted)]">WhatsApp transport</div>
                 <p className="mt-2 text-sm leading-6 text-[var(--muted-2)]">
@@ -528,15 +500,14 @@ export function OnboardingWizard({ session }: { session: SessionUser }) {
               <p className="text-sm leading-6 text-[var(--muted-2)]">
                 Leadsy uses these qualifying answers as business context for worker research, summaries, and task drafting.
               </p>
-              {targetQuestions.map((question, index) => {
-                const key = `targetQuestion${index}`;
+              {targetFields.map(({ key, label }) => {
                 return (
                   <MultiSelectField
-                    key={question}
-                    keyName={key as OptionGroupKey}
-                    label={question}
+                    key={key}
+                    keyName={key}
+                    label={label}
                     value={profile[key]}
-                    options={options[key as OptionGroupKey]}
+                    options={options[key]}
                     error={fieldErrors[key]}
                     customValue={customOptions[key]}
                     {...multiSelectHandlers}

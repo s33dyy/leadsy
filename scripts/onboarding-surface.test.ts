@@ -49,6 +49,15 @@ async function main() {
   for (const label of ["Business name", "Industry", "Team size", "Business phone (optional)", "Lead sources", "Assignment preferences", "Follow-up preferences"]) {
     assert(wizard.includes(label), `onboarding wizard should collect ${label}`);
   }
+  for (const removedField of ["Business website URL", "Services/products offered", "Geography / target markets"]) {
+    assert(!wizard.includes(removedField), `onboarding should not overwhelm users with ${removedField}`);
+  }
+  for (const targetLabel of ["Customer segment", "Sales cycle"]) {
+    assert(wizard.includes(targetLabel), `shortened target profile should collect ${targetLabel}`);
+  }
+  for (const removedTargetQuestion of ["What company size do you typically sell to?", "What is your average deal size?", "What is your typical sales cycle?"]) {
+    assert(!wizard.includes(removedTargetQuestion), `target profile labels should not be question prompts like ${removedTargetQuestion}`);
+  }
   assert(!wizard.includes("whatsappNumber"), "onboarding should not persist or render a user-entered WhatsApp sender number field");
   assert(!wizard.includes("Twilio connected?"), "onboarding should not ask end users to connect Twilio");
   assert(wizard.includes("Leadsy assigns a dedicated WhatsApp lead number"), "onboarding should explain Leadsy-assigned sender provisioning");
@@ -63,7 +72,7 @@ async function main() {
   assert(wizard.includes("workspaceConfiguration"), "onboarding should save CRM setup answers to workspace configuration");
   assert(wizard.includes("/api/onboarding"), "wizard should save progress through the onboarding API");
   assert(wizard.includes("/api/onboarding/options"), "wizard should request AI-assisted onboarding options");
-  for (const answer of ["Consumers", "Small businesses", "Mid-market", "Enterprise", "Parents/students", "Under ₹10k", "₹10k-₹50k", "₹50k-₹2L", "₹2L+", "Same day", "1-7 days", "2-4 weeks", "1-3 months"]) {
+  for (const answer of ["Consumers", "Small businesses", "Mid-market", "Enterprise", "Parents/students", "Same day", "1-7 days", "2-4 weeks", "1-3 months"]) {
     assert(wizard.includes(answer), `target customer chips should include answer option ${answer}`);
   }
   for (const questionChip of ["What’s your main goal?", "What does a “won” deal mean?", "Where do most leads come from?", "Who should new leads go to?"]) {
@@ -83,8 +92,11 @@ async function main() {
   assert(!wizard.includes("Profile Settings"), "onboarding should not route users to Meta settings");
   assert(!wizard.includes("Leadsy already handles OpenRouter provider routing"), "onboarding should not include integration cards");
   const optionsRoute = await read("apps/web/src/app/api/onboarding/options/route.ts");
-  assert(optionsRoute.includes("sanitizeTargetAnswerOptions"), "AI option API should sanitize target answer chips");
-  assert(optionsRoute.includes("questionLikeOption"), "AI option API should reject question-like target chips");
+  const optionsHelper = await read("apps/web/src/lib/onboarding-options.ts");
+  assert(optionsRoute.includes("normalizeOnboardingOptionGroups"), "AI option API should normalize options through the shared sanitizer");
+  assert(optionsHelper.includes("sanitizeOptionGroup"), "AI option helper should sanitize every option group");
+  assert(optionsHelper.includes("questionLikeOption"), "AI option helper should reject question-like chips for every group");
+  assert(optionsRoute.includes("Never return questions as options for any key"), "AI option prompt should forbid question-like options globally");
   const appLayout = await read("apps/web/src/app/app/layout.tsx");
   assert(appLayout.includes("getWorkspaceWhatsAppSender"), "authenticated layout should load workspace WhatsApp sender server-side");
   assert(appLayout.includes("whatsAppSender"), "authenticated layout should pass minimal WhatsApp sender state to AppShell");
