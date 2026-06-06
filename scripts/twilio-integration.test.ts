@@ -34,8 +34,12 @@ async function main() {
     const {
       ensureWorkspaceWhatsAppSender,
       normalizeWorkspaceWhatsAppNumber,
+      provisionLeadsyAssignedWhatsAppSender,
       provisionWorkspaceWhatsAppSender,
       resolveWorkspaceWhatsAppSenderByTwilioTo,
+      searchIndianTwilioNumber,
+      buyTwilioPhoneNumber,
+      registerTwilioWhatsAppSender,
       upsertWorkspaceWhatsAppSender
     } = await import("../apps/web/src/lib/workspace-whatsapp-sender-store");
 
@@ -52,14 +56,87 @@ async function main() {
     assert.equal(emptySender.status, "not_started");
     assert.equal(emptySender.twilioFrom, undefined);
 
+    assert.equal(typeof searchIndianTwilioNumber, "function");
+    assert.equal(typeof buyTwilioPhoneNumber, "function");
+    assert.equal(typeof registerTwilioWhatsAppSender, "function");
+
+    const originalFetchForProvisioning = globalThis.fetch;
+    const liveProvisioningCalls: string[] = [];
+    globalThis.fetch = (async (url, init) => {
+      liveProvisioningCalls.push(`${init?.method ?? "GET"} ${String(url)}`);
+      if (String(url).includes("/AvailablePhoneNumbers/IN/Mobile.json")) {
+        return new Response(
+          JSON.stringify({
+            available_phone_numbers: [{ phone_number: "+919876543210" }]
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }
+      if (String(url).endsWith("/IncomingPhoneNumbers.json")) {
+        const body = init?.body as URLSearchParams;
+        assert.equal(body.get("PhoneNumber"), "+919876543210");
+        return new Response(JSON.stringify({ sid: "PNLIVE000000000000000000000000000001", phone_number: "+919876543210" }), {
+          status: 201,
+          headers: { "content-type": "application/json" }
+        });
+      }
+      if (String(url) === "https://messaging.twilio.com/v2/Channels/Senders") {
+        const body = JSON.parse(String(init?.body ?? "{}"));
+        assert.equal(body.sender_id, "whatsapp:+919876543210");
+        assert.equal(body.profile.name, "Live Workspace");
+        assert.equal(body.webhook.callback_url, "https://leadsy.test/api/twilio/webhook");
+        return new Response(JSON.stringify({ sid: "XELIVE000000000000000000000000000001", status: "CREATING", sender_id: "whatsapp:+919876543210" }), {
+          status: 201,
+          headers: { "content-type": "application/json" }
+        });
+      }
+      throw new Error(`unexpected Twilio provisioning URL: ${String(url)}`);
+    }) as typeof fetch;
+    try {
+      process.env.NEXT_PUBLIC_APP_URL = "https://leadsy.test";
+      const liveSender = await provisionLeadsyAssignedWhatsAppSender(
+        {
+          tenantId: "tenant_live_sender",
+          ownerId: "owner_live_sender"
+        },
+        {
+          businessName: "Live Workspace",
+          industry: "Education",
+          website: "https://leadsy.test"
+        }
+      );
+      assert.equal(liveSender.assignedPhoneNumber, "+919876543210");
+      assert.equal(liveSender.twilioFrom, "whatsapp:+919876543210");
+      assert.equal(liveSender.twilioPhoneNumberSid, "PNLIVE000000000000000000000000000001");
+      assert.equal(liveSender.twilioSenderSid, "XELIVE000000000000000000000000000001");
+      assert.equal(liveSender.status, "pending_verification");
+      assert(liveProvisioningCalls[0].includes("/AvailablePhoneNumbers/IN/Mobile.json"), "India mobile inventory should be searched first");
+      assert(liveProvisioningCalls.some((call) => call.includes("/IncomingPhoneNumbers.json")), "Twilio number purchase should run after inventory search");
+      assert(liveProvisioningCalls.some((call) => call.includes("/v2/Channels/Senders")), "WhatsApp sender registration should run after purchase");
+    } finally {
+      globalThis.fetch = originalFetchForProvisioning;
+    }
+
     process.env.LEADSY_TWILIO_WHATSAPP_SENDER_POOL = "whatsapp:+14155239999";
-    const reservedSender = await provisionWorkspaceWhatsAppSender({
-      tenantId: "tenant_reserved_sender",
-      ownerId: "owner_reserved_sender",
-      businessName: "Reserved Workspace"
-    });
-    assert.equal(reservedSender.status, "number_reserved");
-    assert.equal(reservedSender.twilioFrom, "whatsapp:+14155239999");
+    globalThis.fetch = (async (url) => {
+      if (String(url).includes("/AvailablePhoneNumbers/IN/")) {
+        return new Response(JSON.stringify({ available_phone_numbers: [] }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      throw new Error(`live provisioning should fall back after inventory miss, not call ${String(url)}`);
+    }) as typeof fetch;
+    let reservedSender;
+    try {
+      reservedSender = await provisionWorkspaceWhatsAppSender({
+        tenantId: "tenant_reserved_sender",
+        ownerId: "owner_reserved_sender",
+        businessName: "Reserved Workspace"
+      });
+      assert.equal(reservedSender.status, "number_reserved");
+      assert.equal(reservedSender.twilioFrom, "whatsapp:+14155239999");
+      assert.match(reservedSender.statusReason ?? "", /fallback/i);
+    } finally {
+      globalThis.fetch = originalFetchForProvisioning;
+    }
 
     await upsertWorkspaceWhatsAppSender({
       ...scope,

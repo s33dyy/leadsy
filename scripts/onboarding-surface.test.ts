@@ -42,15 +42,18 @@ async function main() {
   assert(appShell.includes("onboardingReminder"), "incomplete onboarding should contribute to the notification badge");
 
   const wizard = await read("apps/web/src/components/onboarding-wizard.tsx");
-  for (const label of ["About You", "About Your Business", "Your Target Customer", "Integration Verification", "Completion Score"]) {
+  for (const label of ["About You", "About Your Business", "Your Target Customer", "Completion Score"]) {
     assert(wizard.includes(label), `onboarding wizard should include ${label}`);
   }
+  assert(!wizard.includes("Integration Verification"), "onboarding should not include an integration verification step");
   for (const label of ["Business name", "Industry", "Team size", "Business phone (optional)", "Lead sources", "Assignment preferences", "Follow-up preferences"]) {
     assert(wizard.includes(label), `onboarding wizard should collect ${label}`);
   }
-  assert(!wizard.includes("WhatsApp number"), "onboarding should not ask users for a WhatsApp sender number");
+  assert(!wizard.includes("whatsappNumber"), "onboarding should not persist or render a user-entered WhatsApp sender number field");
   assert(!wizard.includes("Twilio connected?"), "onboarding should not ask end users to connect Twilio");
   assert(wizard.includes("Leadsy assigns a dedicated WhatsApp lead number"), "onboarding should explain Leadsy-assigned sender provisioning");
+  assert(wizard.includes("Your WhatsApp Number is:"), "completion should show the assigned WhatsApp number when provisioning succeeds");
+  assert(wizard.includes("Your WhatsApp Number is being prepared"), "completion should show an honest pending state when provisioning is not ready");
   assert(wizard.includes("Refresh AI options"), "onboarding should let users refresh AI-generated chip options");
   assert(wizard.includes("Add custom"), "onboarding should preserve compact custom option entry");
   assert(wizard.includes('whatsappTransport: "leadsy_assigned_twilio"'), "workspace configuration should record Leadsy-assigned WhatsApp transport");
@@ -58,18 +61,35 @@ async function main() {
   assert(wizard.includes("workspaceConfiguration"), "onboarding should save CRM setup answers to workspace configuration");
   assert(wizard.includes("/api/onboarding"), "wizard should save progress through the onboarding API");
   assert(wizard.includes("/api/onboarding/options"), "wizard should request AI-assisted onboarding options");
+  for (const answer of ["Consumers", "Small businesses", "Mid-market", "Enterprise", "Parents/students", "Under ₹10k", "₹10k-₹50k", "₹50k-₹2L", "₹2L+", "Same day", "1-7 days", "2-4 weeks", "1-3 months"]) {
+    assert(wizard.includes(answer), `target customer chips should include answer option ${answer}`);
+  }
+  for (const questionChip of ["What’s your main goal?", "What does a “won” deal mean?", "Where do most leads come from?", "Who should new leads go to?"]) {
+    assert(!wizard.includes(questionChip), `target customer chips should not include question option ${questionChip}`);
+  }
   const onboardingRoute = await read("apps/web/src/app/api/onboarding/route.ts");
-  assert(onboardingRoute.includes("ensureWorkspaceWhatsAppSender"), "onboarding API should create the workspace sender assignment");
+  assert(onboardingRoute.includes("ensureWorkspaceWhatsAppSender"), "onboarding API should create a not-started workspace sender during progress saves");
+  assert(onboardingRoute.includes("provisionLeadsyAssignedWhatsAppSender"), "onboarding completion should trigger live Leadsy WhatsApp sender provisioning");
   assert(
     /fetch\("\/api\/onboarding",\s*{[\s\S]*credentials:\s*"include"/.test(wizard),
     "wizard should preserve the authenticated session when saving onboarding progress"
   );
-  assert(wizard.includes("/api/extension/tokens"), "integration verification should create extension tokens through the existing API");
-  assert(wizard.includes("/downloads/leadsy-extension.zip"), "integration verification should link to the extension zip download");
-  assert(wizard.includes("chrome://extensions"), "integration verification should explain manual extension installation");
-  assert(wizard.includes("Optional during onboarding. Connect now or skip"), "Meta setup should be optional during onboarding");
-  assert(wizard.includes("Profile Settings"), "Meta setup should point users to profile settings for later configuration");
-  assert(wizard.includes("Leadsy already handles OpenRouter provider routing"), "OpenRouter setup should explain that Leadsy handles configured API keys");
+  assert(!wizard.includes("/api/extension/tokens"), "onboarding should not create extension tokens");
+  assert(!wizard.includes("/downloads/leadsy-extension.zip"), "onboarding should not link to the extension zip download");
+  assert(!wizard.includes("chrome://extensions"), "onboarding should not explain extension installation");
+  assert(!wizard.includes("Optional during onboarding. Connect now or skip"), "onboarding should not push Meta setup");
+  assert(!wizard.includes("Profile Settings"), "onboarding should not route users to Meta settings");
+  assert(!wizard.includes("Leadsy already handles OpenRouter provider routing"), "onboarding should not include integration cards");
+  const optionsRoute = await read("apps/web/src/app/api/onboarding/options/route.ts");
+  assert(optionsRoute.includes("sanitizeTargetAnswerOptions"), "AI option API should sanitize target answer chips");
+  assert(optionsRoute.includes("questionLikeOption"), "AI option API should reject question-like target chips");
+  const appLayout = await read("apps/web/src/app/app/layout.tsx");
+  assert(appLayout.includes("getWorkspaceWhatsAppSender"), "authenticated layout should load workspace WhatsApp sender server-side");
+  assert(appLayout.includes("whatsAppSender"), "authenticated layout should pass minimal WhatsApp sender state to AppShell");
+  assert(!appLayout.includes("listMetaOAuthConnections"), "authenticated layout should not load Meta just to pressure first-run setup");
+  assert(appShell.includes("whatsAppSender"), "app shell should accept WhatsApp sender state");
+  assert(appShell.includes("WhatsApp ·"), "account block should show WhatsApp number or status");
+  assert(!appShell.includes("Meta connection needs attention"), "main shell should not pressure users about missing Meta");
   assert(wizard.includes("aria-invalid"), "wizard should use inline validation");
   assert(!wizard.includes("window.alert"), "wizard should not use browser alerts");
   assert(!wizard.includes("window.confirm"), "wizard should not use browser confirms");

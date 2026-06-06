@@ -52,6 +52,69 @@ export const preTwilioResetManifest: ResetStoreManifestItem[] = [
   }
 ];
 
+export const fullProductResetManifest: ResetStoreManifestItem[] = [
+  {
+    file: "auth.json",
+    store: "Authentication users and sessions",
+    classification: "SAFE_TO_DELETE",
+    resetBehavior: "Clear all app users and auth sessions after backup."
+  },
+  {
+    file: "lead-knowledge.json",
+    store: "Lead records, conversations, messages, qualification history",
+    classification: "SAFE_TO_DELETE",
+    resetBehavior: "Clear all lead records, conversations, and messages after backup."
+  },
+  {
+    file: "extension.json",
+    store: "Legacy extension tokens, captured conversations, messages, events, approvals, tasks",
+    classification: "SAFE_TO_DELETE",
+    resetBehavior: "Clear all extension data while preserving extension code and APIs."
+  },
+  {
+    file: "lead-magnet.json",
+    store: "Lead magnet briefs, generated leads, runs, drafts, and search sessions",
+    classification: "SAFE_TO_DELETE",
+    resetBehavior: "Clear all lead magnet data after backup."
+  },
+  {
+    file: "lead-crm.json",
+    store: "CRM assignment rules, assignment history, follow-up tasks, qualification profiles",
+    classification: "SAFE_TO_DELETE",
+    resetBehavior: "Clear all assignment, task, and CRM configuration data after backup."
+  },
+  {
+    file: "agency-clients.json",
+    store: "Agency/client configuration",
+    classification: "SAFE_TO_DELETE",
+    resetBehavior: "Clear agency and client records after backup."
+  },
+  {
+    file: "meta-oauth.json",
+    store: "Meta OAuth connections",
+    classification: "SAFE_TO_DELETE",
+    resetBehavior: "Clear Meta OAuth connections after backup."
+  },
+  {
+    file: "meta-whatsapp-inbound.json",
+    store: "Meta WhatsApp inbound status cache",
+    classification: "SAFE_TO_DELETE",
+    resetBehavior: "Clear Meta WhatsApp inbound and contact status records after backup."
+  },
+  {
+    file: "workspace-whatsapp-senders.json",
+    store: "Leadsy-managed workspace WhatsApp sender registry",
+    classification: "SAFE_TO_DELETE",
+    resetBehavior: "Clear all assigned sender records after backup."
+  },
+  {
+    file: "twilio-integration.json",
+    store: "Twilio webhook and delivery status cache",
+    classification: "SAFE_TO_DELETE",
+    resetBehavior: "Clear Twilio status cache after backup."
+  }
+];
+
 type JsonObject = Record<string, unknown>;
 
 export type ResetStoreSummary = {
@@ -61,6 +124,10 @@ export type ResetStoreSummary = {
   leadMagnet: { briefs: number; briefHistory: number; leads: number; runs: number; drafts: number; agentRuns: number; searchSessions: number; ownerSearchMemory: number };
   crm: { assignmentRules: number; assignmentHistory: number; followUpTasks: number; qualificationProfiles: number };
   agencyClients: { records: number };
+  metaOAuth?: { connections: number };
+  metaWhatsAppInbound?: { messages: number; contactStatuses: number };
+  workspaceSenders?: { senders: number };
+  twilioIntegration?: { records: number };
 };
 
 export type PreTwilioBackupResult = {
@@ -97,6 +164,40 @@ export type PreTwilioResetResult = {
     leadMagnetOwnerSearchMemory: number;
     crmQualificationProfiles: number;
     agencyClients: number;
+  };
+};
+
+export type FullProductResetResult = {
+  removed: {
+    authUsers: number;
+    authSessions: number;
+    leads: number;
+    conversations: number;
+    messages: number;
+    extensionTokens: number;
+    extensionConversations: number;
+    extensionMessages: number;
+    extensionEvents: number;
+    extensionTasks: number;
+    extensionTaskEvents: number;
+    leadMagnetBriefs: number;
+    leadMagnetBriefHistory: number;
+    leadMagnetLeads: number;
+    leadMagnetRuns: number;
+    leadMagnetDrafts: number;
+    leadMagnetAgentRuns: number;
+    leadMagnetSearchSessions: number;
+    leadMagnetOwnerSearchMemory: number;
+    crmAssignmentRules: number;
+    crmAssignmentHistory: number;
+    crmFollowUpTasks: number;
+    crmQualificationProfiles: number;
+    agencyClients: number;
+    metaConnections: number;
+    metaWhatsAppMessages: number;
+    metaWhatsAppContactStatuses: number;
+    workspaceSenders: number;
+    twilioIntegrationRecords: number;
   };
 };
 
@@ -182,6 +283,32 @@ export async function summarizePreTwilioResetStores(input: { dataDir?: string } 
   };
 }
 
+export async function summarizeFullProductResetStores(input: { dataDir?: string } = {}): Promise<ResetStoreSummary> {
+  const dataDir = input.dataDir ?? leadsyDataDir;
+  const summary = await summarizePreTwilioResetStores({ dataDir });
+  const metaOAuth = objectValue(await readJsonFile(dataDir, "meta-oauth.json"));
+  const metaWhatsAppInbound = objectValue(await readJsonFile(dataDir, "meta-whatsapp-inbound.json"));
+  const workspaceSenders = objectValue(await readJsonFile(dataDir, "workspace-whatsapp-senders.json"));
+  const twilioIntegration = objectValue(await readJsonFile(dataDir, "twilio-integration.json"));
+
+  return {
+    ...summary,
+    metaOAuth: {
+      connections: arrayCount(metaOAuth.connections)
+    },
+    metaWhatsAppInbound: {
+      messages: arrayCount(metaWhatsAppInbound.messages),
+      contactStatuses: arrayCount(metaWhatsAppInbound.contactStatuses)
+    },
+    workspaceSenders: {
+      senders: arrayCount(workspaceSenders.senders)
+    },
+    twilioIntegration: {
+      records: Object.keys(twilioIntegration).length
+    }
+  };
+}
+
 export async function createPreTwilioResetBackup(input: {
   dataDir?: string;
   backupRoot?: string;
@@ -204,6 +331,33 @@ export async function createPreTwilioResetBackup(input: {
   await writeFile(
     join(backupDir, "manifest.json"),
     `${JSON.stringify({ createdAt: new Date().toISOString(), dataDir, files, summary, stores: preTwilioResetManifest }, null, 2)}\n`
+  );
+
+  return { backupDir, files, summary };
+}
+
+export async function createFullProductResetBackup(input: {
+  dataDir?: string;
+  backupRoot?: string;
+  label?: string;
+} = {}): Promise<PreTwilioBackupResult> {
+  const dataDir = input.dataDir ?? leadsyDataDir;
+  const backupRoot = input.backupRoot ?? "/data/leadsy/backups";
+  const backupDir = join(backupRoot, input.label?.trim() || `full-product-reset-${backupLabel()}`);
+  await mkdir(backupDir, { recursive: true });
+
+  const files: string[] = [];
+  for (const item of fullProductResetManifest) {
+    const source = join(dataDir, item.file);
+    if (!existsSync(source)) continue;
+    await copyFile(source, join(backupDir, item.file));
+    files.push(item.file);
+  }
+
+  const summary = await summarizeFullProductResetStores({ dataDir });
+  await writeFile(
+    join(backupDir, "manifest.json"),
+    `${JSON.stringify({ createdAt: new Date().toISOString(), dataDir, files, summary, stores: fullProductResetManifest }, null, 2)}\n`
   );
 
   return { backupDir, files, summary };
@@ -289,10 +443,104 @@ export async function resetLocalCrmForTwilio(input: {
   return result;
 }
 
+export async function resetFullProductData(input: {
+  dataDir?: string;
+  requiredBackupDir: string;
+}): Promise<FullProductResetResult> {
+  const dataDir = input.dataDir ?? leadsyDataDir;
+  if (!input.requiredBackupDir) {
+    throw new Error("A successful full product reset backup directory is required before reset.");
+  }
+  const backupStats = await stat(input.requiredBackupDir).catch(() => undefined);
+  if (!backupStats?.isDirectory()) {
+    throw new Error("A successful full product reset backup directory is required before reset.");
+  }
+
+  const auth = objectValue(await readJsonFile(dataDir, "auth.json"));
+  const leadKnowledge = objectValue(await readJsonFile(dataDir, "lead-knowledge.json"));
+  const extension = objectValue(await readJsonFile(dataDir, "extension.json"));
+  const leadMagnet = objectValue(await readJsonFile(dataDir, "lead-magnet.json"));
+  const crm = objectValue(await readJsonFile(dataDir, "lead-crm.json"));
+  const agencyClients = await readJsonFile(dataDir, "agency-clients.json");
+  const metaOAuth = objectValue(await readJsonFile(dataDir, "meta-oauth.json"));
+  const metaWhatsAppInbound = objectValue(await readJsonFile(dataDir, "meta-whatsapp-inbound.json"));
+  const workspaceSenders = objectValue(await readJsonFile(dataDir, "workspace-whatsapp-senders.json"));
+  const twilioIntegration = objectValue(await readJsonFile(dataDir, "twilio-integration.json"));
+
+  const result: FullProductResetResult = {
+    removed: {
+      authUsers: arrayCount(auth.users),
+      authSessions: arrayCount(auth.sessions),
+      leads: arrayCount(leadKnowledge.leads),
+      conversations: arrayCount(leadKnowledge.conversations),
+      messages: arrayCount(leadKnowledge.messages),
+      extensionTokens: arrayCount(extension.tokens),
+      extensionConversations: arrayCount(extension.conversations),
+      extensionMessages: arrayCount(extension.messages),
+      extensionEvents: arrayCount(extension.events),
+      extensionTasks: arrayCount(extension.tasks),
+      extensionTaskEvents: arrayCount(extension.taskEvents),
+      leadMagnetBriefs: arrayCount(leadMagnet.briefs),
+      leadMagnetBriefHistory: arrayCount(leadMagnet.briefHistory),
+      leadMagnetLeads: arrayCount(leadMagnet.leads),
+      leadMagnetRuns: arrayCount(leadMagnet.runs),
+      leadMagnetDrafts: arrayCount(leadMagnet.drafts),
+      leadMagnetAgentRuns: arrayCount(leadMagnet.agentRuns),
+      leadMagnetSearchSessions: arrayCount(leadMagnet.searchSessions),
+      leadMagnetOwnerSearchMemory: arrayCount(leadMagnet.ownerSearchMemory),
+      crmAssignmentRules: arrayCount(crm.assignmentRules),
+      crmAssignmentHistory: arrayCount(crm.assignmentHistory),
+      crmFollowUpTasks: arrayCount(crm.followUpTasks),
+      crmQualificationProfiles: arrayCount(crm.qualificationProfiles),
+      agencyClients: arrayCount(agencyClients),
+      metaConnections: arrayCount(metaOAuth.connections),
+      metaWhatsAppMessages: arrayCount(metaWhatsAppInbound.messages),
+      metaWhatsAppContactStatuses: arrayCount(metaWhatsAppInbound.contactStatuses),
+      workspaceSenders: arrayCount(workspaceSenders.senders),
+      twilioIntegrationRecords: Object.keys(twilioIntegration).length
+    }
+  };
+
+  await writeJsonFile(dataDir, "auth.json", { users: [], sessions: [] });
+  await writeJsonFile(dataDir, "lead-knowledge.json", { leads: [], conversations: [], messages: [] });
+  await writeJsonFile(dataDir, "extension.json", { tokens: [], conversations: [], messages: [], events: [], tasks: [], taskEvents: [] });
+  await writeJsonFile(dataDir, "lead-magnet.json", {
+    briefs: [],
+    briefHistory: [],
+    leads: [],
+    runs: [],
+    drafts: [],
+    agentRuns: [],
+    searchSessions: [],
+    ownerSearchMemory: []
+  });
+  await writeJsonFile(dataDir, "lead-crm.json", {
+    assignmentRules: [],
+    assignmentHistory: [],
+    followUpTasks: [],
+    qualificationProfiles: []
+  });
+  await writeJsonFile(dataDir, "agency-clients.json", []);
+  await writeJsonFile(dataDir, "meta-oauth.json", { connections: [] });
+  await writeJsonFile(dataDir, "meta-whatsapp-inbound.json", { messages: [], contactStatuses: [] });
+  await writeJsonFile(dataDir, "workspace-whatsapp-senders.json", { senders: [] });
+  await writeJsonFile(dataDir, "twilio-integration.json", {});
+
+  return result;
+}
+
 export function resetConfirmationToken() {
   return "RESET_TWILIO_CRM";
 }
 
 export function backupRunId() {
   return `pre-twilio-reset-${new Date().toISOString().replace(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}`;
+}
+
+export function fullProductResetConfirmationToken() {
+  return "RESET_FULL_PRODUCT_DATA_AND_USERS";
+}
+
+export function fullProductResetRunId() {
+  return `full-product-reset-${new Date().toISOString().replace(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}`;
 }

@@ -9,6 +9,6 @@ export function urlForRequestHost(request: NextRequest, pathname: string) {
   return new URL(pathname, `${protocol}://${host}`);
 }
 
-export function redirectToRequestHost(request: NextRequest, pathname: string) {
-  return NextResponse.redirect(urlForRequestHost(request, pathname));
+export function redirectToRequestHost(request: NextRequest, pathname: string, init?: ResponseInit) {
+  return NextResponse.redirect(urlForRequestHost(request, pathname), init);
 }

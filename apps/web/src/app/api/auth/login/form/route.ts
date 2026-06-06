@@ -14,8 +14,9 @@ function safeNext(next: string | undefined, fallback: string) {
 }
 
 export async function POST(request: NextRequest) {
+  const redirectAfterPost = { status: 303 };
   if (!(await hasOwnerUser())) {
-    return redirectToRequestHost(request, "/login?error=signup_required");
+    return redirectToRequestHost(request, "/login?error=signup_required", redirectAfterPost);
   }
 
   const formData = await request.formData();
@@ -25,17 +26,17 @@ export async function POST(request: NextRequest) {
 
   const limiter = rateLimit(`auth:login:${normalizeLogin(emailOrPhone)}`, 12, 15 * 60_000);
   if (!limiter.ok) {
-    return redirectToRequestHost(request, "/login?error=rate_limited");
+    return redirectToRequestHost(request, "/login?error=rate_limited", redirectAfterPost);
   }
 
   const user = await authenticateUser(emailOrPhone, password);
   if (!user) {
-    return redirectToRequestHost(request, "/login?error=invalid_credentials");
+    return redirectToRequestHost(request, "/login?error=invalid_credentials", redirectAfterPost);
   }
 
   const sessionUser = toSessionUser(user);
   const authSession = await createSignedSession(user);
-  const response = redirectToRequestHost(request, safeNext(next, redirectForSession(sessionUser)));
+  const response = redirectToRequestHost(request, safeNext(next, redirectForSession(sessionUser)), redirectAfterPost);
   setSessionCookie(response, authSession.cookieValue, authSession.expiresAt);
 
   audit({

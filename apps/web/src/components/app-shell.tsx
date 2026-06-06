@@ -43,6 +43,12 @@ type ShellLink = {
   accent?: boolean;
 };
 
+type ShellWhatsAppSender = {
+  assignedPhoneNumber?: string;
+  status?: string;
+  statusReason?: string;
+};
+
 const workflowNav: ShellLink[] = [
   { href: "/app", label: "Dashboard", icon: LayoutDashboard, end: true },
   { href: "/app/leads", label: "Leads", icon: Users2 },
@@ -95,6 +101,15 @@ function isActiveLink(pathname: string, searchParams: SearchParamsLike, link: Sh
   if (link.label === "Leads") return !searchParams.get("tab") && searchParams.get("panel") !== "knowledge";
   if (link.label === "Automations") return searchParams.get("tab") !== "pending";
   return true;
+}
+
+function whatsAppSenderLabel(sender?: ShellWhatsAppSender) {
+  if (sender?.assignedPhoneNumber) return `WhatsApp · ${sender.assignedPhoneNumber}`;
+  if (sender?.status === "failed") return "WhatsApp · action needed";
+  if (sender?.status === "pending_verification" || sender?.status === "sender_registration_pending" || sender?.status === "number_reserved") {
+    return "WhatsApp · preparing";
+  }
+  return "WhatsApp · pending";
 }
 
 function pageTitle(pathname: string, searchParams: SearchParamsLike) {
@@ -159,13 +174,13 @@ function SidebarLink({
 export function AppShell({
   children,
   session,
-  hasMetaConnection = false,
-  pendingApprovalCount = 0
+  pendingApprovalCount = 0,
+  whatsAppSender
 }: {
   children: ReactNode;
   session: SessionUser;
-  hasMetaConnection?: boolean;
   pendingApprovalCount?: number;
+  whatsAppSender?: ShellWhatsAppSender;
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -177,7 +192,8 @@ export function AppShell({
   const [logoutPending, setLogoutPending] = useState(false);
   const title = pageTitle(pathname, searchParams);
   const onboardingReminder = session.onboardingCompletedAt ? 0 : 1;
-  const notificationCount = pendingApprovalCount + (hasMetaConnection ? 0 : 1) + onboardingReminder;
+  const notificationCount = pendingApprovalCount + onboardingReminder;
+  const whatsAppLabel = whatsAppSenderLabel(whatsAppSender);
 
   const notificationItems = useMemo(
     () => [
@@ -190,22 +206,13 @@ export function AppShell({
               href: "/app/leads"
             }
           ]),
-      ...(hasMetaConnection
-        ? []
-        : [
-            {
-              title: "Meta connection needs attention",
-              detail: "Connect Facebook, Instagram, Messenger, or WhatsApp before official ingestion is complete.",
-              href: "/app/connect"
-            }
-          ]),
       {
         title: "Approval queue",
         detail: pendingApprovalCount ? `${pendingApprovalCount} automation item needs review.` : "Automation approvals will appear before outreach is sent.",
         href: "/app/approvals"
       }
     ],
-    [hasMetaConnection, pendingApprovalCount, session.onboardingCompletedAt]
+    [pendingApprovalCount, session.onboardingCompletedAt]
   );
 
   async function logout() {
@@ -327,6 +334,9 @@ export function AppShell({
                   <div className="flex min-w-0 flex-1 flex-col leading-tight">
                     <span className="truncate text-[12px]">{session.name}</span>
                     <span className="truncate text-[10.5px] text-muted-foreground">{session.role} · Helio</span>
+                    <span className="truncate text-[10px] text-muted-foreground" title={whatsAppSender?.statusReason || whatsAppLabel}>
+                      {whatsAppLabel}
+                    </span>
                   </div>
                   <button
                     type="button"
@@ -466,7 +476,7 @@ export function AppShell({
           </div>
         ) : null}
 
-        {!session.onboardingCompletedAt ? <OnboardingWizard session={session} hasMetaConnection={hasMetaConnection} /> : null}
+        {!session.onboardingCompletedAt ? <OnboardingWizard session={session} /> : null}
       </div>
     </ToastProvider>
   );

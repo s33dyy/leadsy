@@ -97,8 +97,9 @@ async function main() {
   assert(!appShell.includes('label: "Communications"'), "workspace nav should no longer present Communications as a primary product label");
   assert(!appShell.includes("4 workers running"), "workspace header should not show fake worker counts");
   assert(!appShell.includes("queue {82 + pendingApprovalCount}"), "workspace header should not show fake queue counts");
-  assert(appShell.includes("hasMetaConnection"), "workspace shell should receive the saved Meta connection state");
-  assert(appShell.includes("Meta connection needs attention"), "workspace notifications should still surface missing Meta setup");
+  assert(appShell.includes("whatsAppSender"), "workspace shell should receive the workspace WhatsApp sender state");
+  assert(appShell.includes("WhatsApp ·"), "workspace account block should show the WhatsApp sender state");
+  assert(!appShell.includes("Meta connection needs attention"), "workspace notifications should not pressure users about missing Meta setup");
   assert(!appShell.includes("WhatsApp leads · browser worker"), "workspace header should not merge Meta connection with worker ops");
   assert(!appShell.includes("CopilotDock"), "copilot dock should not be part of the clean user-facing shell");
 

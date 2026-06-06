@@ -29,7 +29,7 @@ async function main() {
   const senderRoute = await readFile(join(root, "apps/web/src/app/api/twilio/sender/route.ts"), "utf8");
   assert(senderRoute.includes("ensureWorkspaceWhatsAppSender"), "sender API should create assignment state for the workspace");
   const provisioningRoute = await readFile(join(root, "apps/web/src/app/api/twilio/sender/provision/route.ts"), "utf8");
-  assert(provisioningRoute.includes("provisionWorkspaceWhatsAppSender"), "provisioning API should reserve or queue assigned sender setup");
+  assert(provisioningRoute.includes("provisionLeadsyAssignedWhatsAppSender"), "provisioning API should attempt live Leadsy-assigned sender setup");
 
   console.log("twilio settings surface regression passed");
 }

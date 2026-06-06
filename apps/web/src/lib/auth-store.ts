@@ -170,6 +170,14 @@ export async function listAuthUsers() {
   return state.users;
 }
 
+export async function summarizeAuthHealth() {
+  const state = await readAuthState();
+  return {
+    users: state.users.length,
+    sessions: state.sessions.length
+  };
+}
+
 export async function getAuthUserById(userId: string) {
   const state = await readAuthState();
   return state.users.find((user) => user.id === userId) ?? null;

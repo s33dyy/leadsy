@@ -3,7 +3,7 @@ import { z } from "zod";
 import { audit, rateLimit } from "@leadsy/security";
 import { requireApiSession } from "@/lib/api-auth";
 import { completeUserOnboarding, saveUserOnboarding } from "@/lib/auth-store";
-import { ensureWorkspaceWhatsAppSender } from "@/lib/workspace-whatsapp-sender-store";
+import { ensureWorkspaceWhatsAppSender, provisionLeadsyAssignedWhatsAppSender } from "@/lib/workspace-whatsapp-sender-store";
 
 export const runtime = "nodejs";
 
@@ -31,13 +31,29 @@ export async function POST(request: NextRequest) {
   }
 
   const workspaceConfiguration = input.profile.workspaceConfiguration;
+  let sender;
   if (workspaceConfiguration && typeof workspaceConfiguration === "object" && !Array.isArray(workspaceConfiguration)) {
     const config = workspaceConfiguration as Record<string, unknown>;
-    await ensureWorkspaceWhatsAppSender({
-      tenantId: auth.session.tenantId,
-      ownerId: auth.session.id,
-      businessName: typeof config.businessName === "string" ? config.businessName : undefined
-    });
+    const businessName = typeof config.businessName === "string" ? config.businessName : undefined;
+    const industry = typeof config.industry === "string" ? config.industry : undefined;
+    const website = typeof input.profile.website === "string" ? input.profile.website : undefined;
+    sender = input.complete
+      ? await provisionLeadsyAssignedWhatsAppSender(
+          {
+            tenantId: auth.session.tenantId,
+            ownerId: auth.session.id
+          },
+          {
+            businessName,
+            industry,
+            website
+          }
+        )
+      : await ensureWorkspaceWhatsAppSender({
+          tenantId: auth.session.tenantId,
+          ownerId: auth.session.id,
+          businessName
+        });
   }
 
   audit({
@@ -52,6 +68,7 @@ export async function POST(request: NextRequest) {
       id: user.id,
       onboardingCompletedAt: user.onboardingCompletedAt,
       onboardingProfile: user.onboardingProfile
-    }
+    },
+    sender
   });
 }

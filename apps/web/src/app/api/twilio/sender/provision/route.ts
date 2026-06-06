@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { audit, rateLimit } from "@leadsy/security";
 import { requireApiSession } from "@/lib/api-auth";
-import { provisionWorkspaceWhatsAppSender } from "@/lib/workspace-whatsapp-sender-store";
+import { provisionLeadsyAssignedWhatsAppSender } from "@/lib/workspace-whatsapp-sender-store";
 
 export const runtime = "nodejs";
 
@@ -15,11 +15,17 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json().catch(() => ({})) as Record<string, unknown>;
-  const sender = await provisionWorkspaceWhatsAppSender({
-    tenantId: auth.session.tenantId,
-    ownerId: auth.session.id,
-    businessName: typeof body.businessName === "string" ? body.businessName : undefined
-  });
+  const sender = await provisionLeadsyAssignedWhatsAppSender(
+    {
+      tenantId: auth.session.tenantId,
+      ownerId: auth.session.id
+    },
+    {
+      businessName: typeof body.businessName === "string" ? body.businessName : undefined,
+      industry: typeof body.industry === "string" ? body.industry : undefined,
+      website: typeof body.website === "string" ? body.website : undefined
+    }
+  );
 
   audit({
     tenantId: auth.session.tenantId,

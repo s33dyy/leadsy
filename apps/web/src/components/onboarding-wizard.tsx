@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { ArrowLeft, ArrowRight, CheckCircle2, CircleAlert, Clipboard, Download, ExternalLink, KeyRound, Loader2, RefreshCw, Upload } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowLeft, ArrowRight, CheckCircle2, CircleAlert, Loader2, RefreshCw, Upload } from "lucide-react";
 import type { SessionUser } from "@leadsy/security";
 import { ProgressBar } from "@/components/ui";
 import { useToast } from "@/components/toast-provider";
@@ -21,12 +20,16 @@ type OptionGroupKey =
   | "targetQuestion1"
   | "targetQuestion2";
 type OptionGroups = Record<OptionGroupKey, string[]>;
+type OnboardingSenderState = {
+  assignedPhoneNumber?: string;
+  status?: string;
+  statusReason?: string;
+};
 
 const steps = [
   "About You",
   "About Your Business",
   "Your Target Customer",
-  "Integration Verification",
   "Completion Score"
 ];
 
@@ -45,9 +48,9 @@ const defaultOptions: OptionGroups = {
   followUpPreferences: ["Reply within 5 minutes", "Same-day follow-up", "Reminder after 24 hours", "Escalate hot leads", "Create task after missed reply"],
   services: ["Lead qualification", "WhatsApp follow-up", "Appointment booking", "Sales handoff", "Site visit coordination", "Customer support triage"],
   markets: ["Local city", "Statewide", "Pan-India", "International", "Tier 1 cities", "Tier 2 cities"],
-  targetQuestion0: ["Solo buyers", "Small businesses", "Mid-market teams", "Enterprise teams", "Families/consumers", "Students/parents"],
-  targetQuestion1: ["Under ₹10k", "₹10k-₹50k", "₹50k-₹2L", "₹2L-₹10L", "₹10L+"],
-  targetQuestion2: ["Same day", "1-7 days", "2-4 weeks", "1-3 months", "3+ months"]
+  targetQuestion0: ["Consumers", "Small businesses", "Mid-market", "Enterprise", "Parents/students"],
+  targetQuestion1: ["Under ₹10k", "₹10k-₹50k", "₹50k-₹2L", "₹2L+"],
+  targetQuestion2: ["Same day", "1-7 days", "2-4 weeks", "1-3 months"]
 };
 
 function splitOptions(value: string) {
@@ -175,13 +178,7 @@ function workspaceConfigurationFromProfile(profile: OnboardingProfile) {
   };
 }
 
-export function OnboardingWizard({
-  session,
-  hasMetaConnection
-}: {
-  session: SessionUser;
-  hasMetaConnection: boolean;
-}) {
+export function OnboardingWizard({ session }: { session: SessionUser }) {
   const { toast } = useToast();
   const initialProfile = session.onboardingProfile ?? {};
   const [visible, setVisible] = useState(() => {
@@ -210,10 +207,8 @@ export function OnboardingWizard({
   const [options, setOptions] = useState<OptionGroups>(defaultOptions);
   const [optionsLoading, setOptionsLoading] = useState(false);
   const [customOptions, setCustomOptions] = useState<Record<string, string>>({});
-  const [extensionLabel, setExtensionLabel] = useState("Chrome worker");
-  const [extensionToken, setExtensionToken] = useState("");
-  const [extensionNotice, setExtensionNotice] = useState("");
-  const [extensionLoading, setExtensionLoading] = useState(false);
+  const [completionSender, setCompletionSender] = useState<OnboardingSenderState | undefined>();
+  const [setupCompleted, setSetupCompleted] = useState(false);
 
   const requiredKeys = [
     "fullName",
@@ -232,37 +227,7 @@ export function OnboardingWizard({
     "targetQuestion2"
   ];
   const completedFields = requiredKeys.filter((key) => profile[key]?.trim()).length;
-  const completionScore = Math.round(((completedFields + (hasMetaConnection ? 1 : 0)) / (requiredKeys.length + 1)) * 100);
-
-  const integrationItems = useMemo(
-    () => [
-      {
-        id: "extension",
-        label: "Browser Extension",
-        status: "warning",
-        detail: "Generate a worker token, download the extension zip, then load it in Chrome."
-      },
-      {
-        id: "meta",
-        label: "Meta (Facebook/Instagram)",
-        status: hasMetaConnection ? "connected" : "optional",
-        detail: hasMetaConnection ? "Meta authorization is connected." : "Optional during onboarding. Connect now or skip and configure it from Profile Settings."
-      },
-      {
-        id: "whatsapp",
-        label: "WhatsApp",
-        status: "optional",
-        detail: "Leadsy assigns the workspace WhatsApp lead number through the platform Twilio setup. No client Twilio account is needed."
-      },
-      {
-        id: "openrouter",
-        label: "OpenRouter / AI",
-        status: "connected",
-        detail: "Leadsy handles AI routing with the configured OpenRouter API keys. No user action is needed here."
-      }
-    ],
-    [hasMetaConnection]
-  );
+  const completionScore = Math.round((completedFields / requiredKeys.length) * 100);
 
   function dismissWizard() {
     window.localStorage.setItem(onboardingDismissedKey(session.id), "true");
@@ -348,6 +313,7 @@ export function OnboardingWizard({
           complete
         })
       });
+      const payload = (await response.json().catch(() => ({}))) as { sender?: OnboardingSenderState };
       if (response.status === 401) {
         toast({ title: "Onboarding session expired", detail: "Refresh the page, then continue setup.", tone: "error" });
         return false;
@@ -357,50 +323,13 @@ export function OnboardingWizard({
         return false;
       }
       if (complete) {
-        toast({ title: "Onboarding complete", detail: "Your profile context is ready for Leadsy workers.", tone: "success" });
-        dismissWizard();
+        setCompletionSender(payload.sender);
+        setSetupCompleted(true);
+        toast({ title: "Onboarding complete", detail: "Leadsy is preparing your workspace WhatsApp number.", tone: "success" });
       }
       return true;
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function createExtensionToken() {
-    setExtensionLoading(true);
-    setExtensionNotice("");
-    try {
-      const response = await fetch("/api/extension/tokens", {
-        method: "POST",
-        credentials: "include",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ label: extensionLabel.trim() || "Chrome worker" })
-      });
-      const payload = (await response.json().catch(() => ({}))) as { token?: unknown; message?: unknown; error?: unknown };
-      if (response.status === 401) {
-        toast({ title: "Extension token was not created", detail: "Refresh the page, then create the token again.", tone: "error" });
-        return;
-      }
-      if (!response.ok || typeof payload.token !== "string") {
-        const detail = typeof payload.message === "string" ? payload.message : typeof payload.error === "string" ? payload.error : "Try again from the extension settings panel.";
-        toast({ title: "Extension token was not created", detail, tone: "error" });
-        return;
-      }
-      setExtensionToken(payload.token);
-      setExtensionNotice("Token created. Copy it into the extension side panel after installation.");
-      toast({ title: "Extension token created", detail: "Copy it now. It is shown only in this setup step.", tone: "success" });
-    } finally {
-      setExtensionLoading(false);
-    }
-  }
-
-  async function copyExtensionToken() {
-    if (!extensionToken) return;
-    try {
-      await navigator.clipboard.writeText(extensionToken);
-      setExtensionNotice("Token copied.");
-    } catch {
-      setExtensionNotice("Copy unavailable. Select the token text and copy it manually.");
     }
   }
 
@@ -594,124 +523,31 @@ export function OnboardingWizard({
           ) : null}
 
           {step === 3 ? (
-            <div className="grid gap-3">
-              {integrationItems.map((item) => (
-                <div key={item.label} className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-3">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="flex items-start gap-3">
-                      {item.status === "connected" ? <CheckCircle2 size={18} className="text-lime-200" /> : <CircleAlert size={18} className="text-amber-200" />}
-                      <div>
-                        <div className="text-sm font-medium text-white">{item.label}</div>
-                        <p className="mt-1 text-sm leading-6 text-[var(--muted-2)]">{item.detail}</p>
-                      </div>
-                    </div>
-                    {item.id === "extension" ? (
-                      <a href="/downloads/leadsy-extension.zip" download className={secondaryButtonClass}>
-                        <Download size={15} />
-                        Download zip
-                      </a>
-                    ) : null}
-                    {item.id === "meta" || item.id === "whatsapp" ? (
-                      <Link href="/app/connect" target="_blank" rel="noreferrer" className={secondaryButtonClass}>
-                        <ExternalLink size={15} />
-                        {hasMetaConnection ? "Review" : "Connect"}
-                      </Link>
-                    ) : null}
-                    {item.id === "openrouter" ? (
-                      <span className="mono rounded-[6px] border border-lime-300/25 bg-lime-300/[0.08] px-3 py-2 text-[10px] uppercase text-lime-100">
-                        Managed
-                      </span>
-                    ) : null}
-                  </div>
-
-                  {item.id === "extension" ? (
-                    <details className="mt-3 rounded-[8px] border border-[var(--line)] bg-black/20 p-3">
-                      <summary className="cursor-pointer text-sm font-medium text-white">Generate token and install extension</summary>
-                      <div className="mt-4 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
-                        <div className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-3">
-                          <div className="flex items-center gap-2 text-sm font-semibold text-white">
-                            <KeyRound size={16} className="text-[var(--teal)]" />
-                            Worker token
-                          </div>
-                          <label className="mt-3 block">
-                            <span className="mono text-[10px] uppercase text-[var(--muted)]">Token label</span>
-                            <input value={extensionLabel} onChange={(event) => setExtensionLabel(event.target.value)} className={inputClass} />
-                          </label>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              disabled={extensionLoading}
-                              onClick={createExtensionToken}
-                              className="inline-flex h-9 items-center gap-2 rounded-[6px] border border-teal-300/30 bg-teal-300/[0.12] px-3 text-sm font-medium text-teal-100 hover:bg-teal-300/[0.18] disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              {extensionLoading ? <Loader2 size={15} className="animate-spin" /> : <KeyRound size={15} />}
-                              Generate token
-                            </button>
-                            {extensionToken ? (
-                              <button type="button" onClick={copyExtensionToken} className={secondaryButtonClass}>
-                                <Clipboard size={15} />
-                                Copy token
-                              </button>
-                            ) : null}
-                          </div>
-                          {extensionToken ? <div className="mono mt-3 break-all rounded-[8px] border border-teal-300/25 bg-teal-300/[0.08] p-3 text-xs leading-6 text-teal-50">{extensionToken}</div> : null}
-                          {extensionNotice ? <p className="mt-3 text-sm leading-6 text-[var(--muted-2)]">{extensionNotice}</p> : null}
-                        </div>
-                        <ol className="grid gap-2 text-sm leading-6 text-[var(--muted-2)]">
-                          <li><span className="text-white">1.</span> Download <span className="mono text-white">leadsy-extension.zip</span> and unzip it.</li>
-                          <li><span className="text-white">2.</span> Open <span className="mono text-white">chrome://extensions</span> and enable Developer mode.</li>
-                          <li><span className="text-white">3.</span> Click Load unpacked and select the unzipped Leadsy extension folder.</li>
-                          <li><span className="text-white">4.</span> Open the extension side panel, paste the Leadsy URL and generated token, then save.</li>
-                        </ol>
-                      </div>
-                    </details>
-                  ) : null}
-
-                  {item.id === "meta" ? (
-                    <details className="mt-3 rounded-[8px] border border-[var(--line)] bg-black/20 p-3">
-                      <summary className="cursor-pointer text-sm font-medium text-white">Meta connection steps</summary>
-                      <ol className="mt-3 grid gap-2 text-sm leading-6 text-[var(--muted-2)]">
-                        <li><span className="text-white">1.</span> Click Connect to open the existing Meta setup flow.</li>
-                        <li><span className="text-white">2.</span> Choose the Facebook, Instagram, and WhatsApp business assets you want Leadsy to read inbound leads from.</li>
-                        <li><span className="text-white">3.</span> Return to onboarding when Meta confirms authorization.</li>
-                        <li><span className="text-white">Skip.</span> You can press Next now and configure Meta later from <Link href="/settings" target="_blank" rel="noreferrer" className="text-teal-100 underline underline-offset-4">Profile Settings</Link>.</li>
-                      </ol>
-                    </details>
-                  ) : null}
-
-                  {item.id === "whatsapp" ? (
-                    <details className="mt-3 rounded-[8px] border border-[var(--line)] bg-black/20 p-3">
-                      <summary className="cursor-pointer text-sm font-medium text-white">WhatsApp readiness</summary>
-                      <ol className="mt-3 grid gap-2 text-sm leading-6 text-[var(--muted-2)]">
-                        <li><span className="text-white">1.</span> Leadsy creates a sender assignment for this workspace during onboarding.</li>
-                        <li><span className="text-white">2.</span> Operations provisions or approves the Twilio WhatsApp sender before the number is advertised.</li>
-                        <li><span className="text-white">3.</span> Humans reply from Inbox; Leadsy does not send autonomous outreach.</li>
-                      </ol>
-                    </details>
-                  ) : null}
-
-                  {item.id === "openrouter" ? (
-                    <details className="mt-3 rounded-[8px] border border-[var(--line)] bg-black/20 p-3">
-                      <summary className="cursor-pointer text-sm font-medium text-white">AI configuration</summary>
-                      <p className="mt-3 text-sm leading-6 text-[var(--muted-2)]">
-                        Leadsy already handles OpenRouter provider routing from the configured environment keys. There is no API key to paste during onboarding, and routine worker tasks keep using the cheapest configured models.
-                      </p>
-                    </details>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          ) : null}
-
-          {step === 4 ? (
             <div className="space-y-5">
               <div>
                 <div className="text-4xl font-semibold text-white">{completionScore}%</div>
-                <p className="mt-2 text-sm leading-6 text-[var(--muted-2)]">Your profile completion score is based on business context and integration readiness.</p>
+                <p className="mt-2 text-sm leading-6 text-[var(--muted-2)]">Your profile completion score is based on the business context Leadsy uses for qualification, assignment, and follow-up tasks.</p>
               </div>
               <ProgressBar value={completionScore} tone={completionScore >= 70 ? "lime" : "amber"} />
-              <div className="rounded-[8px] border border-amber-300/25 bg-amber-300/[0.08] p-3 text-sm leading-6 text-amber-50">
-                Skipped integrations stay visible in notifications until resolved. Outreach remains human-approved.
+              <div className="rounded-[8px] border border-teal-300/25 bg-teal-300/[0.08] p-4 text-sm leading-6 text-teal-50">
+                <div className="flex items-start gap-3">
+                  {completionSender?.assignedPhoneNumber ? <CheckCircle2 size={18} className="mt-0.5 text-lime-200" /> : <CircleAlert size={18} className="mt-0.5 text-amber-200" />}
+                  <div>
+                    <div className="font-semibold text-white">
+                      {completionSender?.assignedPhoneNumber
+                        ? `Your WhatsApp Number is: ${completionSender.assignedPhoneNumber}`
+                        : "Your WhatsApp Number is being prepared"}
+                    </div>
+                    <p className="mt-1 text-[var(--muted-2)]">
+                      {completionSender?.assignedPhoneNumber
+                        ? "Advertise this number once the sender status is approved. Leads who message it will appear in Inbox."
+                        : completionSender?.statusReason || "Leadsy is checking Twilio India number availability and WhatsApp sender approval."}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-3 text-sm leading-6 text-[var(--muted-2)]">
+                Humans remain accountable for replies. Leadsy tracks inbound and outbound WhatsApp conversations in Inbox without autonomous outreach.
               </div>
             </div>
           ) : null}
@@ -738,15 +574,26 @@ export function OnboardingWizard({
               Next
             </button>
           ) : (
-            <button
-              type="button"
-              disabled={saving}
-              onClick={finishSetup}
-              className="inline-flex h-10 items-center gap-2 rounded-[6px] border border-teal-300/30 bg-teal-300/[0.12] px-4 text-sm font-medium text-teal-100 hover:bg-teal-300/[0.18] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {saving ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
-              Finish Setup
-            </button>
+            setupCompleted ? (
+              <button
+                type="button"
+                onClick={dismissWizard}
+                className="inline-flex h-10 items-center gap-2 rounded-[6px] border border-teal-300/30 bg-teal-300/[0.12] px-4 text-sm font-medium text-teal-100 hover:bg-teal-300/[0.18]"
+              >
+                <CheckCircle2 size={15} />
+                Open Workspace
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={saving}
+                onClick={finishSetup}
+                className="inline-flex h-10 items-center gap-2 rounded-[6px] border border-teal-300/30 bg-teal-300/[0.12] px-4 text-sm font-medium text-teal-100 hover:bg-teal-300/[0.18] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {saving ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
+                Finish Setup
+              </button>
+            )
           )}
         </div>
       </div>

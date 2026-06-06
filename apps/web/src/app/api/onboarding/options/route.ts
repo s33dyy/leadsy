@@ -28,13 +28,29 @@ const fallbackOptions: OptionGroups = {
   followUpPreferences: ["Reply within 5 minutes", "Same-day follow-up", "Reminder after 24 hours", "Escalate hot leads", "Create task after missed reply"],
   services: ["Lead qualification", "WhatsApp follow-up", "Appointment booking", "Sales handoff", "Site visit coordination", "Customer support triage"],
   markets: ["Local city", "Statewide", "Pan-India", "International", "Tier 1 cities", "Tier 2 cities"],
-  targetQuestion0: ["Solo buyers", "Small businesses", "Mid-market teams", "Enterprise teams", "Families/consumers", "Students/parents"],
-  targetQuestion1: ["Under ₹10k", "₹10k-₹50k", "₹50k-₹2L", "₹2L-₹10L", "₹10L+"],
-  targetQuestion2: ["Same day", "1-7 days", "2-4 weeks", "1-3 months", "3+ months"]
+  targetQuestion0: ["Consumers", "Small businesses", "Mid-market", "Enterprise", "Parents/students"],
+  targetQuestion1: ["Under ₹10k", "₹10k-₹50k", "₹50k-₹2L", "₹2L+"],
+  targetQuestion2: ["Same day", "1-7 days", "2-4 weeks", "1-3 months"]
 };
+
+const targetAnswerKeys = new Set<OptionGroupKey>(["targetQuestion0", "targetQuestion1", "targetQuestion2"]);
 
 function cleanText(value: unknown) {
   return typeof value === "string" ? value.trim().slice(0, 240) : "";
+}
+
+function questionLikeOption(value: string) {
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized.endsWith("?") ||
+    /^(what|who|where|when|why|how|do|does|can|should|which)\b/.test(normalized)
+  );
+}
+
+function sanitizeTargetAnswerOptions(key: OptionGroupKey, options: string[] | undefined) {
+  if (!targetAnswerKeys.has(key)) return options;
+  const answers = (options ?? []).filter((option) => !questionLikeOption(option));
+  return answers.length ? answers : fallbackOptions[key];
 }
 
 function normalizeGroups(value: unknown): OptionGroups | undefined {
@@ -48,7 +64,8 @@ function normalizeGroups(value: unknown): OptionGroups | undefined {
           .map((item) => item.trim().slice(0, 64))
           .slice(0, 8)
       : undefined;
-    return [typedKey, options?.length ? options : fallbackOptions[typedKey]] as const;
+    const sanitizedOptions = sanitizeTargetAnswerOptions(typedKey, options);
+    return [typedKey, sanitizedOptions?.length ? sanitizedOptions : fallbackOptions[typedKey]] as const;
   });
   return Object.fromEntries(entries) as OptionGroups;
 }
@@ -74,7 +91,7 @@ async function aiOptions(input: Record<string, unknown>): Promise<OptionGroups |
       messages: [
         {
           role: "system",
-          content: "Return compact JSON only. Generate practical onboarding chip options for an SMB CRM. Keys: role, industry, teamSize, leadSources, assignmentPreferences, followUpPreferences, services, markets, targetQuestion0, targetQuestion1, targetQuestion2. Values are arrays of short strings."
+          content: "Return compact JSON only. Generate practical onboarding chip options for an SMB CRM. Keys: role, industry, teamSize, leadSources, assignmentPreferences, followUpPreferences, services, markets, targetQuestion0, targetQuestion1, targetQuestion2. Values are arrays of short answer strings. For targetQuestion0, targetQuestion1, and targetQuestion2, never return questions; return selectable answers only."
         },
         {
           role: "user",

@@ -73,6 +73,9 @@ async function main() {
   assert(!loginForm.includes("window.confirm"), "auth form should not use browser confirms");
   assert(!loginForm.includes("window.prompt"), "auth form should not use browser prompts");
 
+  const loginFormRoute = await read(root, "apps/web/src/app/api/auth/login/form/route.ts");
+  assert(loginFormRoute.includes("status: 303"), "password form login should redirect with 303 so POST does not loop into the workspace");
+
   const authLib = await read(root, "apps/web/src/lib/auth.ts");
   assert(authLib.includes("loginRedirectForCurrentRequest"), "protected auth helpers should preserve the current route in login next");
   assert(authLib.includes("currentPathHeaderName"), "auth helpers should read the request path captured by middleware");

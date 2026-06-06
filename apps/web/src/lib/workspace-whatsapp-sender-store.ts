@@ -31,6 +31,21 @@ type SenderState = {
   senders: WorkspaceWhatsAppSender[];
 };
 
+type WorkspaceWhatsAppSenderScope = {
+  tenantId: string;
+  ownerId: string;
+};
+
+type WorkspaceWhatsAppSenderProfile = {
+  businessName?: string;
+  industry?: string;
+  website?: string;
+};
+
+type TwilioOperationResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; status: WorkspaceWhatsAppSenderStatus; reason: string };
+
 function emptyState(): SenderState {
   return { senders: [] };
 }
@@ -112,8 +127,231 @@ function configuredSenderPool() {
     .filter((entry): entry is NonNullable<ReturnType<typeof normalizeWorkspaceWhatsAppNumber>> => Boolean(entry));
 }
 
-function senderMatchesScope(sender: WorkspaceWhatsAppSender, scope: { tenantId: string; ownerId: string }) {
+function senderMatchesScope(sender: WorkspaceWhatsAppSender, scope: WorkspaceWhatsAppSenderScope) {
   return sender.tenantId === scope.tenantId && sender.ownerId === scope.ownerId;
+}
+
+function twilioCredentials() {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID?.trim();
+  const authToken = process.env.TWILIO_AUTH_TOKEN?.trim();
+  return accountSid && authToken ? { accountSid, authToken } : undefined;
+}
+
+function twilioAuthorizationHeader(credentials: { accountSid: string; authToken: string }) {
+  return `Basic ${Buffer.from(`${credentials.accountSid}:${credentials.authToken}`).toString("base64")}`;
+}
+
+function safeTwilioReason(prefix: string, payload: unknown, fallback: string) {
+  if (payload && typeof payload === "object") {
+    const record = payload as Record<string, unknown>;
+    const message = typeof record.message === "string" ? record.message : typeof record.detail === "string" ? record.detail : "";
+    if (message.trim()) return `${prefix}: ${message.trim().slice(0, 220)}`;
+  }
+  return `${prefix}: ${fallback}`;
+}
+
+async function twilioJsonRequest<T>(url: string, init?: RequestInit): Promise<TwilioOperationResult<T>> {
+  const credentials = twilioCredentials();
+  if (!credentials) {
+    return {
+      ok: false,
+      status: "sender_registration_pending",
+      reason: "Twilio credentials are not configured for live WhatsApp sender provisioning."
+    };
+  }
+  const headers = new Headers(init?.headers);
+  headers.set("Authorization", twilioAuthorizationHeader(credentials));
+  const response = await fetch(url, { ...init, headers });
+  const payload = (await response.json().catch(() => undefined)) as T | undefined;
+  if (!response.ok || !payload) {
+    return {
+      ok: false,
+      status: response.status >= 500 ? "sender_registration_pending" : "failed",
+      reason: safeTwilioReason("Twilio provisioning failed", payload, `HTTP ${response.status}`)
+    };
+  }
+  return { ok: true, value: payload };
+}
+
+function twilioApiBase(credentials: { accountSid: string }) {
+  return `https://api.twilio.com/2010-04-01/Accounts/${credentials.accountSid}`;
+}
+
+function webhookCallbackUrl() {
+  const configured = process.env.TWILIO_WEBHOOK_URL?.trim();
+  if (configured) return configured;
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() || process.env.APP_URL?.trim();
+  return appUrl ? `${appUrl.replace(/\/$/, "")}/api/twilio/webhook` : "https://leadsy.up.railway.app/api/twilio/webhook";
+}
+
+function sanitizeProfileName(value?: string) {
+  return (value?.trim() || "Leadsy Workspace").slice(0, 80);
+}
+
+function sanitizeWebsite(value?: string) {
+  const trimmed = value?.trim();
+  return trimmed && /^https?:\/\/.+\..+/.test(trimmed) ? trimmed : undefined;
+}
+
+function statusFromTwilioSenderStatus(status?: string): WorkspaceWhatsAppSenderStatus {
+  const normalized = status?.trim().toLowerCase() ?? "";
+  if (["approved", "online", "active", "connected"].includes(normalized)) return "approved";
+  if (["failed", "rejected", "disabled"].includes(normalized)) return "failed";
+  return "pending_verification";
+}
+
+export async function searchIndianTwilioNumber(): Promise<TwilioOperationResult<{ phoneNumber: string }>> {
+  const credentials = twilioCredentials();
+  if (!credentials) {
+    return {
+      ok: false,
+      status: "sender_registration_pending",
+      reason: "Twilio credentials are not configured for live India number search."
+    };
+  }
+  const numberTypes = ["Mobile", "Local"] as const;
+  for (const numberType of numberTypes) {
+    const url = new URL(`${twilioApiBase(credentials)}/AvailablePhoneNumbers/IN/${numberType}.json`);
+    url.searchParams.set("SmsEnabled", "true");
+    url.searchParams.set("Limit", "1");
+    const result = await twilioJsonRequest<{ available_phone_numbers?: Array<{ phone_number?: string }> }>(url.toString(), { method: "GET" });
+    if (!result.ok) return result;
+    const phoneNumber = result.value.available_phone_numbers?.find((item) => typeof item.phone_number === "string")?.phone_number;
+    if (phoneNumber) return { ok: true, value: { phoneNumber } };
+  }
+  return {
+    ok: false,
+    status: "sender_registration_pending",
+    reason: "Twilio India SMS-capable inventory did not return an available +91 number."
+  };
+}
+
+export async function buyTwilioPhoneNumber(phoneNumber: string): Promise<TwilioOperationResult<{ phoneNumber: string; sid: string }>> {
+  const credentials = twilioCredentials();
+  if (!credentials) {
+    return {
+      ok: false,
+      status: "sender_registration_pending",
+      reason: "Twilio credentials are not configured for number purchase."
+    };
+  }
+  const body = new URLSearchParams({ PhoneNumber: phoneNumber });
+  const result = await twilioJsonRequest<{ sid?: string; phone_number?: string }>(`${twilioApiBase(credentials)}/IncomingPhoneNumbers.json`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body
+  });
+  if (!result.ok) return result;
+  if (!result.value.sid) {
+    return {
+      ok: false,
+      status: "failed",
+      reason: "Twilio purchased the number but did not return an IncomingPhoneNumber SID."
+    };
+  }
+  return { ok: true, value: { sid: result.value.sid, phoneNumber: result.value.phone_number ?? phoneNumber } };
+}
+
+export async function registerTwilioWhatsAppSender(
+  sender: WorkspaceWhatsAppSender,
+  profile: WorkspaceWhatsAppSenderProfile = {}
+): Promise<TwilioOperationResult<{ sid: string; status: WorkspaceWhatsAppSenderStatus; reason: string }>> {
+  if (!sender.twilioFrom) {
+    return {
+      ok: false,
+      status: "failed",
+      reason: "A Twilio WhatsApp From number is required before sender registration."
+    };
+  }
+  const website = sanitizeWebsite(profile.website);
+  const body = {
+    sender_id: sender.twilioFrom,
+    configuration: {
+      verification_method: "sms"
+    },
+    profile: {
+      name: sanitizeProfileName(profile.businessName ?? sender.businessName),
+      vertical: profile.industry?.trim() || "Other",
+      about: "Lead conversations managed by Leadsy.",
+      description: "Leadsy-managed WhatsApp number for inbound lead conversations and human-approved replies.",
+      websites: website ? [website] : ["https://leadsy.up.railway.app"]
+    },
+    webhook: {
+      callback_method: "POST",
+      callback_url: webhookCallbackUrl()
+    }
+  };
+  const result = await twilioJsonRequest<{ sid?: string; status?: string }>("https://messaging.twilio.com/v2/Channels/Senders", {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify(body)
+  });
+  if (!result.ok) {
+    return {
+      ok: false,
+      status: result.status === "failed" ? "failed" : "pending_verification",
+      reason: result.reason
+    };
+  }
+  if (!result.value.sid) {
+    return {
+      ok: false,
+      status: "pending_verification",
+      reason: "Twilio accepted the sender registration request but did not return a sender SID."
+    };
+  }
+  const status = statusFromTwilioSenderStatus(result.value.status);
+  return {
+    ok: true,
+    value: {
+      sid: result.value.sid,
+      status,
+      reason: status === "approved" ? "Twilio reported the WhatsApp sender as approved." : `Twilio sender registration is ${result.value.status ?? "pending"}.`
+    }
+  };
+}
+
+async function reserveWorkspaceSenderFromPool(
+  input: WorkspaceWhatsAppSenderScope & { businessName?: string },
+  statusReason: string
+) {
+  return mutateState((state) => {
+    const now = nowIso();
+    const existing = state.senders.find((sender) => senderMatchesScope(sender, input));
+    const used = new Set(state.senders.map((sender) => sender.twilioFrom).filter(Boolean));
+    const poolNumber = configuredSenderPool().find((sender) => !used.has(sender.twilioFrom) || existing?.twilioFrom === sender.twilioFrom);
+    const sender: WorkspaceWhatsAppSender = poolNumber
+      ? {
+          tenantId: input.tenantId,
+          ownerId: input.ownerId,
+          businessName: input.businessName?.trim() || existing?.businessName,
+          assignedPhoneNumber: poolNumber.assignedPhoneNumber,
+          twilioFrom: poolNumber.twilioFrom,
+          twilioPhoneNumberSid: existing?.twilioPhoneNumberSid,
+          twilioSenderSid: existing?.twilioSenderSid,
+          status: "number_reserved",
+          statusReason,
+          createdAt: existing?.createdAt ?? now,
+          updatedAt: now
+        }
+      : {
+          tenantId: input.tenantId,
+          ownerId: input.ownerId,
+          businessName: input.businessName?.trim() || existing?.businessName,
+          status: "sender_registration_pending",
+          statusReason: "Live India provisioning is unavailable and no fallback platform sender is currently available in the assignment pool.",
+          createdAt: existing?.createdAt ?? now,
+          updatedAt: now
+        };
+    return {
+      state: {
+        senders: existing
+          ? state.senders.map((candidate) => (senderMatchesScope(candidate, input) ? sender : candidate))
+          : [...state.senders, sender]
+      },
+      result: sender
+    };
+  });
 }
 
 export async function ensureWorkspaceWhatsAppSender(input: {
@@ -192,50 +430,72 @@ export async function upsertWorkspaceWhatsAppSender(input: {
   });
 }
 
-export async function provisionWorkspaceWhatsAppSender(input: {
-  tenantId: string;
-  ownerId: string;
-  businessName?: string;
-}) {
-  return mutateState((state) => {
-    const now = nowIso();
-    const existing = state.senders.find((sender) => senderMatchesScope(sender, input));
-    if (existing?.status === "approved" || existing?.status === "number_reserved" || existing?.status === "sender_registration_pending" || existing?.status === "pending_verification") {
-      return { result: existing };
-    }
+export async function provisionLeadsyAssignedWhatsAppSender(
+  scope: WorkspaceWhatsAppSenderScope,
+  profile: WorkspaceWhatsAppSenderProfile = {}
+) {
+  const businessName = profile.businessName?.trim();
+  const existing = await getWorkspaceWhatsAppSender(scope);
+  if (
+    existing?.assignedPhoneNumber &&
+    (existing.status === "approved" || existing.status === "number_reserved" || existing.status === "pending_verification")
+  ) {
+    return businessName && businessName !== existing.businessName
+      ? upsertWorkspaceWhatsAppSender({ ...scope, businessName, status: existing.status, statusReason: existing.statusReason })
+      : existing;
+  }
 
-    const used = new Set(state.senders.map((sender) => sender.twilioFrom).filter(Boolean));
-    const poolNumber = configuredSenderPool().find((sender) => !used.has(sender.twilioFrom));
-    const sender: WorkspaceWhatsAppSender = poolNumber
-      ? {
-          tenantId: input.tenantId,
-          ownerId: input.ownerId,
-          businessName: input.businessName?.trim() || existing?.businessName,
-          assignedPhoneNumber: poolNumber.assignedPhoneNumber,
-          twilioFrom: poolNumber.twilioFrom,
-          status: "number_reserved",
-          statusReason: "Leadsy reserved this platform WhatsApp number. Twilio sender registration or approval is still pending.",
-          createdAt: existing?.createdAt ?? now,
-          updatedAt: now
-        }
-      : {
-          tenantId: input.tenantId,
-          ownerId: input.ownerId,
-          businessName: input.businessName?.trim() || existing?.businessName,
-          status: "sender_registration_pending",
-          statusReason: "No platform sender is currently available in the assignment pool. Leadsy operations must provision one in Twilio.",
-          createdAt: existing?.createdAt ?? now,
-          updatedAt: now
-        };
-    return {
-      state: {
-        senders: existing
-          ? state.senders.map((candidate) => (senderMatchesScope(candidate, input) ? sender : candidate))
-          : [...state.senders, sender]
-      },
-      result: sender
-    };
+  await ensureWorkspaceWhatsAppSender({ ...scope, businessName });
+  const search = await searchIndianTwilioNumber();
+  if (!search.ok) {
+    return reserveWorkspaceSenderFromPool(
+      { ...scope, businessName },
+      `Live India provisioning fallback: ${search.reason}`
+    );
+  }
+
+  const purchase = await buyTwilioPhoneNumber(search.value.phoneNumber);
+  if (!purchase.ok) {
+    return reserveWorkspaceSenderFromPool(
+      { ...scope, businessName },
+      `Live India provisioning fallback: ${purchase.reason}`
+    );
+  }
+
+  const reserved = await upsertWorkspaceWhatsAppSender({
+    ...scope,
+    businessName,
+    assignedPhoneNumber: purchase.value.phoneNumber,
+    twilioPhoneNumberSid: purchase.value.sid,
+    status: "number_reserved",
+    statusReason: "Leadsy purchased this Twilio India number. WhatsApp sender registration is starting."
   });
+
+  const registration = await registerTwilioWhatsAppSender(reserved, profile);
+  if (!registration.ok) {
+    return upsertWorkspaceWhatsAppSender({
+      ...scope,
+      businessName,
+      assignedPhoneNumber: purchase.value.phoneNumber,
+      twilioPhoneNumberSid: purchase.value.sid,
+      status: registration.status === "failed" ? "failed" : "pending_verification",
+      statusReason: registration.reason
+    });
+  }
+
+  return upsertWorkspaceWhatsAppSender({
+    ...scope,
+    businessName,
+    assignedPhoneNumber: purchase.value.phoneNumber,
+    twilioPhoneNumberSid: purchase.value.sid,
+    twilioSenderSid: registration.value.sid,
+    status: registration.value.status,
+    statusReason: registration.value.reason
+  });
+}
+
+export async function provisionWorkspaceWhatsAppSender(input: WorkspaceWhatsAppSenderScope & { businessName?: string }) {
+  return provisionLeadsyAssignedWhatsAppSender(input, { businessName: input.businessName });
 }
 
 export async function getWorkspaceWhatsAppSender(scope: { tenantId: string; ownerId: string }) {
