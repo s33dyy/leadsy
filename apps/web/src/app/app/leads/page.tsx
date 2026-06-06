@@ -47,7 +47,7 @@ type LeadsPageProps = {
 };
 
 type ViewFilter = "all" | "needs-reply" | "active" | "meta" | "extension" | "excluded";
-type LeadWorkspaceTab = "details" | "comms" | "tasks";
+type LeadWorkspaceTab = "overview" | "conversation" | "tasks" | "notes" | "timeline";
 type CommChannelFilter = "all" | "whatsapp" | "instagram" | "facebook" | "email" | "call" | "browser" | "manual";
 type LeadPanel = "crm" | "knowledge";
 
@@ -61,9 +61,11 @@ const viewFilters: Array<{ id: ViewFilter; label: string }> = [
 ];
 
 const workspaceTabs: Array<{ id: LeadWorkspaceTab; label: string }> = [
-  { id: "comms", label: "Comms" },
-  { id: "details", label: "Details" },
-  { id: "tasks", label: "Tasks" }
+  { id: "overview", label: "Overview" },
+  { id: "conversation", label: "Conversation" },
+  { id: "tasks", label: "Tasks" },
+  { id: "notes", label: "Notes" },
+  { id: "timeline", label: "Timeline" }
 ];
 
 const commFilters: Array<{ id: CommChannelFilter; label: string; channels?: LeadKnowledgeChannel[] }> = [
@@ -161,7 +163,7 @@ function crmHref(input: {
   if (input.view && input.view !== "all") params.set("view", input.view);
   if (input.q?.trim()) params.set("q", input.q.trim());
   if (input.contact) params.set("contact", input.contact);
-  if (input.tab && input.tab !== "comms") params.set("tab", input.tab);
+  if (input.tab && input.tab !== "conversation") params.set("tab", input.tab);
   if (input.commChannel && input.commChannel !== "all") params.set("commChannel", input.commChannel);
   const query = params.toString();
   return query ? `/app/leads?${query}` : "/app/leads";
@@ -222,7 +224,9 @@ function openHref(lead: LeadKnowledgeRecord) {
 }
 
 function activeTabFromValue(value: string): LeadWorkspaceTab {
-  return workspaceTabs.some((tab) => tab.id === value) ? (value as LeadWorkspaceTab) : "comms";
+  if (value === "comms") return "conversation";
+  if (value === "details") return "overview";
+  return workspaceTabs.some((tab) => tab.id === value) ? (value as LeadWorkspaceTab) : "conversation";
 }
 
 function commChannelFromValue(value: string): CommChannelFilter {
@@ -485,7 +489,7 @@ function LeadListPane({
       <form method="get" action="/app/leads" className="mt-4 flex min-w-0 items-center gap-2 rounded-[8px] border border-[var(--line)] bg-black/20 px-3">
         {activeView !== "all" ? <input type="hidden" name="view" value={activeView} /> : null}
         {activePanel !== "crm" ? <input type="hidden" name="panel" value={activePanel} /> : null}
-        {activeTab !== "comms" ? <input type="hidden" name="tab" value={activeTab} /> : null}
+        {activeTab !== "conversation" ? <input type="hidden" name="tab" value={activeTab} /> : null}
         {commChannel !== "all" ? <input type="hidden" name="commChannel" value={commChannel} /> : null}
         <Search size={15} className="shrink-0 text-[var(--muted)]" />
         <input
@@ -635,7 +639,7 @@ function LeadKnowledgeRail({ lead }: { lead: LeadKnowledgeRecord }) {
         </li>
       </ul>
       <div className="mt-auto border-t border-border p-3">
-        <Link href={crmHref({ contact: lead.id, tab: "details" })} className="flex h-7 w-full items-center justify-center gap-2 rounded-[5px] border border-border bg-surface-2 text-[12px] hover:bg-surface-3">
+        <Link href={crmHref({ contact: lead.id, tab: "overview" })} className="flex h-7 w-full items-center justify-center gap-2 rounded-[5px] border border-border bg-surface-2 text-[12px] hover:bg-surface-3">
           <Sparkles className="h-3 w-3 text-primary" /> Run research worker
         </Link>
       </div>
@@ -665,76 +669,207 @@ function LeadRecordWorkspace({
   taskEvents: ExtensionTaskEvent[];
 }) {
   const href = openHref(lead);
+  const scopedTaskEvents = eventsForTasks(taskEvents, tasks);
   return (
-    <div className="min-h-full space-y-5 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <div className="min-h-full p-4">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <div className="mono text-[11px] uppercase text-[var(--teal)]">Selected lead</div>
+          <div className="mono text-[11px] uppercase text-[var(--teal)]">Phase 3B · Lead Detail Workspace</div>
           <h3 className="mt-1 truncate text-2xl font-semibold text-white md:text-3xl">{contactLabel(lead)}</h3>
           <div className="mono mt-2 break-all text-xs text-[var(--muted)]">{lead.id}</div>
         </div>
         <div className="flex flex-wrap items-start justify-end gap-2">
           <Badge tone={stageTone(crmStage(lead))}>{crmStage(lead)}</Badge>
-          <Badge tone="neutral">{lead.messageCount} comms</Badge>
+          <Badge tone="neutral">{lead.messageCount} messages</Badge>
         </div>
       </div>
 
-      <FifteenSecondLeadBrief lead={lead} crmFollowUps={crmFollowUps} />
+      <div className="grid min-h-0 gap-4 xl:grid-cols-[280px_minmax(0,1fr)_320px]">
+        <aside data-testid="lead-detail-left-column" className="min-h-0 xl:sticky xl:top-4 xl:self-start">
+          <LeadContextColumn lead={lead} crmFollowUps={crmFollowUps} />
+        </aside>
 
-      <div className="flex max-w-full gap-2 overflow-x-auto border-b border-[var(--line)] pb-3">
-        {workspaceTabs.map((tab) => (
-          <Link
-            key={tab.id}
-            href={crmHref({ panel: activePanel, view: activeView, q: query, contact: lead.id, tab: tab.id, commChannel })}
-            scroll={false}
-            className={`inline-flex h-10 min-w-[118px] shrink-0 items-center justify-center rounded-[6px] border px-3 text-sm font-medium ${
-              activeTab === tab.id
-                ? "border-teal-300/40 bg-teal-300/[0.12] text-teal-100"
-                : "border-[var(--line)] bg-white/[0.03] text-[var(--muted-2)] hover:text-white"
-            }`}
-          >
-            {tab.label}
-          </Link>
-        ))}
+        <main data-testid="lead-detail-conversation-column" className="min-w-0 space-y-4">
+          <div className="flex max-w-full gap-2 overflow-x-auto border-b border-[var(--line)] pb-3">
+            {workspaceTabs.map((tab) => (
+              <Link
+                key={tab.id}
+                href={crmHref({ panel: activePanel, view: activeView, q: query, contact: lead.id, tab: tab.id, commChannel })}
+                scroll={false}
+                className={`inline-flex h-10 min-w-[118px] shrink-0 items-center justify-center rounded-[6px] border px-3 text-sm font-medium ${
+                  activeTab === tab.id
+                    ? "border-teal-300/40 bg-teal-300/[0.12] text-teal-100"
+                    : "border-[var(--line)] bg-white/[0.03] text-[var(--muted-2)] hover:text-white"
+                }`}
+              >
+                {tab.label}
+              </Link>
+            ))}
+          </div>
+
+          {activeTab === "overview" ? <LeadDetailsTab lead={lead} href={href} /> : null}
+          {activeTab === "conversation" ? <LeadCommsTab lead={lead} activeView={activeView} query={query} commChannel={commChannel} /> : null}
+          {activeTab === "tasks" ? <LeadTasksTab lead={lead} tasks={tasks} crmFollowUps={crmFollowUps} taskEvents={scopedTaskEvents} /> : null}
+          {activeTab === "notes" ? <LeadNotesTab lead={lead} /> : null}
+          {activeTab === "timeline" ? <LeadTimelineTab lead={lead} tasks={tasks} crmFollowUps={crmFollowUps} taskEvents={scopedTaskEvents} /> : null}
+        </main>
+
+        <aside data-testid="lead-detail-action-column" className="min-h-0 xl:sticky xl:top-4 xl:self-start">
+          <LeadActionPanel lead={lead} href={href} tasks={tasks} crmFollowUps={crmFollowUps} taskEvents={scopedTaskEvents} />
+        </aside>
       </div>
-
-      {activeTab === "details" ? <LeadDetailsTab lead={lead} href={href} /> : null}
-      {activeTab === "comms" ? (
-        <LeadCommsTab lead={lead} activeView={activeView} query={query} commChannel={commChannel} />
-      ) : null}
-      {activeTab === "tasks" ? (
-        <LeadTasksTab
-          lead={lead}
-          tasks={tasks}
-          crmFollowUps={crmFollowUps}
-          taskEvents={eventsForTasks(taskEvents, tasks)}
-        />
-      ) : null}
     </div>
+  );
+}
+
+function notYetCollected(value?: string) {
+  return value?.trim() || "Not Yet Collected";
+}
+
+function qualificationScore(lead: LeadKnowledgeRecord) {
+  const fields = [
+    lead.qualificationFields.budget,
+    lead.qualificationFields.timeline,
+    lead.qualificationFields.need,
+    lead.qualificationFields.company,
+    lead.qualificationFields.teamOrQueryVolume,
+    lead.contact.phone || lead.contact.email
+  ];
+  const collected = fields.filter((value) => value?.trim()).length;
+  return `${Math.round((collected / fields.length) * 100)}% collected`;
+}
+
+function leadRisk(lead: LeadKnowledgeRecord) {
+  if (lead.qualificationStage === "human_review") return "Human review required before next reply.";
+  if (!lead.qualificationFields.budget) return "Budget not collected yet.";
+  if (!lead.qualificationFields.timeline) return "Timeline not collected yet.";
+  if (needsReply(lead)) return "Lead is waiting for a response.";
+  return "No major conversion risk recorded.";
+}
+
+function leadIntent(lead: LeadKnowledgeRecord) {
+  if (lead.qualificationStage === "qualified") return "Qualified buying intent";
+  if (needsReply(lead)) return "Active inbound intent";
+  if (lead.qualificationFields.need) return "Discovery intent";
+  return "Not Yet Collected";
+}
+
+function participantForMessage(message: LeadKnowledgeMessage) {
+  return chatSenderLabel(message);
+}
+
+function messageDateKey(message: LeadKnowledgeMessage) {
+  return new Date(message.sentAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function groupMessagesForTimeline(messages: LeadKnowledgeMessage[]) {
+  const ordered = [...messages].sort((a, b) => messageTime(a) - messageTime(b));
+  return ordered.reduce<Array<{ key: string; channel: LeadKnowledgeChannel; date: string; participant: string; messages: LeadKnowledgeMessage[] }>>((groups, message) => {
+    const date = messageDateKey(message);
+    const participant = participantForMessage(message);
+    const previous = groups.at(-1);
+    if (previous && previous.channel === message.channel && previous.date === date && previous.participant === participant) {
+      previous.messages.push(message);
+      return groups;
+    }
+    groups.push({ key: `${message.channel}:${date}:${participant}:${message.id}`, channel: message.channel, date, participant, messages: [message] });
+    return groups;
+  }, []);
+}
+
+function lastMeaningfulReply(lead: LeadKnowledgeRecord) {
+  return [...lead.messages].reverse().find((message) => !message.hiddenAt && message.direction !== "system")?.body;
+}
+
+function conversationSentiment(lead: LeadKnowledgeRecord) {
+  const sentiment = [...lead.conversations].reverse().find((conversation) => conversation.sentiment)?.sentiment;
+  return sentiment ? sentiment.replace(/_/g, " ") : "Not Yet Collected";
+}
+
+function suggestedReplyDraft(lead: LeadKnowledgeRecord) {
+  if (lead.qualificationFields.budget) return `Thanks ${contactLabel(lead)}. The next best step is ${nextAction(lead).toLowerCase()}`;
+  return `Thanks ${contactLabel(lead)}. To recommend the right next step, could you share your budget range and timeline?`;
+}
+
+function LeadContextColumn({ lead, crmFollowUps }: { lead: LeadKnowledgeRecord; crmFollowUps: CrmFollowUpTask[] }) {
+  return (
+    <div className="space-y-4">
+      <section className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-sm font-semibold text-white">Lead Context</div>
+          <Badge tone={stageTone(crmStage(lead))}>{crmStage(lead)}</Badge>
+        </div>
+        <div className="mt-3 grid gap-2">
+          <DetailLine label="Lead Name" value={contactLabel(lead)} />
+          <DetailLine label="Company" value={notYetCollected(lead.qualificationFields.company)} />
+          <DetailLine label="Source" value={notYetCollected(lead.leadSource)} />
+          <DetailLine label="Owner" value={lead.assigneeName || "Unassigned"} />
+          <DetailLine label="Pipeline Status" value={crmStage(lead)} />
+          <DetailLine label="Qualification Status" value={lead.qualificationStage.replace(/_/g, " ")} />
+          <DetailLine label="Created Date" value={shortDate(lead.createdAt)} />
+          <DetailLine label="Last Activity" value={shortDate(lead.lastMessageAt || lead.updatedAt)} />
+        </div>
+      </section>
+      <FifteenSecondLeadBrief lead={lead} crmFollowUps={crmFollowUps} />
+      <QualificationSnapshot lead={lead} />
+      <KnowledgeSupportCard lead={lead} />
+    </div>
+  );
+}
+
+function QualificationSnapshot({ lead }: { lead: LeadKnowledgeRecord }) {
+  return (
+    <section className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
+      <div className="text-sm font-semibold text-white">Qualification Snapshot</div>
+      <div className="mt-3 grid gap-2">
+        <DetailLine label="Budget" value={notYetCollected(lead.qualificationFields.budget)} />
+        <DetailLine label="Timeline" value={notYetCollected(lead.qualificationFields.timeline)} />
+        <DetailLine label="Decision Maker" value={notYetCollected(lead.qualificationFields.name)} />
+        <DetailLine label="Team Size" value={notYetCollected(lead.qualificationFields.teamOrQueryVolume)} />
+        <DetailLine label="Location" value="Not Yet Collected" />
+        <DetailLine label="Service Interest" value={notYetCollected(lead.qualificationFields.need)} />
+        <DetailLine label="Qualification Score" value={qualificationScore(lead)} />
+      </div>
+    </section>
+  );
+}
+
+function KnowledgeSupportCard({ lead }: { lead: LeadKnowledgeRecord }) {
+  const recentFacts = lead.facts.slice(0, 4);
+  return (
+    <section className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-4">
+      <div className="text-sm font-semibold text-white">Knowledge supports conversion</div>
+      <div className="mt-3 grid gap-2">
+        <DetailLine label="Relevant Notes" value={recentFacts[0] || "Not Yet Collected"} />
+        <DetailLine label="Recent Insights" value={recentFacts[1] || lead.summary || "Not Yet Collected"} />
+        <DetailLine label="Qualification Findings" value={lead.qualificationFields.need || recentFacts[2] || "Not Yet Collected"} />
+      </div>
+    </section>
   );
 }
 
 function FifteenSecondLeadBrief({ lead, crmFollowUps }: { lead: LeadKnowledgeRecord; crmFollowUps: CrmFollowUpTask[] }) {
   const qualificationSummary = lead.summary || lead.qualificationFields.need || "Qualification not captured yet.";
-  const owner = lead.assigneeName || "Unassigned";
-  const followUpStatus = crmFollowUps.length ? `${crmFollowUps.length} open follow-up${crmFollowUps.length === 1 ? "" : "s"}` : "No follow-up scheduled";
   return (
     <section className="rounded-[8px] border border-teal-300/25 bg-teal-300/[0.08] p-4" aria-label="15-second lead brief">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="mono text-[11px] uppercase tracking-[0.18em] text-[var(--teal)]">15-second lead brief</div>
+          <div className="mono text-[11px] uppercase tracking-[0.18em] text-[var(--teal)]">AI summary card · 15-second lead brief</div>
           <h4 className="mt-1 text-lg font-semibold text-white">Lead → Conversation → Qualification → Action</h4>
-          <p className="mt-1 text-xs leading-5 text-[var(--muted-2)]">Open this lead and decide the next conversion move without switching screens.</p>
+          <p className="mt-1 text-xs leading-5 text-[var(--muted-2)]">Always visible: who this is, what they need, and what should happen next.</p>
         </div>
-        <Badge tone={stageTone(crmStage(lead))}>{crmStage(lead)}</Badge>
+        <div className="flex flex-wrap gap-2">
+          <Badge tone={stageTone(crmStage(lead))}>{crmStage(lead)}</Badge>
+          {crmFollowUps.length ? <Badge tone="amber">{crmFollowUps.length} follow-up</Badge> : null}
+        </div>
       </div>
       <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-        <DetailLine label="Current status" value={crmStage(lead)} />
-        <DetailLine label="Last conversation" value={latestMessage(lead)} />
-        <DetailLine label="Qualification summary" value={qualificationSummary} />
-        <DetailLine label="Next action" value={nextAction(lead)} />
-        <DetailLine label="Owner" value={owner} />
-        <DetailLine label="Follow-up status" value={followUpStatus} />
+        <DetailLine label="Need" value={notYetCollected(lead.qualificationFields.need || qualificationSummary)} />
+        <DetailLine label="Budget" value={notYetCollected(lead.qualificationFields.budget)} />
+        <DetailLine label="Timeline" value={notYetCollected(lead.qualificationFields.timeline)} />
+        <DetailLine label="Intent" value={leadIntent(lead)} />
+        <DetailLine label="Risk" value={leadRisk(lead)} />
+        <DetailLine label="Recommended Action" value={nextAction(lead)} />
       </div>
     </section>
   );
@@ -928,6 +1063,47 @@ function LeadInput({ name, label, value }: { name: string; label: string; value?
   );
 }
 
+function AIConversationSummary({ lead }: { lead: LeadKnowledgeRecord }) {
+  return (
+    <section className="rounded-[8px] border border-teal-300/20 bg-teal-300/[0.06] p-4">
+      <div className="flex items-center gap-2 text-sm font-semibold text-white">
+        <Sparkles size={16} className="text-[var(--teal)]" />
+        AI conversation summary
+      </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+        <DetailLine label="Current Need" value={notYetCollected(lead.qualificationFields.need)} />
+        <DetailLine label="Current Objection" value={leadRisk(lead)} />
+        <DetailLine label="Sentiment" value={conversationSentiment(lead)} />
+        <DetailLine label="Last Meaningful Reply" value={notYetCollected(lastMeaningfulReply(lead))} />
+        <DetailLine label="Suggested Next Step" value={nextAction(lead)} />
+      </div>
+    </section>
+  );
+}
+
+function SuggestedReplyCard({ lead }: { lead: LeadKnowledgeRecord }) {
+  return (
+    <section className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold text-white">Suggested reply</div>
+          <p className="mt-1 text-xs leading-5 text-[var(--muted)]">AI Draft only. No auto-send; copy, edit, then approve from the human workflow.</p>
+        </div>
+        <Badge tone="amber">No auto-send</Badge>
+      </div>
+      <div className="mt-3 rounded-[6px] border border-[var(--line)] bg-white/[0.04] p-3 text-sm leading-6 text-white">
+        <div className="mono mb-2 text-[10px] uppercase text-[var(--muted)]">AI Draft</div>
+        {suggestedReplyDraft(lead)}
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button type="button" className="inline-flex h-9 items-center justify-center rounded-[6px] border border-[var(--line)] bg-white/[0.03] px-3 text-xs font-medium text-[var(--muted-2)]">Copy</button>
+        <button type="button" className="inline-flex h-9 items-center justify-center rounded-[6px] border border-[var(--line)] bg-white/[0.03] px-3 text-xs font-medium text-[var(--muted-2)]">Edit</button>
+        <button type="button" className="inline-flex h-9 items-center justify-center rounded-[6px] border border-lime-300/25 bg-lime-300/10 px-3 text-xs font-medium text-lime-100">Approve</button>
+      </div>
+    </section>
+  );
+}
+
 function LeadCommsTab({
   lead,
   activeView,
@@ -944,11 +1120,13 @@ function LeadCommsTab({
   const conversations = conversationsForCommChannel(lead, commChannel);
   return (
     <div className="min-h-0 space-y-4">
+      <AIConversationSummary lead={lead} />
+      <SuggestedReplyCard lead={lead} />
       <div className="flex max-w-full gap-2 overflow-x-auto pb-1">
         {commFilters.map((filter) => (
           <Link
             key={filter.id}
-            href={crmHref({ view: activeView, q: query, contact: lead.id, tab: "comms", commChannel: filter.id })}
+            href={crmHref({ view: activeView, q: query, contact: lead.id, tab: "conversation", commChannel: filter.id })}
             scroll={false}
             className={`inline-flex h-9 shrink-0 items-center rounded-[6px] border px-3 text-xs font-medium ${
               commChannel === filter.id
@@ -1229,6 +1407,148 @@ function LeadTasksTab({
         </div>
       </div>
     </div>
+  );
+}
+
+function LeadNotesTab({ lead }: { lead: LeadKnowledgeRecord }) {
+  return <KnowledgeSupportCard lead={lead} />;
+}
+
+function LeadTimelineTab({
+  lead,
+  tasks,
+  crmFollowUps,
+  taskEvents
+}: {
+  lead: LeadKnowledgeRecord;
+  tasks: ExtensionTask[];
+  crmFollowUps: CrmFollowUpTask[];
+  taskEvents: ExtensionTaskEvent[];
+}) {
+  const groupedMessages = groupMessagesForTimeline(lead.messages);
+  return (
+    <div className="space-y-4">
+      <section className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-sm font-semibold text-white">Conversation Timeline</div>
+          <Badge tone="neutral">{groupedMessages.length} grouped turns</Badge>
+        </div>
+        <div className="mt-3 grid gap-3">
+          {groupedMessages.length ? groupedMessages.map((group) => (
+            <div key={group.key} className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone={toneForChannel(group.channel)}>{channelLabel(group.channel)}</Badge>
+                <Badge tone="neutral">{group.date}</Badge>
+                <Badge tone="teal">{group.participant}</Badge>
+              </div>
+              <div className="mt-2 space-y-2">
+                {group.messages.map((message) => <p key={message.id} className="text-sm leading-6 text-[var(--muted-2)]">{message.body}</p>)}
+              </div>
+            </div>
+          )) : <p className="text-sm leading-6 text-[var(--muted-2)]">No conversation events yet.</p>}
+        </div>
+      </section>
+      <RecentActivityCard lead={lead} tasks={tasks} crmFollowUps={crmFollowUps} taskEvents={taskEvents} />
+    </div>
+  );
+}
+
+function followUpStatus(crmFollowUps: CrmFollowUpTask[]) {
+  if (crmFollowUps.some((task) => task.dueAt && Date.parse(task.dueAt) < Date.now() && task.status !== "done")) return "Overdue";
+  if (crmFollowUps.some((task) => task.status === "done")) return "Completed";
+  if (crmFollowUps.some((task) => task.dueAt)) return "Scheduled";
+  return crmFollowUps.length ? "Pending" : "Pending";
+}
+
+function LeadActionPanel({
+  lead,
+  href,
+  tasks,
+  crmFollowUps,
+  taskEvents
+}: {
+  lead: LeadKnowledgeRecord;
+  href: string;
+  tasks: ExtensionTask[];
+  crmFollowUps: CrmFollowUpTask[];
+  taskEvents: ExtensionTaskEvent[];
+}) {
+  return (
+    <div className="space-y-4">
+      <section className="rounded-[8px] border border-teal-300/25 bg-teal-300/[0.08] p-4">
+        <div className="text-sm font-semibold text-white">Next Action</div>
+        <p className="mt-2 text-sm leading-6 text-white">{nextAction(lead)}</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {href ? <a href={href} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-teal-300/30 bg-teal-300/[0.12] px-3 text-xs font-medium text-teal-100">Send Follow-Up</a> : null}
+          <a href={`tel:${(lead.contact.phone || lead.contact.waId || "").replace(/\D/g, "")}`} className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-[var(--line)] bg-white/[0.03] px-3 text-xs font-medium text-[var(--muted-2)]">Call Lead</a>
+          <Badge tone="amber">Request Budget</Badge>
+          <Badge tone="sky">Schedule Demo</Badge>
+          {lead.qualificationStage === "human_review" ? <Badge tone="amber">Escalate</Badge> : null}
+        </div>
+      </section>
+      <section className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-sm font-semibold text-white">Tasks</div>
+          <Badge tone="neutral">Open Tasks {crmFollowUps.length + tasks.length}</Badge>
+        </div>
+        <div className="mt-3 grid gap-2">
+          {crmFollowUps.slice(0, 4).map((task) => (
+            <div key={task.id} className="rounded-[6px] border border-[var(--line)] bg-white/[0.03] p-3">
+              <div className="text-sm font-semibold text-white">{task.topic}</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Badge tone="neutral">Status {task.status}</Badge>
+                <Badge tone="sky">Owner {task.assigneeName || lead.assigneeName || "Unassigned"}</Badge>
+                <Badge tone="lime">Due Date {task.dueAt ? shortDate(task.dueAt) : "Not Yet Collected"}</Badge>
+                <Badge tone="neutral">Human Generated</Badge>
+              </div>
+            </div>
+          ))}
+          {tasks.slice(0, 3).map((task) => (
+            <div key={task.id} className="rounded-[6px] border border-[var(--line)] bg-white/[0.03] p-3">
+              <div className="text-sm font-semibold text-white">{task.type.replace(/_/g, " ")}</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Badge tone="neutral">Status {task.status.replace(/_/g, " ")}</Badge>
+                <Badge tone="lime">Due Date {task.dueAt ? shortDate(task.dueAt) : "Not Yet Collected"}</Badge>
+                <Badge tone="teal">AI Generated</Badge>
+              </div>
+            </div>
+          ))}
+          {!crmFollowUps.length && !tasks.length ? <p className="text-sm leading-6 text-[var(--muted-2)]">No open tasks yet.</p> : null}
+        </div>
+      </section>
+      <section className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
+        <div className="text-sm font-semibold text-white">Follow-up Status</div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {["Pending", "Scheduled", "Completed", "Overdue"].map((status) => <Badge key={status} tone={followUpStatus(crmFollowUps) === status ? "teal" : "neutral"}>{status}</Badge>)}
+        </div>
+      </section>
+      <RecentActivityCard lead={lead} tasks={tasks} crmFollowUps={crmFollowUps} taskEvents={taskEvents} />
+    </div>
+  );
+}
+
+function RecentActivityCard({
+  lead,
+  tasks,
+  crmFollowUps,
+  taskEvents
+}: {
+  lead: LeadKnowledgeRecord;
+  tasks: ExtensionTask[];
+  crmFollowUps: CrmFollowUpTask[];
+  taskEvents: ExtensionTaskEvent[];
+}) {
+  return (
+    <section className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
+      <div className="text-sm font-semibold text-white">Recent Activity</div>
+      <div className="mt-3 grid gap-2">
+        <DetailLine label="Assignments" value={lead.assigneeName || "Unassigned"} />
+        <DetailLine label="Status Changes" value={crmStage(lead)} />
+        <DetailLine label="Qualification Updates" value={lead.qualificationStage.replace(/_/g, " ")} />
+        <DetailLine label="Conversation Events" value={`${lead.messageCount} messages across ${lead.conversations.length} conversations`} />
+        <DetailLine label="Task Events" value={`${taskEvents.length} worker events, ${tasks.length} AI generated tasks, ${crmFollowUps.length} human generated tasks`} />
+      </div>
+    </section>
   );
 }
 

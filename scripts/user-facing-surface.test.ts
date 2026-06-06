@@ -190,9 +190,30 @@ async function main() {
   assert(leadsPage.includes("Leads workspace"), "leads page should present Leads as the main workspace");
   assert(leadsPage.includes("Lead → Conversation → Qualification → Action"), "Phase 3 lead workspace should foreground the conversion flow");
   assert(leadsPage.includes("15-second lead brief"), "selected lead should expose a fast lead detail brief before admin controls");
-  for (const goldenField of ["Current status", "Last conversation", "Qualification summary", "Owner", "Follow-up status"]) {
-    assert(leadsPage.includes(goldenField), `selected lead brief should expose ${goldenField}`);
+  assert(leadsPage.includes("Lead Detail Workspace"), "Phase 3B should make the selected lead view the Lead Detail Workspace");
+  assert(leadsPage.includes("data-testid=\"lead-detail-left-column\""), "Phase 3B lead detail should expose a stable left lead context column");
+  assert(leadsPage.includes("data-testid=\"lead-detail-conversation-column\""), "Phase 3B lead detail should expose a stable center conversation column");
+  assert(leadsPage.includes("data-testid=\"lead-detail-action-column\""), "Phase 3B lead detail should expose a stable right action column");
+  assert(leadsPage.includes("AI summary card"), "Phase 3B left column should keep the AI summary card always visible");
+  for (const goldenField of ["Lead Name", "Company", "Source", "Owner", "Pipeline Status", "Qualification Status", "Created Date", "Last Activity", "Need", "Budget", "Timeline", "Intent", "Risk", "Recommended Action", "Qualification Snapshot", "Decision Maker", "Team Size", "Location", "Service Interest", "Qualification Score"]) {
+    assert(leadsPage.includes(goldenField), `Phase 3B lead context should expose ${goldenField}`);
   }
+  assert(leadsPage.includes("Not Yet Collected"), "unknown qualification fields should show Not Yet Collected instead of fake data");
+  assert(leadsPage.includes("AI conversation summary"), "Phase 3B conversation column should pin an AI conversation summary above messages");
+  for (const conversationField of ["Current Need", "Current Objection", "Sentiment", "Last Meaningful Reply", "Suggested Next Step", "Suggested reply", "AI Draft", "Copy", "Edit", "Approve", "No auto-send"]) {
+    assert(leadsPage.includes(conversationField), `Phase 3B conversation workspace should expose ${conversationField}`);
+  }
+  assert(leadsPage.includes("groupMessagesForTimeline"), "conversation timeline should group messages by channel, date, and participant");
+  for (const actionField of ["Open Tasks", "Due Date", "AI Generated", "Human Generated", "Follow-up Status", "Pending", "Scheduled", "Completed", "Overdue", "Recent Activity", "Assignments", "Status Changes", "Qualification Updates", "Conversation Events"]) {
+    assert(leadsPage.includes(actionField), `Phase 3B action workspace should expose ${actionField}`);
+  }
+  for (const tabLabel of ["Overview", "Conversation", "Tasks", "Notes", "Timeline"]) {
+    assert(leadsPage.includes(`label: "${tabLabel}"`), `Phase 3B tabs should include ${tabLabel}`);
+  }
+  assert(!leadsPage.includes('label: "Comms"'), "Phase 3B should rename Comms to Conversation without adding extra tabs");
+  assert(leadsPage.includes("Relevant Notes"), "knowledge should be limited to relevant notes");
+  assert(leadsPage.includes("Recent Insights"), "knowledge should be limited to recent insights");
+  assert(leadsPage.includes("Qualification Findings"), "knowledge should be limited to qualification findings");
   assert(leadsPage.includes("AI qualification"), "leads page should expose AI qualification state");
   assert(leadsPage.includes("Qualification fields"), "selected lead details should expose qualification fields");
   assert(leadsPage.includes("Lead source"), "selected lead details should expose CRM lead source");
@@ -219,8 +240,8 @@ async function main() {
   assert(leadsPage.includes("Log outbound after sending"), "manual reply workflow should guide operators to log external replies");
   assert(leadsPage.includes("data-testid=\"lead-list-pane\""), "leads page should expose a stable lead list pane");
   assert(leadsPage.includes("data-testid=\"lead-workspace-pane\""), "leads page should expose a stable selected-record workspace");
-  assert(leadsPage.includes("Details"), "selected lead workspace should expose a Details tab");
-  assert(leadsPage.includes("Comms"), "selected lead workspace should expose a Comms tab");
+  assert(leadsPage.includes("Overview"), "selected lead workspace should expose an Overview tab");
+  assert(leadsPage.includes("Conversation"), "selected lead workspace should expose a Conversation tab");
   assert(leadsPage.includes("Tasks"), "selected lead workspace should expose a Tasks tab");
   assert(leadsPage.includes("commChannel"), "selected lead comms tab should be controlled by channel params");
   for (const label of ["WhatsApp", "Instagram", "Facebook", "Email", "Call Notes", "Browser Chat", "Manual"]) {
