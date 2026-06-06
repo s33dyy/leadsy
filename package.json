@@ -2,7 +2,7 @@
   "name": "leadsy",
   "version": "0.1.0",
   "private": true,
-  "description": "Leadsy AI Lead Intelligence & Operations Platform for prospect research, lead knowledge, operator tasks, and human-approved outreach.",
+  "description": "Leadsy AI Lead Capture, Qualification & Conversion Platform for source intake, AI qualification, follow-up, and human-approved outreach.",
   "workspaces": [
     "apps/*",
     "packages/*"

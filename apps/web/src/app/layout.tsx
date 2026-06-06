@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Leadsy AI Lead Intelligence & Operations Platform",
+  title: "Leadsy AI Lead Capture, Qualification & Conversion Platform",
   description:
-    "Research prospects, build lead knowledge, generate operator tasks, and draft outreach for human approval.",
+    "Capture leads, qualify conversations with AI, manage follow-up, and convert prospects with human-approved outreach.",
 };
 
 export default function RootLayout({

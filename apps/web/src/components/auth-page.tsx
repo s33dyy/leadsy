@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Bot, CheckSquare, LockKeyhole, MessageCircle, RadioTower, Sparkles, UsersRound } from "lucide-react";
+import { CheckSquare, LockKeyhole, MessageCircle, RadioTower, Sparkles, UsersRound } from "lucide-react";
 import { getCurrentSession, redirectForSession } from "@/lib/auth";
 import { LoginForm, type AuthMode } from "@/components/login-form";
 import { Badge, Panel, SectionTitle } from "@/components/ui";
@@ -18,12 +18,12 @@ const loginErrors: Record<string, string> = {
 const modeCopy: Record<AuthMode, { eyebrow: string; title: string; body: string }> = {
   login: {
     eyebrow: "Secure access",
-    title: "Enter your lead intelligence workspace",
-    body: "Sign in to research prospects, build lead knowledge, and approve worker-generated tasks."
+    title: "Enter your lead capture, qualification, and conversion workspace",
+    body: "Sign in to capture leads, qualify conversations with AI, and manage approved follow-up."
   },
   signup: {
     eyebrow: "Create workspace",
-    title: "Start with verified lead intelligence",
+    title: "Start converting leads with AI qualification",
     body: "Create your workspace with Google, then connect Meta, WhatsApp, and the browser extension when you are ready."
   },
   forgot: {
@@ -60,7 +60,7 @@ export async function AuthPage({
             </span>
             <span className="font-semibold">Leadsy</span>
           </Link>
-          <Badge tone="teal">AI Lead Intelligence</Badge>
+          <Badge tone="teal">AI Lead Capture, Qualification & Conversion Platform</Badge>
         </header>
 
         <section className="grid flex-1 items-center gap-8 py-8 lg:grid-cols-[minmax(360px,520px)_minmax(0,1fr)] xl:gap-12">
@@ -109,23 +109,8 @@ export async function AuthPage({
 }
 
 function OperatorPreview() {
-  const metrics = [
-    { label: "New leads · 24h", value: "38", icon: UsersRound, delta: "+12" },
-    { label: "Qualified · 24h", value: "14", icon: Sparkles, delta: "+4" },
-    { label: "Worker activity", value: "4", icon: Bot, delta: "live" },
-    { label: "Pending approvals", value: "7", icon: CheckSquare, delta: "+2" }
-  ];
-  const funnel = [
-    ["Captured", 100, "412"],
-    ["Researched", 77, "318"],
-    ["Qualified", 45, "184"],
-    ["Engaged", 24, "96"]
-  ] as const;
-  const needsYou = [
-    ["P0", "WhatsApp reply to Marina Okafor", "Worker drafted a follow-up that needs review."],
-    ["P0", "Helio Robotics expansion brief", "Research brief is ready for qualification."],
-    ["P1", "Qualification rationale for Theodor Voss", "Score 88. Review before outreach."]
-  ] as const;
+  const navItems = ["Dashboard", "Leads", "Inbox", "Automations", "Team", "Analytics", "Settings"];
+  const pipelineStatuses = ["New", "Qualified", "Interested", "Contacted", "Won", "Lost"];
 
   return (
     <div className="hidden min-h-[720px] overflow-hidden rounded-[8px] border border-[var(--line)] bg-[var(--surface)] shadow-2xl lg:grid lg:grid-cols-[220px_minmax(0,1fr)_320px]">
@@ -138,10 +123,9 @@ function OperatorPreview() {
           </span>
         </div>
         <div className="mt-8 space-y-1">
-          {["Dashboard", "CRM", "Workers", "Approvals", "Communications", "Tasks", "Integrations"].map((item, index) => (
+          {navItems.map((item, index) => (
             <div key={item} className={`flex h-9 items-center justify-between rounded-[6px] px-3 text-sm ${index === 0 ? "bg-white/[0.08] text-white" : "text-[var(--muted-2)]"}`}>
               <span>{item}</span>
-              {item === "Approvals" ? <span className="rounded bg-teal-300/15 px-1.5 text-xs text-teal-200">7</span> : null}
             </div>
           ))}
         </div>
@@ -150,25 +134,24 @@ function OperatorPreview() {
       <section className="p-5">
         <div className="flex items-center justify-between">
           <div className="text-sm text-[var(--muted-2)]">Leadsy / <span className="text-white">Dashboard</span></div>
-          <Badge tone="teal">4 workers running · queue 82</Badge>
+          <Badge tone="teal">AI qualification ready</Badge>
         </div>
         <div className="mt-8">
           <div className="mono text-[11px] uppercase tracking-[0.24em] text-[var(--muted)]">Operator overview</div>
-          <h2 className="mt-3 text-2xl font-medium text-white">Good morning, Iris.</h2>
-          <p className="mt-2 text-sm text-[var(--muted-2)]">7 items need your eyes · 4 workers running · pipeline is healthy.</p>
+          <h2 className="mt-3 text-2xl font-medium text-white">Conversion workspace preview</h2>
+          <p className="mt-2 text-sm text-[var(--muted-2)]">Live lead counts appear after a workspace connects sources or logs leads.</p>
         </div>
 
-        <div className="mt-6 grid grid-cols-4 overflow-hidden rounded-[8px] border border-[var(--line)]">
-          {metrics.map((metric) => {
-            const Icon = metric.icon;
+        <div className="mt-6 grid grid-cols-3 overflow-hidden rounded-[8px] border border-[var(--line)]">
+          {pipelineStatuses.map((status) => {
             return (
-              <div key={metric.label} className="border-r border-[var(--line)] p-4">
+              <div key={status} className="border-r border-[var(--line)] p-4">
                 <div className="flex items-center justify-between text-[var(--muted)]">
-                  <Icon size={16} />
-                  <span className="mono text-xs text-[var(--teal)]">{metric.delta}</span>
+                  <UsersRound size={16} />
+                  <span className="mono text-xs text-[var(--teal)]">status</span>
                 </div>
-                <div className="mt-5 text-2xl font-medium text-white">{metric.value}</div>
-                <div className="mt-1 text-xs text-[var(--muted-2)]">{metric.label}</div>
+                <div className="mt-5 text-sm font-medium text-white">{status}</div>
+                <div className="mt-1 text-xs text-[var(--muted-2)]">No live records yet</div>
               </div>
             );
           })}
@@ -177,16 +160,10 @@ function OperatorPreview() {
         <div className="mt-6 grid grid-cols-[minmax(0,1.2fr)_minmax(220px,0.8fr)] overflow-hidden rounded-[8px] border border-[var(--line)]">
           <div className="p-4">
             <div className="mono text-[11px] uppercase tracking-[0.24em] text-[var(--muted)]">Qualification funnel · 7d</div>
-            <div className="mt-5 space-y-3">
-              {funnel.map(([label, width, value]) => (
-                <div key={label} className="grid grid-cols-[84px_minmax(0,1fr)_42px] items-center gap-3">
-                  <span className="text-sm text-[var(--muted-2)]">{label}</span>
-                  <span className="h-6 rounded-[5px] bg-white/[0.05]">
-                    <span className="block h-full rounded-[5px] bg-emerald-400" style={{ width: `${width}%` }} />
-                  </span>
-                  <span className="mono text-xs text-[var(--muted)]">{value}</span>
-                </div>
-              ))}
+            <div className="mt-5 flex min-h-[168px] flex-col items-center justify-center rounded-[8px] border border-dashed border-[var(--line)] text-center">
+              <Sparkles size={20} className="text-[var(--teal)]" />
+              <div className="mt-3 text-sm font-medium text-white">No live lead data yet</div>
+              <p className="mt-2 max-w-xs text-sm leading-6 text-[var(--muted-2)]">Captured, qualified, interested, and contacted records will appear here from real workspace data.</p>
             </div>
           </div>
           <div className="border-l border-[var(--line)] p-4">
@@ -195,12 +172,9 @@ function OperatorPreview() {
               Lead sources
             </div>
             <div className="mt-5 space-y-4 text-sm">
-              {["Instagram", "WhatsApp", "Meta Ads", "Extension"].map((source, index) => (
-                <div key={source} className="flex items-center justify-between gap-3">
-                  <span className="text-white">{source}</span>
-                  <span className="mono text-xs text-[var(--muted)]">{[38, 27, 18, 11][index]}%</span>
-                </div>
-              ))}
+              <div className="rounded-[8px] border border-dashed border-[var(--line)] p-4 text-[var(--muted-2)]">
+                Connect Meta, WhatsApp, or the extension to populate real source performance.
+              </div>
             </div>
           </div>
         </div>
@@ -209,23 +183,14 @@ function OperatorPreview() {
       <aside className="border-l border-[var(--line)] bg-black/15">
         <div className="border-b border-[var(--line)] p-5">
           <div className="mono text-[11px] uppercase tracking-[0.24em] text-[var(--muted)]">Needs you</div>
-          <p className="mt-2 text-sm text-[var(--muted-2)]">5 items pending across 4 workers.</p>
+          <p className="mt-2 text-sm text-[var(--muted-2)]">Approvals and follow-ups appear only when real workspace items need review.</p>
         </div>
-        <div className="divide-y divide-[var(--line)]">
-          {needsYou.map(([priority, title, detail]) => (
-            <div key={title} className="p-5">
-              <div className="mono text-[11px] uppercase tracking-[0.22em] text-[var(--muted)]">
-                <span className={priority === "P0" ? "text-rose-300" : "text-amber-300"}>{priority}</span> Draft
-              </div>
-              <div className="mt-3 text-sm font-semibold text-white">{title}</div>
-              <p className="mt-2 text-sm leading-6 text-[var(--muted-2)]">{detail}</p>
-              <div className="mt-4 flex items-center gap-2">
-                <span className="rounded-[6px] bg-[var(--teal)] px-3 py-1.5 text-sm font-medium text-black">Approve</span>
-                <span className="rounded-[6px] border border-[var(--line)] px-3 py-1.5 text-sm text-white">Edit</span>
-                <span className="text-sm text-[var(--muted-2)]">Reject</span>
-              </div>
-            </div>
-          ))}
+        <div className="p-5">
+          <div className="flex min-h-[320px] flex-col items-center justify-center rounded-[8px] border border-dashed border-[var(--line)] text-center">
+            <CheckSquare size={22} className="text-[var(--teal)]" />
+            <div className="mt-3 text-sm font-semibold text-white">No live approvals in preview</div>
+            <p className="mt-2 max-w-xs text-sm leading-6 text-[var(--muted-2)]">Drafts, follow-ups, and automation reviews stay empty until real records exist.</p>
+          </div>
         </div>
         <div className="flex items-center gap-3 border-t border-[var(--line)] p-5 text-sm text-[var(--muted-2)]">
           <MessageCircle size={16} />

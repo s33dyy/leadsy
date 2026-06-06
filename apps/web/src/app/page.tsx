@@ -6,18 +6,18 @@ import { Badge, GhostLink, PrimaryLink } from "@/components/ui";
 const modules = [
   {
     icon: MessageCircle,
-    title: "Research prospects",
-    detail: "Collect Meta, browser extension, and manual context before AI adds any generated interpretation."
+    title: "Capture leads",
+    detail: "Bring Meta, WhatsApp, browser extension, and manual lead intake into one conversion workspace."
   },
   {
     icon: Cable,
-    title: "Build lead knowledge",
-    detail: "Turn notes, conversations, status changes, and worker findings into one living lead profile."
+    title: "Qualify conversations",
+    detail: "Use AI qualification fields, source context, and conversation history to identify the next best action."
   },
   {
     icon: Bot,
-    title: "Generate operator tasks",
-    detail: "Let workers propose next steps while humans keep control of approval, edits, and completion."
+    title: "Route follow-up",
+    detail: "Create owner assignments, approval queues, and follow-up tasks while Leadsy keeps the source of truth."
   },
   {
     icon: Download,
@@ -26,8 +26,8 @@ const modules = [
   },
   {
     icon: ShieldCheck,
-    title: "Support human operators",
-    detail: "Keep qualification, communication logs, and task queues focused on daily lead operations."
+    title: "Convert with follow-up",
+    detail: "Track contacted, won, and lost outcomes without moving customer records outside Leadsy."
   }
 ];
 
@@ -57,31 +57,19 @@ export default function Home() {
 
       <section className="mx-auto grid max-w-7xl gap-8 px-4 pb-8 pt-8 md:px-8 lg:grid-cols-[0.72fr_1.28fr] lg:items-center lg:pb-14">
         <div className="max-w-xl">
-          <Badge tone="teal">{"AI Lead Intelligence & Operations Platform"}</Badge>
+          <Badge tone="teal">{"AI Lead Capture, Qualification & Conversion Platform"}</Badge>
           <h1 className="mt-6 text-5xl font-semibold leading-[1.02] text-white md:text-7xl">
             Leadsy
           </h1>
           <p className="mt-6 text-lg leading-8 text-[var(--muted-2)]">
-            Research prospects, build knowledge about every lead, generate tasks for human operators, and draft outreach that waits for approval before anything is sent.
+            Capture inbound leads, qualify conversations with AI, coordinate follow-up, and convert prospects while preserving human approval for outbound messages.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <PrimaryLink href="/login?next=/app/leads">
-              Open lead intelligence
+              Open Leads
               <ArrowRight className="ml-2" size={16} />
             </PrimaryLink>
             <GhostLink href="/extension">Download extension</GhostLink>
-          </div>
-          <div className="mt-8 grid grid-cols-3 gap-3">
-            {[
-              ["0", "knowledge records"],
-              ["0", "operator tasks"],
-              ["0", "autonomous sends"]
-            ].map(([value, label]) => (
-              <div key={label} className="panel-quiet p-3">
-                <div className="text-2xl font-semibold text-white">{value}</div>
-                <div className="mono mt-1 text-[10px] uppercase text-[var(--muted)]">{label}</div>
-              </div>
-            ))}
           </div>
         </div>
         <LandingScene />

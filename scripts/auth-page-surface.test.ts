@@ -44,7 +44,12 @@ async function main() {
   assert(authPage.includes("page-shell"), "auth page should keep the existing non-plain page shell background");
   assert(authPage.includes("noise"), "auth page should keep the existing background texture layer");
   assert(authPage.includes("OperatorPreview"), "auth page should show the Lovable-style operator workspace preview");
-  assert(authPage.includes("Good morning, Iris."), "auth preview should mirror the Lovable dashboard greeting");
+  assert(authPage.includes("AI Lead Capture, Qualification & Conversion Platform"), "auth page should use the Phase 1 product identity");
+  assert(authPage.includes("lead capture, qualification, and conversion workspace"), "auth page should frame access around conversion work");
+  assert(!authPage.includes("Good morning, Iris."), "auth preview should not invent a named operator or fake live workspace data");
+  for (const fakePreview of ['value: "38"', 'value: "14"', 'delta: "+12"', 'delta: "+4"', "4 workers running · queue 82", "7 items need your eyes", "[38, 27, 18, 11]"]) {
+    assert(!authPage.includes(fakePreview), `auth preview should not include fake metric ${fakePreview}`);
+  }
   assert(authPage.includes("Needs you"), "auth preview should include the Lovable right-side approval rail");
   assert(!authPage.includes("window.alert"), "auth page should not use browser alerts");
   assert(!authPage.includes("window.confirm"), "auth page should not use browser confirms");
