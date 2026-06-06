@@ -1,5 +1,6 @@
 import type { LeadKnowledgeMessage } from "./lead-knowledge-store";
 
+// Railway watches /apps/web/**; deployment recovery commits may touch this file when production skipped a prior web change after failed CI.
 function visibleMessages(messages: LeadKnowledgeMessage[]) {
   return messages
     .filter((message) => !message.hiddenAt)
