@@ -274,12 +274,11 @@ export default async function ConnectPage({ searchParams }: ConnectPageProps) {
 
       <Panel className="p-5 md:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <SectionTitle eyebrow="Browser worker" title="Pair the extension for conversation work" />
+          <SectionTitle eyebrow="Legacy Capture Layer" title="Pair the extension for browser fallback" />
           <Badge tone="teal">{tokens.length} tokens</Badge>
         </div>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--muted-2)]">
-          The extension handles the later browser conversation work. The official Meta connection above is still the source
-          of webhook identity.
+          The extension remains available for existing browser capture users, but the official Meta connection above is the primary transport for new conversation intake.
         </p>
         <div className="mt-6">
           <ExtensionPairing initialTokens={tokens} />
