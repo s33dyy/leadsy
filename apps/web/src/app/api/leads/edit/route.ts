@@ -1,7 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { audit, rateLimit } from "@leadsy/security";
 import { requireApiSession } from "@/lib/api-auth";
-import { editLeadKnowledgeRecord, type LeadCrmStatus, type LeadQualificationStage } from "@/lib/lead-knowledge-store";
+import {
+  editLeadKnowledgeRecord,
+  productPipelineStatusFromValue,
+  type LeadCrmStatus,
+  type LeadQualificationStage
+} from "@/lib/lead-knowledge-store";
 import { urlForRequestHost } from "@/lib/request-url";
 
 export const runtime = "nodejs";
@@ -32,6 +37,7 @@ export async function POST(request: NextRequest) {
     .filter(Boolean);
   const crmStatus = crmStatusFromValue(form.get("crmStatus"));
   const qualificationStage = qualificationStageFromValue(form.get("qualificationStage"));
+  const productPipelineStatus = productPipelineStatusFromValue(form.get("productPipelineStatus"));
   const lead = await editLeadKnowledgeRecord({
     tenantId: auth.session.tenantId,
     ownerId: auth.session.id,
@@ -51,6 +57,7 @@ export async function POST(request: NextRequest) {
     assigneeId: String(form.get("assigneeId") ?? "").trim(),
     assigneeName: String(form.get("assigneeName") ?? "").trim(),
     crmStatus,
+    productPipelineStatus,
     qualificationStage,
     qualificationFields: {
       name: String(form.get("qualificationName") ?? "").trim() || undefined,

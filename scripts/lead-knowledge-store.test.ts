@@ -11,7 +11,10 @@ async function main() {
     const {
       appendManualLeadMessage,
       buildLeadKnowledgeContext,
+      editLeadKnowledgeRecord,
       listLeadKnowledgeRecords,
+      productPipelineStatusForLead,
+      productPipelineStatusLabel,
       saveUnifiedMetaWebhookMessages,
       setLeadConversationKnowledgeStatus,
       setLeadKnowledgeStatus,
@@ -312,6 +315,62 @@ async function main() {
     assert.equal(manualOnlyLead.contact.email, "manual@example.com");
     assert.equal(manualOnlyLead.channels.includes("manual"), true);
     assert.equal(manualOnlyLead.messages.some((message) => message.body.includes("Manual lead created from CRM intake")), true);
+
+    const directStatusExamples = [
+      {
+        label: "New",
+        lead: { leadStatus: "lead", crmStatus: "new_lead", qualificationStage: "new", outboundCount: 0, messages: [] },
+        expected: "new"
+      },
+      {
+        label: "Qualified",
+        lead: { leadStatus: "lead", crmStatus: "interested", qualificationStage: "qualified", outboundCount: 0, messages: [] },
+        expected: "qualified"
+      },
+      {
+        label: "Interested",
+        lead: { leadStatus: "lead", crmStatus: "interested", qualificationStage: "collecting", outboundCount: 0, messages: [] },
+        expected: "interested"
+      },
+      {
+        label: "Contacted",
+        lead: { leadStatus: "lead", crmStatus: "needs_reply", qualificationStage: "collecting", outboundCount: 0, messages: [] },
+        expected: "contacted"
+      },
+      {
+        label: "Contacted",
+        lead: { leadStatus: "lead", crmStatus: "new_lead", qualificationStage: "new", outboundCount: 1, messages: [] },
+        expected: "contacted"
+      },
+      {
+        label: "Won",
+        lead: { leadStatus: "lead", crmStatus: "new_lead", qualificationStage: "new", productPipelineStatus: "won", outboundCount: 0, messages: [] },
+        expected: "won"
+      },
+      {
+        label: "Lost",
+        lead: { leadStatus: "lead", crmStatus: "interested", qualificationStage: "qualified", productPipelineStatus: "lost", outboundCount: 0, messages: [] },
+        expected: "lost"
+      }
+    ] as const;
+    for (const example of directStatusExamples) {
+      assert.equal(productPipelineStatusForLead(example.lead), example.expected, `${example.label} mapping should use the product pipeline taxonomy`);
+      assert.equal(productPipelineStatusLabel(example.expected), example.label);
+    }
+
+    const manualStatusBefore = {
+      crmStatus: manualOnlyLead.crmStatus,
+      qualificationStage: manualOnlyLead.qualificationStage
+    };
+    const wonLead = await editLeadKnowledgeRecord({
+      ...scope,
+      leadId: manualOnlyLead.id,
+      productPipelineStatus: "won"
+    });
+    assert.equal(wonLead.productPipelineStatus, "won", "Won should be representable as a product-facing status");
+    assert.equal(productPipelineStatusForLead(wonLead), "won");
+    assert.equal(wonLead.crmStatus, manualStatusBefore.crmStatus, "setting Won should not rewrite the internal CRM status");
+    assert.equal(wonLead.qualificationStage, manualStatusBefore.qualificationStage, "setting Won should not rewrite the internal qualification stage");
 
     const leads = await listLeadKnowledgeRecords(scope);
     assert.equal(leads.length, 5, "WhatsApp, Instagram, Facebook, display-name-only WhatsApp, and manual contacts should be tracked as lead records");

@@ -29,7 +29,10 @@ import { getCurrentSession } from "@/lib/auth";
 import { listCrmFollowUpTasks, type CrmFollowUpTask } from "@/lib/crm-store";
 import { listExtensionTaskEvents, listExtensionTasks, type ExtensionTask, type ExtensionTaskEvent } from "@/lib/extension-store";
 import {
+  leadProductPipelineStatuses,
   listLeadKnowledgeRecords,
+  productPipelineStatusForLead,
+  productPipelineStatusLabel,
   syncLeadKnowledgeFromExtensionTasks,
   type LeadKnowledgeChannel,
   type LeadKnowledgeConversation,
@@ -107,21 +110,15 @@ function needsReply(lead: LeadKnowledgeRecord) {
 
 function crmStage(lead: LeadKnowledgeRecord) {
   if (lead.leadStatus === "excluded") return "Not a lead";
-  if (lead.crmStatus === "human_review") return "Human review";
-  if (lead.crmStatus === "interested") return "Interested";
-  if (lead.crmStatus === "needs_reply" || needsReply(lead)) return "Needs reply";
-  if (lead.crmStatus === "new_lead") return "New lead";
-  if (lead.outboundCount > 0) return "Working";
-  if (lead.channels.some((channel) => channel === "whatsapp" || channel === "instagram" || channel === "facebook")) return "New Meta lead";
-  return "New lead";
+  return productPipelineStatusLabel(productPipelineStatusForLead(lead));
 }
 
 function stageTone(stage: string): "teal" | "amber" | "lime" | "sky" | "neutral" {
-  if (stage === "Needs reply") return "amber";
-  if (stage === "Human review") return "amber";
+  if (stage === "Contacted") return "amber";
   if (stage === "Interested") return "lime";
-  if (stage === "Working") return "sky";
-  if (stage === "New Meta lead") return "lime";
+  if (stage === "Qualified") return "sky";
+  if (stage === "Won") return "lime";
+  if (stage === "Lost") return "neutral";
   if (stage === "Not a lead") return "neutral";
   return "teal";
 }
@@ -147,7 +144,7 @@ function noticeCopy(params: Record<string, string | string[] | undefined>) {
   if (notice === "lead-archived") return "Lead archived. History is preserved.";
   if (notice === "message-hidden") return "Communication hidden from the chat.";
   if (notice === "message-restored") return "Communication restored.";
-  if (notice === "lead-magnet-archived") return "Lead Magnet is archived. Lead Intelligence is the active workspace.";
+  if (notice === "lead-magnet-archived") return "Lead Magnet is archived. Leads is the active workspace.";
   return "";
 }
 
@@ -183,6 +180,7 @@ function matchesQuery(lead: LeadKnowledgeRecord, query: string) {
     lead.campaignId,
     lead.assigneeName,
     lead.crmStatus,
+    productPipelineStatusForLead(lead),
     lead.qualificationStage,
     ...Object.values(lead.qualificationFields ?? {}),
     latestMessage(lead),
@@ -390,7 +388,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
   return (
     <div className="grid h-full min-h-0 grid-cols-12 gap-px overflow-hidden bg-border">
       <LeadScrollKeeper />
-      <div className="sr-only">Lead Intelligence {activePanel === "knowledge" ? "Knowledge workspace" : "CRM workspace"}</div>
+      <div className="sr-only">Lead capture, qualification, and conversion {activePanel === "knowledge" ? "Lead context workspace" : "Leads workspace"}</div>
       <div className="sr-only">
         All Meta and browser conversations. Total records {leads.length}. Active leads {activeLeads.length}. Needs reply {replyQueue.length}. Meta-sourced {metaLeads.length}. Excluded {excludedLeads.length}.
       </div>
@@ -758,32 +756,24 @@ function LeadDetailsTab({ lead, href }: { lead: LeadKnowledgeRecord; href: strin
                 <LeadInput name="campaignId" label="Campaign ID" value={lead.campaignId} />
                 <LeadInput name="assigneeName" label="Assignee" value={lead.assigneeName} />
                 <LeadInput name="assigneeId" label="Assignee ID" value={lead.assigneeId} />
+                <input type="hidden" name="crmStatus" value={lead.crmStatus} />
+                <input type="hidden" name="qualificationStage" value={lead.qualificationStage} />
                 <label className="grid gap-2 text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
-                  CRM status
+                  Pipeline status
                   <select
-                    name="crmStatus"
-                    defaultValue={lead.crmStatus}
+                    name="productPipelineStatus"
+                    defaultValue={productPipelineStatusForLead(lead)}
                     className="h-10 rounded-[6px] border border-[var(--line)] bg-black/30 px-3 text-sm normal-case tracking-normal text-white outline-none"
                   >
-                    <option value="new_lead">New lead</option>
-                    <option value="needs_reply">Needs reply</option>
-                    <option value="interested">Interested</option>
-                    <option value="human_review">Human review</option>
+                    {leadProductPipelineStatuses.map((status) => (
+                      <option key={status.id} value={status.id}>
+                        {status.label}
+                      </option>
+                    ))}
                   </select>
                 </label>
-                <label className="grid gap-2 text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
-                  Qualification stage
-                  <select
-                    name="qualificationStage"
-                    defaultValue={lead.qualificationStage}
-                    className="h-10 rounded-[6px] border border-[var(--line)] bg-black/30 px-3 text-sm normal-case tracking-normal text-white outline-none"
-                  >
-                    <option value="new">New</option>
-                    <option value="collecting">Collecting</option>
-                    <option value="qualified">Qualified</option>
-                    <option value="human_review">Human review</option>
-                  </select>
-                </label>
+                <DetailLine label="Operational CRM flag" value={lead.crmStatus.replace(/_/g, " ")} />
+                <DetailLine label="Qualification stage" value={lead.qualificationStage.replace(/_/g, " ")} />
               </div>
             </div>
             <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-3">
@@ -1017,7 +1007,7 @@ function LeadCrmSummaryCard({ lead }: { lead: LeadKnowledgeRecord }) {
             <Sparkles size={16} className="text-[var(--teal)]" />
             AI qualification
           </div>
-          <p className="mt-2 text-xs leading-5 text-[var(--muted)]">CRM status, source, assignee, and captured facts for this conversation.</p>
+          <p className="mt-2 text-xs leading-5 text-[var(--muted)]">Pipeline status, source, assignee, and captured facts for this conversation.</p>
         </div>
         <Badge tone={stageTone(crmStage(lead))}>{crmStage(lead)}</Badge>
       </div>

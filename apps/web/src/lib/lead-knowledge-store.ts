@@ -32,8 +32,18 @@ export type LeadKnowledgeStatus = "lead" | "excluded";
 export type LeadConversationKnowledgeStatus = "included" | "excluded";
 export type LeadCrmStatus = "new_lead" | "interested" | "needs_reply" | "human_review";
 export type LeadQualificationStage = "new" | "collecting" | "qualified" | "human_review";
+export type LeadProductPipelineStatus = "new" | "qualified" | "interested" | "contacted" | "won" | "lost";
 export type LeadQualificationFieldKey = "name" | "phone" | "company" | "need" | "teamOrQueryVolume" | "budget" | "timeline";
 export type LeadQualificationFields = Partial<Record<LeadQualificationFieldKey, string>>;
+
+export const leadProductPipelineStatuses: ReadonlyArray<{ id: LeadProductPipelineStatus; label: string }> = [
+  { id: "new", label: "New" },
+  { id: "qualified", label: "Qualified" },
+  { id: "interested", label: "Interested" },
+  { id: "contacted", label: "Contacted" },
+  { id: "won", label: "Won" },
+  { id: "lost", label: "Lost" }
+];
 
 export type LeadKnowledgeContact = {
   displayName?: string;
@@ -52,6 +62,7 @@ export type LeadKnowledgeLead = {
   contact: LeadKnowledgeContact;
   leadStatus: LeadKnowledgeStatus;
   crmStatus: LeadCrmStatus;
+  productPipelineStatus?: LeadProductPipelineStatus;
   leadSource?: string;
   campaignId?: string;
   assigneeId?: string;
@@ -221,10 +232,36 @@ function leadCrmDefaults(): Pick<LeadKnowledgeLead, "crmStatus" | "qualification
   };
 }
 
+export function productPipelineStatusFromValue(value: unknown): LeadProductPipelineStatus | undefined {
+  const clean = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return leadProductPipelineStatuses.some((status) => status.id === clean) ? (clean as LeadProductPipelineStatus) : undefined;
+}
+
+export function productPipelineStatusLabel(status: LeadProductPipelineStatus) {
+  return leadProductPipelineStatuses.find((candidate) => candidate.id === status)?.label ?? "New";
+}
+
+export function productPipelineStatusForLead(lead: {
+  productPipelineStatus?: unknown;
+  crmStatus?: LeadCrmStatus;
+  qualificationStage?: LeadQualificationStage;
+  outboundCount?: number;
+  messages?: Array<{ direction?: LeadKnowledgeDirection }>;
+}) {
+  const explicitStatus = productPipelineStatusFromValue(lead.productPipelineStatus);
+  if (explicitStatus) return explicitStatus;
+  if (lead.qualificationStage === "qualified") return "qualified";
+  if (lead.crmStatus === "interested") return "interested";
+  if (lead.crmStatus === "needs_reply" || lead.crmStatus === "human_review") return "contacted";
+  if ((lead.outboundCount ?? 0) > 0 || lead.messages?.some((message) => message.direction === "outbound")) return "contacted";
+  return "new";
+}
+
 function ensureLeadCrmDefaults(lead: LeadKnowledgeLead) {
   lead.crmStatus = lead.crmStatus ?? "new_lead";
   lead.qualificationFields = lead.qualificationFields ?? {};
   lead.qualificationStage = lead.qualificationStage ?? "new";
+  lead.productPipelineStatus = productPipelineStatusFromValue(lead.productPipelineStatus);
   return lead;
 }
 
@@ -516,6 +553,7 @@ function upsertLead(state: LeadKnowledgeState, scope: Scope, input: {
   assigneeId?: string;
   assigneeName?: string;
   crmStatus?: LeadCrmStatus;
+  productPipelineStatus?: LeadProductPipelineStatus;
   qualificationFields?: LeadQualificationFields;
   qualificationStage?: LeadQualificationStage;
 }) {
@@ -537,6 +575,7 @@ function upsertLead(state: LeadKnowledgeState, scope: Scope, input: {
     existing.assigneeId = input.assigneeId || existing.assigneeId || defaultAssignee.assigneeId;
     existing.assigneeName = input.assigneeName || existing.assigneeName || defaultAssignee.assigneeName;
     existing.crmStatus = input.crmStatus || existing.crmStatus;
+    existing.productPipelineStatus = input.productPipelineStatus || existing.productPipelineStatus;
     existing.qualificationFields = { ...existing.qualificationFields, ...(input.qualificationFields ?? {}) };
     existing.qualificationStage = input.qualificationStage || existing.qualificationStage;
     existing.updatedAt = now;
@@ -553,6 +592,7 @@ function upsertLead(state: LeadKnowledgeState, scope: Scope, input: {
     leadStatus: "lead",
     ...leadCrmDefaults(),
     crmStatus: input.crmStatus ?? "new_lead",
+    productPipelineStatus: input.productPipelineStatus,
     leadSource: input.leadSource,
     campaignId: input.campaignId,
     assigneeId: input.assigneeId ?? defaultAssignee.assigneeId,
@@ -1341,6 +1381,12 @@ export async function summarizeLeadKnowledgeHealth() {
     needs_reply: records.filter((lead) => lead.crmStatus === "needs_reply").length,
     human_review: records.filter((lead) => lead.crmStatus === "human_review").length
   };
+  const productStatusPipeline = Object.fromEntries(
+    leadProductPipelineStatuses.map((status) => [
+      status.id,
+      records.filter((lead) => lead.leadStatus === "lead" && productPipelineStatusForLead(lead) === status.id).length
+    ])
+  ) as Record<LeadProductPipelineStatus, number>;
   const assigneeWorkload = records.reduce<Record<string, number>>((totals, lead) => {
     const assignee = lead.assigneeName || "Unassigned";
     totals[assignee] = (totals[assignee] ?? 0) + 1;
@@ -1354,6 +1400,7 @@ export async function summarizeLeadKnowledgeHealth() {
     interestedLeads: statusPipeline.interested,
     humanReviewLeads: statusPipeline.human_review,
     statusPipeline,
+    productStatusPipeline,
     assigneeWorkload,
     conversations: records.reduce((total, lead) => total + lead.conversations.length, 0),
     messages: records.reduce((total, lead) => total + lead.messages.length, 0),
@@ -1444,6 +1491,7 @@ export async function editLeadKnowledgeRecord(input: Scope & {
   nextAction?: string;
   facts?: string[];
   crmStatus?: LeadCrmStatus;
+  productPipelineStatus?: LeadProductPipelineStatus;
   leadSource?: string;
   campaignId?: string;
   assigneeId?: string;
@@ -1472,6 +1520,7 @@ export async function editLeadKnowledgeRecord(input: Scope & {
   const defaultAssignee = defaultAssigneeForLeadSource(lead.leadSource);
   lead.assigneeId = input.assigneeId?.trim() || lead.assigneeId || defaultAssignee.assigneeId;
   lead.assigneeName = input.assigneeName?.trim() || lead.assigneeName || defaultAssignee.assigneeName;
+  lead.productPipelineStatus = input.productPipelineStatus ?? lead.productPipelineStatus;
   lead.qualificationFields = inferQualificationFields({
     contact: lead.contact,
     existing: { ...lead.qualificationFields, ...(input.qualificationFields ?? {}) },
@@ -1488,8 +1537,9 @@ export async function editLeadKnowledgeRecord(input: Scope & {
       .filter((message) => !message.hiddenAt)
       .sort((left, right) => left.sentAt.localeCompare(right.sentAt))
   });
-  lead.crmStatus = input.crmStatus ?? qualification.crmStatus;
-  lead.qualificationStage = input.qualificationStage ?? qualification.qualificationStage;
+  const preserveInternalStatusForProductUpdate = Boolean(input.productPipelineStatus && input.crmStatus === undefined && input.qualificationStage === undefined);
+  lead.crmStatus = input.crmStatus ?? (preserveInternalStatusForProductUpdate ? lead.crmStatus : qualification.crmStatus);
+  lead.qualificationStage = input.qualificationStage ?? (preserveInternalStatusForProductUpdate ? lead.qualificationStage : qualification.qualificationStage);
   lead.nextAction = input.nextAction?.trim() || qualification.nextAction;
   lead.updatedAt = nowIso();
   await writeState(state);
