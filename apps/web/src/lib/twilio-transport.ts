@@ -242,7 +242,7 @@ async function resolveOutboundSender(scope: Scope): Promise<WorkspaceWhatsAppSen
   if (!sender) {
     throw new TwilioWorkspaceSenderError("workspace_whatsapp_sender_required", "A workspace WhatsApp sender is required before replying through Twilio.");
   }
-  if (sender.status !== "approved") {
+  if (sender.status !== "approved" || !sender.twilioFrom) {
     throw new TwilioWorkspaceSenderError("workspace_whatsapp_sender_not_approved", "The workspace WhatsApp sender is not approved for outbound replies.");
   }
   return sender;

@@ -1,11 +1,13 @@
 import Link from "next/link";
-import { AtSign, Hash, Mail, MessageSquare, Paperclip, Pin, Search, Send, Sparkles, Star } from "lucide-react";
+import { AtSign, Hash, Mail, MessageSquare, Pin, Search, Sparkles, Star } from "lucide-react";
+import { InboxReplyComposer } from "@/components/inbox-reply-composer";
 import { getCurrentSession } from "@/lib/auth";
 import { listExtensionConversations } from "@/lib/extension-store";
 import { buildLeadBackedInboxItems } from "@/lib/inbox-stabilization";
 import { listLeadKnowledgeRecords } from "@/lib/lead-knowledge-store";
 import { listMetaOAuthConnections } from "@/lib/meta-oauth-store";
 import { listMetaWhatsAppConversations } from "@/lib/meta-whatsapp-webhook-store";
+import { getWorkspaceWhatsAppSender } from "@/lib/workspace-whatsapp-sender-store";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +41,7 @@ type InboxItem = {
     from: "lead" | "us";
     text: string;
     time: string;
+    deliveryStatus?: string;
   }>;
 };
 
@@ -102,6 +105,12 @@ function itemMatchesTab(item: InboxItem, tab: InboxTabId) {
   if (tab === "needs-reply") return item.needsReply;
   if (tab === "assigned-to-me") return item.assignedToMe;
   return true;
+}
+
+function whatsappToForLead(lead?: { contact?: { phone?: string; waId?: string } }) {
+  const raw = lead?.contact?.waId || lead?.contact?.phone;
+  const digits = raw?.replace(/\D/g, "");
+  return digits ? `whatsapp:+${digits}` : undefined;
 }
 
 export default async function CommunicationsPage({ searchParams }: CommunicationsPageProps) {
@@ -214,6 +223,7 @@ export default async function CommunicationsPage({ searchParams }: Communication
   const visibleItems = items.filter((item) => itemMatchesTab(item, activeTab));
   const active = visibleItems[0];
   const contextLead = active ? leads.find((lead) => active.leadId === lead.id || active.href.includes(lead.id)) : undefined;
+  const sender = session ? await getWorkspaceWhatsAppSender({ tenantId: session.tenantId, ownerId: session.id }) : undefined;
 
   return (
     <div className="grid h-full min-h-0 grid-cols-12 gap-px bg-border">
@@ -338,25 +348,25 @@ export default async function CommunicationsPage({ searchParams }: Communication
                       <span>{message.time}</span>
                     </div>
                     <p className="text-[13px] leading-relaxed">{message.text}</p>
+                    {message.from === "us" && message.deliveryStatus ? (
+                      <div className={`font-mono text-[10px] ${message.from === "us" ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
+                        {message.deliveryStatus}
+                      </div>
+                    ) : null}
                   </div>
                 ))}
               </div>
             </div>
 
             <div className="border-t border-border p-3">
-              <div className="rounded-[6px] border border-border bg-surface-2 p-2.5">
-                <div className="h-12 text-[13px] text-muted-foreground">Reply on {active.channel}...</div>
-                <div className="mt-2 flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Paperclip className="h-3 w-3" />
-                    <Sparkles className="h-3 w-3 text-primary" />
-                    <span className="font-mono text-[10.5px]">AI draft routes to approvals before send</span>
-                  </div>
-                  <Link href="/app/worker?tab=pending" className="inline-flex h-7 items-center gap-1.5 rounded-[5px] bg-primary px-2.5 text-[12px] font-medium text-primary-foreground hover:bg-primary/90">
-                    <Send className="h-3 w-3" /> Prepare
-                  </Link>
-                </div>
-              </div>
+              <InboxReplyComposer
+                leadId={contextLead?.id}
+                to={whatsappToForLead(contextLead)}
+                channel={active.channel}
+                senderStatus={sender?.status}
+                senderStatusReason={sender?.statusReason}
+                senderNumber={sender?.assignedPhoneNumber}
+              />
             </div>
           </>
         ) : null}

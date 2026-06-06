@@ -6,6 +6,7 @@ import { listExtensionTokens } from "@/lib/extension-store";
 import { getInfrastructureStatus, type HealthTone } from "@/lib/infrastructure-status";
 import { listMetaOAuthConnections } from "@/lib/meta-oauth-store";
 import { getTwilioIntegrationStatus } from "@/lib/twilio-transport";
+import { getWorkspaceWhatsAppSender } from "@/lib/workspace-whatsapp-sender-store";
 
 export const dynamic = "force-dynamic";
 
@@ -31,11 +32,12 @@ function configured(...values: Array<string | undefined>) {
 
 export default async function IntegrationsPage() {
   const session = await getCurrentSession();
-  const [metaConnections, extensionTokens, infrastructure, twilio] = await Promise.all([
+  const [metaConnections, extensionTokens, infrastructure, twilio, sender] = await Promise.all([
     session ? listMetaOAuthConnections(session.tenantId, session.id) : [],
     session ? listExtensionTokens(session.tenantId, session.id) : [],
     getInfrastructureStatus(),
-    getTwilioIntegrationStatus()
+    getTwilioIntegrationStatus(),
+    session ? getWorkspaceWhatsAppSender({ tenantId: session.tenantId, ownerId: session.id }) : undefined
   ]);
   const latestMeta = metaConnections[0];
   const openRouter = infrastructure.services.find((service) => service.key === "openrouter");
@@ -56,9 +58,9 @@ export default async function IntegrationsPage() {
     },
     {
       name: "Twilio WhatsApp",
-      desc: "Leadsy-managed WhatsApp transport. Clients do not connect their own Twilio account.",
-      status: twilio.connected ? "Leadsy managed" : "Platform pending",
-      scope: twilio.whatsappNumber || latestMeta?.phoneNumberId || latestMeta?.whatsappBusinessAccountId || whatsappConfig?.detail || "Leadsy platform config pending",
+      desc: "Leadsy-assigned WhatsApp sender. Clients do not connect their own Twilio account; they advertise the assigned number after approval.",
+      status: sender?.status === "approved" ? "Leadsy managed" : "Platform pending",
+      scope: sender?.assignedPhoneNumber || sender?.statusReason || twilio.whatsappNumber || latestMeta?.phoneNumberId || latestMeta?.whatsappBusinessAccountId || whatsappConfig?.detail || "Leadsy platform config pending",
       href: "/app/settings?section=twilio"
     },
     {

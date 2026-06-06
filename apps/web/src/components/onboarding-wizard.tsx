@@ -1,13 +1,26 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, CheckCircle2, CircleAlert, Clipboard, Download, ExternalLink, KeyRound, Loader2, Upload } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle2, CircleAlert, Clipboard, Download, ExternalLink, KeyRound, Loader2, RefreshCw, Upload } from "lucide-react";
 import type { SessionUser } from "@leadsy/security";
 import { ProgressBar } from "@/components/ui";
 import { useToast } from "@/components/toast-provider";
 
 type OnboardingProfile = Record<string, string>;
+type OptionGroupKey =
+  | "role"
+  | "industry"
+  | "teamSize"
+  | "leadSources"
+  | "assignmentPreferences"
+  | "followUpPreferences"
+  | "services"
+  | "markets"
+  | "targetQuestion0"
+  | "targetQuestion1"
+  | "targetQuestion2";
+type OptionGroups = Record<OptionGroupKey, string[]>;
 
 const steps = [
   "About You",
@@ -22,6 +35,110 @@ const targetQuestions = [
   "What is your average deal size?",
   "What is your typical sales cycle?"
 ];
+
+const defaultOptions: OptionGroups = {
+  role: ["Founder", "Sales Manager", "Marketing Manager", "Operations Manager", "Admissions Lead", "Customer Support Lead"],
+  industry: ["Real Estate", "Education", "Healthcare", "Local Services", "Retail", "Hospitality", "SaaS", "Financial Services"],
+  teamSize: ["1-5", "6-15", "16-50", "51-100", "100+"],
+  leadSources: ["WhatsApp Ads", "Website", "Instagram", "Facebook", "Google Business Profile", "Manual Imports", "Referrals"],
+  assignmentPreferences: ["Unassigned queue", "Round robin", "Source-based routing", "Manager assigns manually", "Assign to current owner"],
+  followUpPreferences: ["Reply within 5 minutes", "Same-day follow-up", "Reminder after 24 hours", "Escalate hot leads", "Create task after missed reply"],
+  services: ["Lead qualification", "WhatsApp follow-up", "Appointment booking", "Sales handoff", "Site visit coordination", "Customer support triage"],
+  markets: ["Local city", "Statewide", "Pan-India", "International", "Tier 1 cities", "Tier 2 cities"],
+  targetQuestion0: ["Solo buyers", "Small businesses", "Mid-market teams", "Enterprise teams", "Families/consumers", "Students/parents"],
+  targetQuestion1: ["Under ₹10k", "₹10k-₹50k", "₹50k-₹2L", "₹2L-₹10L", "₹10L+"],
+  targetQuestion2: ["Same day", "1-7 days", "2-4 weeks", "1-3 months", "3+ months"]
+};
+
+function splitOptions(value: string) {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function joinOptions(values: string[]) {
+  return [...new Set(values.map((item) => item.trim()).filter(Boolean))].join(", ");
+}
+
+const chipClass = "rounded-[999px] border px-3 py-1.5 text-xs transition";
+
+function MultiSelectField({
+  keyName,
+  label,
+  value,
+  options,
+  error,
+  customValue,
+  wide = true,
+  onToggle,
+  onCustomChange,
+  onAdd
+}: {
+  keyName: OptionGroupKey;
+  label: string;
+  value?: string;
+  options: string[];
+  error?: string;
+  customValue?: string;
+  wide?: boolean;
+  onToggle: (key: OptionGroupKey, option: string) => void;
+  onCustomChange: (key: OptionGroupKey, value: string) => void;
+  onAdd: (key: OptionGroupKey) => void;
+}) {
+  const selected = splitOptions(value ?? "");
+  return (
+    <div className={wide ? "block md:col-span-2" : "block"}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="mono text-[10px] uppercase text-[var(--muted)]">{label}</span>
+        {error ? <span className="text-xs text-rose-200">{error}</span> : null}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-2 rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-3">
+        {options.map((option) => {
+          const active = selected.includes(option);
+          return (
+            <button
+              key={option}
+              type="button"
+              onClick={() => onToggle(keyName, option)}
+              className={`${chipClass} ${active ? "border-teal-300/40 bg-teal-300/[0.16] text-teal-50" : "border-[var(--line)] bg-white/[0.04] text-[var(--muted-2)] hover:text-white"}`}
+            >
+              {option}
+            </button>
+          );
+        })}
+        <div className="flex min-w-[190px] flex-1 items-center gap-2">
+          <input
+            value={customValue ?? ""}
+            onChange={(event) => onCustomChange(keyName, event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                onAdd(keyName);
+              }
+            }}
+            placeholder="Add custom"
+            className="h-8 min-w-0 flex-1 rounded-[6px] border border-[var(--line)] bg-black/20 px-2 text-xs text-white placeholder:text-[var(--muted)]"
+          />
+          <button type="button" onClick={() => onAdd(keyName)} className="h-8 rounded-[6px] border border-[var(--line)] px-2 text-xs text-[var(--muted-2)] hover:text-white">
+            Add
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+async function fetchOnboardingOptions(profile: OnboardingProfile) {
+  const response = await fetch("/api/onboarding/options", {
+    method: "POST",
+    credentials: "include",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(profile)
+  });
+  const payload = (await response.json().catch(() => ({}))) as { options?: Partial<OptionGroups> };
+  return response.ok ? payload.options : undefined;
+}
 
 function onboardingDismissedKey(userId: string) {
   return `leadsy:onboarding-dismissed:${userId}`;
@@ -49,9 +166,9 @@ function workspaceConfigurationFromProfile(profile: OnboardingProfile) {
     businessName: profile.businessName,
     industry: profile.industry,
     teamSize: profile.teamSize,
-    whatsappNumber: profile.whatsappNumber,
-    countryCode: profile.whatsappNumber.trim().startsWith("+") ? "" : "+91",
-    whatsappTransport: "leadsy_managed_twilio",
+    businessPhone: profile.phone,
+    whatsappTransport: "leadsy_assigned_twilio",
+    whatsappAssignment: "leadsy_assigned",
     leadSources: profile.leadSources,
     assignmentPreferences: profile.assignmentPreferences,
     followUpPreferences: profile.followUpPreferences
@@ -78,7 +195,6 @@ export function OnboardingWizard({
     businessName: textFromProfile(initialProfile, "businessName"),
     industry: textFromProfile(initialProfile, "industry"),
     teamSize: textFromProfile(initialProfile, "teamSize"),
-    whatsappNumber: textFromProfile(initialProfile, "whatsappNumber"),
     leadSources: textFromProfile(initialProfile, "leadSources"),
     assignmentPreferences: textFromProfile(initialProfile, "assignmentPreferences"),
     followUpPreferences: textFromProfile(initialProfile, "followUpPreferences"),
@@ -91,6 +207,9 @@ export function OnboardingWizard({
   });
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [options, setOptions] = useState<OptionGroups>(defaultOptions);
+  const [optionsLoading, setOptionsLoading] = useState(false);
+  const [customOptions, setCustomOptions] = useState<Record<string, string>>({});
   const [extensionLabel, setExtensionLabel] = useState("Chrome worker");
   const [extensionToken, setExtensionToken] = useState("");
   const [extensionNotice, setExtensionNotice] = useState("");
@@ -99,11 +218,9 @@ export function OnboardingWizard({
   const requiredKeys = [
     "fullName",
     "role",
-    "phone",
     "businessName",
     "industry",
     "teamSize",
-    "whatsappNumber",
     "leadSources",
     "assignmentPreferences",
     "followUpPreferences",
@@ -134,8 +251,8 @@ export function OnboardingWizard({
       {
         id: "whatsapp",
         label: "WhatsApp",
-        status: hasMetaConnection ? "connected" : "optional",
-        detail: hasMetaConnection ? "WhatsApp assets can be verified in Integrations." : "WhatsApp readiness is handled through the Meta connection when those assets are ready."
+        status: "optional",
+        detail: "Leadsy assigns the workspace WhatsApp lead number through the platform Twilio setup. No client Twilio account is needed."
       },
       {
         id: "openrouter",
@@ -146,8 +263,6 @@ export function OnboardingWizard({
     ],
     [hasMetaConnection]
   );
-
-  if (!visible) return null;
 
   function dismissWizard() {
     window.localStorage.setItem(onboardingDismissedKey(session.id), "true");
@@ -160,11 +275,52 @@ export function OnboardingWizard({
     setFieldErrors((current) => ({ ...current, [key]: "" }));
   }
 
+  function toggleOption(key: OptionGroupKey, option: string) {
+    const current = splitOptions(profile[key] ?? "");
+    updateField(key, current.includes(option) ? joinOptions(current.filter((item) => item !== option)) : joinOptions([...current, option]));
+  }
+
+  function addCustomOption(key: OptionGroupKey) {
+    const value = customOptions[key]?.trim();
+    if (!value) return;
+    setOptions((current) => ({ ...current, [key]: [...new Set([...current[key], value])] }));
+    updateField(key, joinOptions([...splitOptions(profile[key] ?? ""), value]));
+    setCustomOptions((current) => ({ ...current, [key]: "" }));
+  }
+
+  async function refreshOptions() {
+    setOptionsLoading(true);
+    try {
+      const nextOptions = await fetchOnboardingOptions(profile);
+      if (nextOptions) {
+        setOptions((current) => ({ ...current, ...nextOptions }));
+      }
+    } finally {
+      setOptionsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!visible) return undefined;
+    let cancelled = false;
+    void fetchOnboardingOptions(profile).then((nextOptions) => {
+      if (!cancelled && nextOptions) {
+        setOptions((current) => ({ ...current, ...nextOptions }));
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
+  if (!visible) return null;
+
   function validateStep() {
     const nextErrors: Record<string, string> = {};
     const keysByStep: Record<number, string[]> = {
-      0: ["fullName", "role", "phone"],
-      1: ["businessName", "industry", "teamSize", "whatsappNumber", "leadSources", "assignmentPreferences", "followUpPreferences", "services", "markets", "website"],
+      0: ["fullName", "role"],
+      1: ["businessName", "industry", "teamSize", "leadSources", "assignmentPreferences", "followUpPreferences", "services", "markets", "website"],
       2: ["targetQuestion0", "targetQuestion1", "targetQuestion2"]
     };
     for (const key of keysByStep[step] ?? []) {
@@ -259,8 +415,12 @@ export function OnboardingWizard({
   }
 
   const inputClass = "mt-2 h-11 w-full rounded-[6px] border border-[var(--line)] bg-white/[0.04] px-3 text-sm text-white placeholder:text-[var(--muted)]";
-  const textareaClass = "mt-2 min-h-24 w-full rounded-[6px] border border-[var(--line)] bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-[var(--muted)]";
   const secondaryButtonClass = "inline-flex h-9 items-center gap-2 rounded-[6px] border border-[var(--line)] px-3 text-sm text-[var(--muted-2)] hover:text-white";
+  const multiSelectHandlers = {
+    onToggle: toggleOption,
+    onCustomChange: (key: OptionGroupKey, value: string) => setCustomOptions((current) => ({ ...current, [key]: value })),
+    onAdd: addCustomOption
+  };
 
   return (
     <div className="fixed inset-0 z-[70] bg-black/70 p-0 backdrop-blur-md md:p-6" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
@@ -294,13 +454,18 @@ export function OnboardingWizard({
                 <input value={profile.fullName} onChange={(event) => updateField("fullName", event.target.value)} aria-invalid={Boolean(fieldErrors.fullName)} className={inputClass} />
                 {fieldErrors.fullName ? <span className="mt-2 block text-xs text-rose-200">{fieldErrors.fullName}</span> : null}
               </label>
+              <MultiSelectField
+                keyName="role"
+                label="Job title / Role"
+                value={profile.role}
+                options={options.role}
+                error={fieldErrors.role}
+                customValue={customOptions.role}
+                wide={false}
+                {...multiSelectHandlers}
+              />
               <label className="block">
-                <span className="mono text-[10px] uppercase text-[var(--muted)]">Job title / Role</span>
-                <input value={profile.role} onChange={(event) => updateField("role", event.target.value)} aria-invalid={Boolean(fieldErrors.role)} className={inputClass} />
-                {fieldErrors.role ? <span className="mt-2 block text-xs text-rose-200">{fieldErrors.role}</span> : null}
-              </label>
-              <label className="block">
-                <span className="mono text-[10px] uppercase text-[var(--muted)]">Phone number</span>
+                <span className="mono text-[10px] uppercase text-[var(--muted)]">Business phone (optional)</span>
                 <input value={profile.phone} onChange={(event) => updateField("phone", event.target.value)} aria-invalid={Boolean(fieldErrors.phone)} className={inputClass} />
                 {fieldErrors.phone ? <span className="mt-2 block text-xs text-rose-200">{fieldErrors.phone}</span> : null}
               </label>
@@ -314,32 +479,92 @@ export function OnboardingWizard({
 
           {step === 1 ? (
             <div className="grid gap-4 md:grid-cols-2">
-              {[
-                ["businessName", "Business name"],
-                ["industry", "Industry"],
-                ["teamSize", "Team size"],
-                ["whatsappNumber", "WhatsApp number"],
-                ["leadSources", "Lead sources"],
-                ["assignmentPreferences", "Assignment preferences"],
-                ["followUpPreferences", "Follow-up preferences"],
-                ["services", "Services/products offered"],
-                ["markets", "Geography / target markets"],
-                ["website", "Business website URL"]
-              ].map(([key, label]) => (
-                <label key={key} className={key === "services" || key === "markets" || key === "leadSources" || key === "assignmentPreferences" || key === "followUpPreferences" ? "block md:col-span-2" : "block"}>
-                  <span className="mono text-[10px] uppercase text-[var(--muted)]">{label}</span>
-                  {key === "services" || key === "markets" || key === "leadSources" || key === "assignmentPreferences" || key === "followUpPreferences" ? (
-                    <textarea value={profile[key]} onChange={(event) => updateField(key, event.target.value)} aria-invalid={Boolean(fieldErrors[key])} className={textareaClass} />
-                  ) : (
-                    <input value={profile[key]} onChange={(event) => updateField(key, event.target.value)} aria-invalid={Boolean(fieldErrors[key])} className={inputClass} />
-                  )}
-                  {fieldErrors[key] ? <span className="mt-2 block text-xs text-rose-200">{fieldErrors[key]}</span> : null}
-                </label>
-              ))}
+              <div className="md:col-span-2 flex items-center justify-between gap-3">
+                <p className="text-sm leading-6 text-[var(--muted-2)]">Leadsy suggests compact profile choices from your business context.</p>
+                <button type="button" disabled={optionsLoading} onClick={refreshOptions} className={secondaryButtonClass}>
+                  {optionsLoading ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
+                  Refresh AI options
+                </button>
+              </div>
+              <label className="block">
+                <span className="mono text-[10px] uppercase text-[var(--muted)]">Business name</span>
+                <input value={profile.businessName} onChange={(event) => updateField("businessName", event.target.value)} aria-invalid={Boolean(fieldErrors.businessName)} className={inputClass} />
+                {fieldErrors.businessName ? <span className="mt-2 block text-xs text-rose-200">{fieldErrors.businessName}</span> : null}
+              </label>
+              <label className="block">
+                <span className="mono text-[10px] uppercase text-[var(--muted)]">Business website URL</span>
+                <input value={profile.website} onChange={(event) => updateField("website", event.target.value)} aria-invalid={Boolean(fieldErrors.website)} className={inputClass} />
+                {fieldErrors.website ? <span className="mt-2 block text-xs text-rose-200">{fieldErrors.website}</span> : null}
+              </label>
+              <MultiSelectField
+                keyName="industry"
+                label="Industry"
+                value={profile.industry}
+                options={options.industry}
+                error={fieldErrors.industry}
+                customValue={customOptions.industry}
+                wide={false}
+                {...multiSelectHandlers}
+              />
+              <MultiSelectField
+                keyName="teamSize"
+                label="Team size"
+                value={profile.teamSize}
+                options={options.teamSize}
+                error={fieldErrors.teamSize}
+                customValue={customOptions.teamSize}
+                wide={false}
+                {...multiSelectHandlers}
+              />
+              <MultiSelectField
+                keyName="leadSources"
+                label="Lead sources"
+                value={profile.leadSources}
+                options={options.leadSources}
+                error={fieldErrors.leadSources}
+                customValue={customOptions.leadSources}
+                {...multiSelectHandlers}
+              />
+              <MultiSelectField
+                keyName="assignmentPreferences"
+                label="Assignment preferences"
+                value={profile.assignmentPreferences}
+                options={options.assignmentPreferences}
+                error={fieldErrors.assignmentPreferences}
+                customValue={customOptions.assignmentPreferences}
+                {...multiSelectHandlers}
+              />
+              <MultiSelectField
+                keyName="followUpPreferences"
+                label="Follow-up preferences"
+                value={profile.followUpPreferences}
+                options={options.followUpPreferences}
+                error={fieldErrors.followUpPreferences}
+                customValue={customOptions.followUpPreferences}
+                {...multiSelectHandlers}
+              />
+              <MultiSelectField
+                keyName="services"
+                label="Services/products offered"
+                value={profile.services}
+                options={options.services}
+                error={fieldErrors.services}
+                customValue={customOptions.services}
+                {...multiSelectHandlers}
+              />
+              <MultiSelectField
+                keyName="markets"
+                label="Geography / target markets"
+                value={profile.markets}
+                options={options.markets}
+                error={fieldErrors.markets}
+                customValue={customOptions.markets}
+                {...multiSelectHandlers}
+              />
               <div className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-4 md:col-span-2">
                 <div className="mono text-[10px] uppercase text-[var(--muted)]">WhatsApp transport</div>
                 <p className="mt-2 text-sm leading-6 text-[var(--muted-2)]">
-                  Leadsy manages Twilio internally for WhatsApp messaging. Your team only needs to provide the business WhatsApp number and lead-source preferences.
+                  Leadsy assigns a dedicated WhatsApp lead number and manages Twilio internally. Advertise that assigned number once provisioning is approved.
                 </p>
               </div>
             </div>
@@ -353,11 +578,16 @@ export function OnboardingWizard({
               {targetQuestions.map((question, index) => {
                 const key = `targetQuestion${index}`;
                 return (
-                  <label key={question} className="block">
-                    <span className="mono text-[10px] uppercase text-[var(--muted)]">{question}</span>
-                    <textarea value={profile[key]} onChange={(event) => updateField(key, event.target.value)} aria-invalid={Boolean(fieldErrors[key])} className={textareaClass} />
-                    {fieldErrors[key] ? <span className="mt-2 block text-xs text-rose-200">{fieldErrors[key]}</span> : null}
-                  </label>
+                  <MultiSelectField
+                    key={question}
+                    keyName={key as OptionGroupKey}
+                    label={question}
+                    value={profile[key]}
+                    options={options[key as OptionGroupKey]}
+                    error={fieldErrors[key]}
+                    customValue={customOptions[key]}
+                    {...multiSelectHandlers}
+                  />
                 );
               })}
             </div>
@@ -453,9 +683,9 @@ export function OnboardingWizard({
                     <details className="mt-3 rounded-[8px] border border-[var(--line)] bg-black/20 p-3">
                       <summary className="cursor-pointer text-sm font-medium text-white">WhatsApp readiness</summary>
                       <ol className="mt-3 grid gap-2 text-sm leading-6 text-[var(--muted-2)]">
-                        <li><span className="text-white">1.</span> Connect Meta first; WhatsApp assets are verified inside that flow.</li>
-                        <li><span className="text-white">2.</span> If the WhatsApp Business asset is not ready, skip onboarding and finish the connection from Profile Settings later.</li>
-                        <li><span className="text-white">3.</span> Leadsy will still require human approval before any outreach task is sent.</li>
+                        <li><span className="text-white">1.</span> Leadsy creates a sender assignment for this workspace during onboarding.</li>
+                        <li><span className="text-white">2.</span> Operations provisions or approves the Twilio WhatsApp sender before the number is advertised.</li>
+                        <li><span className="text-white">3.</span> Humans reply from Inbox; Leadsy does not send autonomous outreach.</li>
                       </ol>
                     </details>
                   ) : null}

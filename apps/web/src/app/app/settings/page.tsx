@@ -17,9 +17,11 @@ import {
   User
 } from "lucide-react";
 import { Badge } from "@/components/ui";
+import { getCurrentSession } from "@/lib/auth";
 import { automationWorkflowDefinitions } from "@/lib/automation-workflows";
 import { getAiCostDashboard, getInfrastructureStatus, type HealthTone } from "@/lib/infrastructure-status";
 import { getTwilioIntegrationStatus, type TwilioIntegrationStatus } from "@/lib/twilio-transport";
+import { getWorkspaceWhatsAppSender, type WorkspaceWhatsAppSender } from "@/lib/workspace-whatsapp-sender-store";
 
 export const dynamic = "force-dynamic";
 
@@ -100,13 +102,13 @@ const sectionSummaries: Record<SettingsSection, {
   },
   twilio: {
     eyebrow: "Settings / Integrations / Twilio",
-    title: "Twilio WhatsApp",
-    detail: "Leadsy-managed WhatsApp transport for inbound messages, outbound sends, and delivery callbacks.",
+    title: "Leadsy-assigned WhatsApp",
+    detail: "Workspace sender assignment, inbound routing, outbound replies, and delivery callbacks through Leadsy-managed Twilio infrastructure.",
     primaryHref: "/app/integrations",
     primaryLabel: "Open integrations",
     rows: [
-      { label: "Inbound", value: "Leadsy-owned Twilio webhook" },
-      { label: "Outbound", value: "Leadsy sends through Twilio API" },
+      { label: "Inbound", value: "Twilio routes the assigned number into Leadsy" },
+      { label: "Outbound", value: "Inbox replies use the workspace assigned sender" },
       { label: "Delivery", value: "Twilio status callback updates message records" }
     ]
   },
@@ -159,12 +161,12 @@ const sectionSummaries: Record<SettingsSection, {
   whatsapp: {
     eyebrow: "Settings / WhatsApp",
     title: "WhatsApp",
-    detail: "WhatsApp message storage stays in Leadsy. Twilio is managed by Leadsy as platform infrastructure.",
+    detail: "WhatsApp message storage stays in Leadsy. Clients advertise their Leadsy-assigned lead number after approval.",
     primaryHref: "/app/settings?section=twilio",
-    primaryLabel: "Review platform transport",
+    primaryLabel: "Review sender assignment",
     rows: [
       { label: "Inbound storage", value: "Leadsy" },
-      { label: "Cloud provider", value: "Twilio WhatsApp API" },
+      { label: "Assigned sender", value: "Leadsy-managed WhatsApp number" },
       { label: "Browser handoff", value: "Extension remains Legacy Capture Layer fallback" }
     ]
   },
@@ -232,7 +234,13 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   const params = searchParams ? await searchParams : {};
   const activeSection = sectionFromValue(paramValue(params, "section"));
   const section = sectionSummaries[activeSection];
-  const [infrastructure, aiCosts, twilio] = await Promise.all([getInfrastructureStatus(), getAiCostDashboard(), getTwilioIntegrationStatus()]);
+  const session = await getCurrentSession();
+  const [infrastructure, aiCosts, twilio, sender] = await Promise.all([
+    getInfrastructureStatus(),
+    getAiCostDashboard(),
+    getTwilioIntegrationStatus(),
+    session ? getWorkspaceWhatsAppSender({ tenantId: session.tenantId, ownerId: session.id }) : undefined
+  ]);
   const automation = infrastructure.automation;
   const backendLogic = infrastructure.backendLogic;
   const providerConfigs = infrastructure.providerConfigs;
@@ -277,7 +285,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           </div>
 
           {activeSection !== "infrastructure" && activeSection !== "twilio" ? <SettingsSectionPanel section={section} /> : null}
-          {activeSection === "twilio" ? <TwilioSettingsPanel twilio={twilio} /> : null}
+          {activeSection === "twilio" ? <TwilioSettingsPanel twilio={twilio} sender={sender} /> : null}
 
           {activeSection === "infrastructure" ? (
           <>
@@ -469,11 +477,25 @@ function SettingsSectionPanel({
   );
 }
 
-function TwilioSettingsPanel({ twilio }: { twilio: TwilioIntegrationStatus }) {
+function senderStatusLabel(sender?: WorkspaceWhatsAppSender) {
+  if (!sender) return "Assignment not started";
+  return sender.status.replace(/_/g, " ");
+}
+
+function TwilioSettingsPanel({
+  twilio,
+  sender
+}: {
+  twilio: TwilioIntegrationStatus;
+  sender?: WorkspaceWhatsAppSender;
+}) {
   const rows = [
-    { label: "Connection Status", value: twilio.connected ? "Leadsy managed" : "Platform config pending" },
-    { label: "Account SID", value: maskTwilioAccountSid(twilio.accountSid) },
-    { label: "WhatsApp Number", value: twilio.whatsappNumber ?? "Not configured" },
+    { label: "Workspace Sender Status", value: senderStatusLabel(sender) },
+    { label: "Assigned Lead Number", value: sender?.assignedPhoneNumber ?? "Not assigned yet" },
+    { label: "Provisioning Detail", value: sender?.statusReason ?? "Leadsy operations will assign and approve a sender before replies are enabled." },
+    { label: "Platform Connection Status", value: twilio.connected ? "Configured" : "Platform config pending" },
+    { label: "Platform Account SID", value: maskTwilioAccountSid(twilio.accountSid) },
+    { label: "Platform Default Sender", value: twilio.whatsappNumber ? "Configured" : "Not configured" },
     {
       label: "Last Webhook",
       value: twilio.lastWebhook?.at
@@ -493,12 +515,14 @@ function TwilioSettingsPanel({ twilio }: { twilio: TwilioIntegrationStatus }) {
       <div className="bg-background p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <div className="text-sm font-semibold text-foreground">Twilio WhatsApp API</div>
+            <div className="text-sm font-semibold text-foreground">Leadsy-assigned WhatsApp sender</div>
             <p className="mt-1 max-w-2xl text-[12.5px] leading-6 text-muted-foreground">
-              Twilio is Leadsy-managed platform infrastructure for WhatsApp conversations. Clients do not need to connect their own Twilio account, and secrets stay in environment variables.
+              Leadsy assigns the workspace a dedicated WhatsApp lead number and uses Twilio as hidden platform infrastructure. Clients advertise the assigned number after approval; secrets and platform account details stay in environment variables.
             </p>
           </div>
-          <Badge tone={twilio.connected ? "lime" : "amber"}>{twilio.connected ? "Leadsy managed" : "Platform pending"}</Badge>
+          <Badge tone={sender?.status === "approved" ? "lime" : sender?.status === "failed" || sender?.status === "disabled" ? "rose" : "amber"}>
+            {senderStatusLabel(sender)}
+          </Badge>
         </div>
       </div>
       <div className="grid min-w-0 grid-cols-1 gap-px md:grid-cols-2">

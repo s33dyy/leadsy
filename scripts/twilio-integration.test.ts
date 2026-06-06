@@ -32,7 +32,9 @@ async function main() {
     } = await import("../apps/web/src/lib/twilio-transport");
     const { conversationMessages, listLeadKnowledgeRecords } = await import("../apps/web/src/lib/lead-knowledge-store");
     const {
+      ensureWorkspaceWhatsAppSender,
       normalizeWorkspaceWhatsAppNumber,
+      provisionWorkspaceWhatsAppSender,
       resolveWorkspaceWhatsAppSenderByTwilioTo,
       upsertWorkspaceWhatsAppSender
     } = await import("../apps/web/src/lib/workspace-whatsapp-sender-store");
@@ -41,10 +43,29 @@ async function main() {
     assert.equal(normalizeWorkspaceWhatsAppNumber({ whatsappNumber: "9123374792" })?.twilioFrom, "whatsapp:+919123374792");
     assert.equal(normalizeWorkspaceWhatsAppNumber({ whatsappNumber: "+919123374792" })?.twilioFrom, "whatsapp:+919123374792");
     assert.equal(normalizeWorkspaceWhatsAppNumber({ whatsappNumber: "whatsapp:+919123374792" })?.twilioFrom, "whatsapp:+919123374792");
+
+    const emptySender = await ensureWorkspaceWhatsAppSender({
+      tenantId: "tenant_empty_sender",
+      ownerId: "owner_empty_sender",
+      businessName: "Waiting Workspace"
+    });
+    assert.equal(emptySender.status, "not_started");
+    assert.equal(emptySender.twilioFrom, undefined);
+
+    process.env.LEADSY_TWILIO_WHATSAPP_SENDER_POOL = "whatsapp:+14155239999";
+    const reservedSender = await provisionWorkspaceWhatsAppSender({
+      tenantId: "tenant_reserved_sender",
+      ownerId: "owner_reserved_sender",
+      businessName: "Reserved Workspace"
+    });
+    assert.equal(reservedSender.status, "number_reserved");
+    assert.equal(reservedSender.twilioFrom, "whatsapp:+14155239999");
+
     await upsertWorkspaceWhatsAppSender({
       ...scope,
       businessName: "Leadsy Test Workspace",
-      whatsappNumber: "+14155238886"
+      whatsappNumber: "+14155238886",
+      status: "approved"
     });
     const webhookUrl = "https://leadsy.test/api/twilio/webhook";
     const inboundForm = new URLSearchParams({
@@ -154,6 +175,17 @@ async function main() {
           body: "No sender should block this"
         }),
       /workspace WhatsApp sender is required/i
+    );
+
+    await assert.rejects(
+      () =>
+        sendAndStoreTwilioWhatsAppMessage({
+          tenantId: reservedSender.tenantId,
+          ownerId: reservedSender.ownerId,
+          to: "whatsapp:+919123374792",
+          body: "Reserved but not approved should block"
+        }),
+      /not approved/i
     );
 
     [lead] = await listLeadKnowledgeRecords(scope);

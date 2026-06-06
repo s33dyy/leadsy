@@ -27,6 +27,7 @@ export type StabilizedInboxItem = {
     from: "lead" | "us";
     text: string;
     time: string;
+    deliveryStatus?: string;
   }>;
 };
 
@@ -99,7 +100,8 @@ export function buildLeadBackedInboxItems(leads: LeadKnowledgeRecord[]): Stabili
         author: message.direction === "outbound" ? "Leadsy" : contact,
         from: message.direction === "outbound" ? "us" : "lead",
         text: message.body,
-        time: relativeTime(message.sentAt)
+        time: relativeTime(message.sentAt),
+        deliveryStatus: message.deliveryStatus
       }))
     };
 

@@ -21,6 +21,7 @@ async function fileExists(path: string) {
 async function main() {
   assert.equal(await fileExists("apps/web/src/components/onboarding-wizard.tsx"), true, "first-login onboarding wizard should exist");
   assert.equal(await fileExists("apps/web/src/app/api/onboarding/route.ts"), true, "onboarding progress API should exist");
+  assert.equal(await fileExists("apps/web/src/app/api/onboarding/options/route.ts"), true, "AI-assisted onboarding option API should exist");
   assert.equal(await fileExists("apps/web/src/lib/workspace-whatsapp-sender-store.ts"), true, "workspace WhatsApp sender registry should exist");
 
   const authStore = await read("apps/web/src/lib/auth-store.ts");
@@ -44,16 +45,21 @@ async function main() {
   for (const label of ["About You", "About Your Business", "Your Target Customer", "Integration Verification", "Completion Score"]) {
     assert(wizard.includes(label), `onboarding wizard should include ${label}`);
   }
-  for (const label of ["Business name", "Industry", "Team size", "WhatsApp number", "Lead sources", "Assignment preferences", "Follow-up preferences"]) {
+  for (const label of ["Business name", "Industry", "Team size", "Business phone (optional)", "Lead sources", "Assignment preferences", "Follow-up preferences"]) {
     assert(wizard.includes(label), `onboarding wizard should collect ${label}`);
   }
+  assert(!wizard.includes("WhatsApp number"), "onboarding should not ask users for a WhatsApp sender number");
   assert(!wizard.includes("Twilio connected?"), "onboarding should not ask end users to connect Twilio");
-  assert(wizard.includes("Leadsy manages Twilio internally"), "onboarding should explain that WhatsApp transport is managed by Leadsy");
-  assert(wizard.includes('whatsappTransport: "leadsy_managed_twilio"'), "workspace configuration should record Leadsy-managed WhatsApp transport");
+  assert(wizard.includes("Leadsy assigns a dedicated WhatsApp lead number"), "onboarding should explain Leadsy-assigned sender provisioning");
+  assert(wizard.includes("Refresh AI options"), "onboarding should let users refresh AI-generated chip options");
+  assert(wizard.includes("Add custom"), "onboarding should preserve compact custom option entry");
+  assert(wizard.includes('whatsappTransport: "leadsy_assigned_twilio"'), "workspace configuration should record Leadsy-assigned WhatsApp transport");
+  assert(wizard.includes('whatsappAssignment: "leadsy_assigned"'), "workspace configuration should record assigned sender state");
   assert(wizard.includes("workspaceConfiguration"), "onboarding should save CRM setup answers to workspace configuration");
   assert(wizard.includes("/api/onboarding"), "wizard should save progress through the onboarding API");
+  assert(wizard.includes("/api/onboarding/options"), "wizard should request AI-assisted onboarding options");
   const onboardingRoute = await read("apps/web/src/app/api/onboarding/route.ts");
-  assert(onboardingRoute.includes("upsertWorkspaceWhatsAppSender"), "onboarding API should register the workspace WhatsApp sender");
+  assert(onboardingRoute.includes("ensureWorkspaceWhatsAppSender"), "onboarding API should create the workspace sender assignment");
   assert(
     /fetch\("\/api\/onboarding",\s*{[\s\S]*credentials:\s*"include"/.test(wizard),
     "wizard should preserve the authenticated session when saving onboarding progress"
