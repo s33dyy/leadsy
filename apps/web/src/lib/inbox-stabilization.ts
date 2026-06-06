@@ -4,14 +4,21 @@ import { conversationMessages, latestConversationMessage } from "./conversation-
 export type StabilizedInboxItem = {
   id: string;
   leadId: string;
+  lead: string;
   contact: string;
   company: string;
   channel: "WhatsApp" | "Instagram" | "Messenger" | "Email" | "Extension";
   preview: string;
+  lastMessage: string;
   time: string;
+  lastActivity: string;
   sortAt: number;
   conversionUrgency: number;
   unread: number;
+  needsReply: boolean;
+  assignedToMe: boolean;
+  owner: string;
+  qualification: string;
   important: boolean;
   href: string;
   messages: Array<{
@@ -47,6 +54,15 @@ export function channelLabelForInbox(channels: LeadKnowledgeChannel[]): Stabiliz
   return "WhatsApp";
 }
 
+function labelFromSlug(value?: string) {
+  if (!value) return "Not Yet Collected";
+  return value
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part[0]?.toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 export function buildLeadBackedInboxItems(leads: LeadKnowledgeRecord[]): StabilizedInboxItem[] {
   const itemsByLead = new Map<string, StabilizedInboxItem>();
 
@@ -56,17 +72,26 @@ export function buildLeadBackedInboxItems(leads: LeadKnowledgeRecord[]): Stabili
     if (!lastMessage) continue;
 
     const contact = lead.contact.displayName || lead.contact.handle || lead.contact.phone || lead.contact.email || "Unknown lead";
+    const time = relativeTime(lastMessage.sentAt);
+    const needsReply = lead.crmStatus === "needs_reply" || lastMessage.direction === "inbound";
     const item: StabilizedInboxItem = {
       id: `lead_${lead.id}`,
       leadId: lead.id,
+      lead: contact,
       contact,
       company: lead.leadSource || "Lead knowledge",
       channel: channelLabelForInbox(lead.channels),
       preview: lastMessage.body,
-      time: relativeTime(lastMessage.sentAt),
+      lastMessage: lastMessage.body,
+      time,
+      lastActivity: time,
       sortAt: timestampValue(lastMessage.sentAt),
       conversionUrgency: lead.crmStatus === "needs_reply" ? 100 : lead.crmStatus === "human_review" ? 90 : lead.leadStatus === "lead" ? 50 : 10,
       unread: lastMessage.direction === "inbound" ? 1 : 0,
+      needsReply,
+      assignedToMe: Boolean(lead.assigneeId && lead.assigneeId === lead.ownerId),
+      owner: lead.assigneeName || "Unassigned",
+      qualification: labelFromSlug(lead.qualificationStage),
       important: lead.crmStatus === "human_review" || lead.crmStatus === "needs_reply",
       href: `/app/leads?contact=${lead.id}&tab=conversation`,
       messages: visibleMessages.slice(-8).map((message) => ({

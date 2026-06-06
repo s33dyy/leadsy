@@ -9,27 +9,47 @@ import { listMetaWhatsAppConversations } from "@/lib/meta-whatsapp-webhook-store
 
 export const dynamic = "force-dynamic";
 
+type CommunicationsPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
 type InboxItem = {
   id: string;
   leadId?: string;
+  lead: string;
   contact: string;
   company: string;
   channel: "WhatsApp" | "Instagram" | "Messenger" | "Email" | "Extension";
   preview: string;
+  lastMessage: string;
   time: string;
+  lastActivity: string;
   sortAt: number;
   conversionUrgency: number;
   unread: number;
+  needsReply: boolean;
+  assignedToMe: boolean;
+  owner: string;
+  qualification: string;
   important: boolean;
   href: string;
   messages: Array<{
     id: string;
     author: string;
-    from: "lead" | "us" | "ai";
+    from: "lead" | "us";
     text: string;
     time: string;
   }>;
 };
+
+const inboxTabs = [
+  { id: "unread", label: "Unread" },
+  { id: "needs-reply", label: "Needs Reply" },
+  { id: "assigned-to-me", label: "Assigned To Me" },
+  { id: "all", label: "All Conversations" }
+] as const;
+
+type InboxTabId = (typeof inboxTabs)[number]["id"];
 
 function relativeTime(value?: string) {
   if (!value) return "now";
@@ -72,7 +92,21 @@ function channelIcon(channel: InboxItem["channel"]) {
   return MessageSquare;
 }
 
-export default async function CommunicationsPage() {
+function inboxTabFromParams(params: Record<string, string | string[] | undefined>): InboxTabId {
+  const raw = Array.isArray(params.tab) ? params.tab[0] : params.tab;
+  return inboxTabs.some((tab) => tab.id === raw) ? (raw as InboxTabId) : "all";
+}
+
+function itemMatchesTab(item: InboxItem, tab: InboxTabId) {
+  if (tab === "unread") return item.unread > 0;
+  if (tab === "needs-reply") return item.needsReply;
+  if (tab === "assigned-to-me") return item.assignedToMe;
+  return true;
+}
+
+export default async function CommunicationsPage({ searchParams }: CommunicationsPageProps) {
+  const params = searchParams ? await searchParams : {};
+  const activeTab = inboxTabFromParams(params);
   const session = await getCurrentSession();
   const [extensionBundles, metaConnections, leads] = session
     ? await Promise.all([
@@ -104,23 +138,33 @@ export default async function CommunicationsPage() {
     .map((bundle) => {
       const contact = bundle.conversation.contact.displayName || bundle.conversation.contact.handle || bundle.conversation.contact.phone || bundle.conversation.contact.email || "Unknown contact";
       const lastAt = bundle.conversation.lastMessageAt ?? bundle.conversation.updatedAt;
+      const preview = bundle.conversation.lastMessagePreview || bundle.conversation.summary || "No preview yet.";
+      const time = relativeTime(lastAt);
+      const needsReply = bundle.conversation.status === "needs-human";
       return {
         id: bundle.conversation.id,
         leadId: bundle.conversation.leadId,
+        lead: contact,
         contact,
         company: bundle.conversation.leadSource || "Captured by extension",
         channel: extensionChannel(bundle.conversation.platform),
-        preview: bundle.conversation.lastMessagePreview || bundle.conversation.summary || "No preview yet.",
-        time: relativeTime(lastAt),
+        preview,
+        lastMessage: preview,
+        time,
+        lastActivity: time,
         sortAt: timestampValue(lastAt),
         conversionUrgency: bundle.conversation.status === "needs-human" ? 70 : 20,
         unread: bundle.conversation.status === "needs-human" ? 1 : 0,
+        needsReply,
+        assignedToMe: false,
+        owner: "Unassigned",
+        qualification: "Not Yet Collected",
         important: bundle.conversation.status === "needs-human",
         href: bundle.conversation.leadId ? `/app/leads?contact=${bundle.conversation.leadId}&tab=comms` : "/app/worker",
         messages: bundle.messages.slice(-8).map((message) => ({
           id: message.id,
           author: message.direction === "outbound" ? "Leadsy" : contact,
-          from: message.generatedBy === "leadsy" ? "ai" : message.direction === "outbound" ? "us" : "lead",
+          from: message.direction === "outbound" ? "us" : "lead",
           text: message.body,
           time: relativeTime(message.sentAt)
         }))
@@ -129,33 +173,46 @@ export default async function CommunicationsPage() {
 
   const whatsappItems: InboxItem[] = whatsappConversations
     .filter((conversation) => !leadIdentityKeys({ contactId: conversation.contactId, waId: conversation.waId }).some((key) => leadBackedKeys.has(key)))
-    .map((conversation) => ({
-      id: `wa_${conversation.contactId}`,
-      contact: conversation.profileName || conversation.waId || conversation.contactId,
-      company: conversation.adOriginated ? "Meta Lead Ad" : "WhatsApp Business",
-      channel: "WhatsApp",
-      preview: conversation.lastMessageText || conversation.lastMessageType,
-      time: relativeTime(conversation.lastMessageAt),
-      sortAt: timestampValue(conversation.lastMessageAt),
-      conversionUrgency: conversation.leadStatus === "lead" && conversation.adOriginated ? 60 : 30,
-      unread: conversation.inboundCount,
-      important: conversation.leadStatus === "lead" && conversation.adOriginated,
-      href: conversation.whatsappUrl,
-      messages: conversation.messages.slice(-8).map((message) => ({
-        id: message.id,
-        author: message.direction === "outbound" ? "Leadsy" : message.profileName || message.from,
-        from: message.direction === "outbound" ? "us" : "lead",
-        text: message.messageText || message.messageType,
-        time: relativeTime(message.sentAt)
-      }))
-    }));
+    .map((conversation) => {
+      const contact = conversation.profileName || conversation.waId || conversation.contactId;
+      const preview = conversation.lastMessageText || conversation.lastMessageType;
+      const time = relativeTime(conversation.lastMessageAt);
+      return {
+        id: `wa_${conversation.contactId}`,
+        lead: contact,
+        contact,
+        company: conversation.adOriginated ? "Meta Lead Ad" : "WhatsApp Business",
+        channel: "WhatsApp" as const,
+        preview,
+        lastMessage: preview,
+        time,
+        lastActivity: time,
+        sortAt: timestampValue(conversation.lastMessageAt),
+        conversionUrgency: conversation.leadStatus === "lead" && conversation.adOriginated ? 60 : 30,
+        unread: conversation.inboundCount,
+        needsReply: conversation.inboundCount > 0,
+        assignedToMe: false,
+        owner: "Unassigned",
+        qualification: "Not Yet Collected",
+        important: conversation.leadStatus === "lead" && conversation.adOriginated,
+        href: conversation.whatsappUrl,
+        messages: conversation.messages.slice(-8).map((message) => ({
+          id: message.id,
+          author: message.direction === "outbound" ? "Leadsy" : message.profileName || message.from,
+          from: message.direction === "outbound" ? "us" : "lead",
+          text: message.messageText || message.messageType,
+          time: relativeTime(message.sentAt)
+        }))
+      };
+    });
 
   const leadItems: InboxItem[] = buildLeadBackedInboxItems(leads);
 
   const items = [...leadItems, ...whatsappItems, ...extensionItems]
     .sort((left, right) => right.conversionUrgency - left.conversionUrgency || right.sortAt - left.sortAt)
     .slice(0, 40);
-  const active = items[0];
+  const visibleItems = items.filter((item) => itemMatchesTab(item, activeTab));
+  const active = visibleItems[0];
   const contextLead = active ? leads.find((lead) => active.leadId === lead.id || active.href.includes(lead.id)) : undefined;
 
   return (
@@ -168,17 +225,21 @@ export default async function CommunicationsPage() {
             <span className="kbd">/</span>
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-1">
-            {["All", "WhatsApp", "Instagram", "Messenger", "Email"].map((channel, index) => (
-              <span key={channel} className={`h-6 rounded-[4px] px-1.5 py-1 font-mono text-[10.5px] ${index === 0 ? "bg-surface-3 text-foreground" : "text-muted-foreground"}`}>
-                {channel}
-              </span>
+            {inboxTabs.map((tab) => (
+              <Link
+                key={tab.id}
+                href={`/app/communications?tab=${tab.id}`}
+                className={`h-6 rounded-[4px] px-1.5 py-1 font-mono text-[10.5px] ${activeTab === tab.id ? "bg-surface-3 text-foreground" : "text-muted-foreground"}`}
+              >
+                {tab.label}
+              </Link>
             ))}
           </div>
-          <p className="mt-2 text-[11.5px] leading-5 text-muted-foreground">Inbox is a conversion workspace: prioritize reply, qualification, owner, and next action.</p>
+          <p className="mt-2 text-[11.5px] leading-5 text-muted-foreground">Inbox is a conversion workspace for reply, qualification, owner, and next action.</p>
         </div>
         <ul className="min-h-0 flex-1 overflow-y-auto">
-          {items.length ? (
-            items.map((item, index) => {
+          {visibleItems.length ? (
+            visibleItems.map((item, index) => {
               const Icon = channelIcon(item.channel);
               return (
                 <li key={item.id} className={`border-b border-border/70 px-3 py-2.5 hover:bg-surface-2 ${index === 0 ? "bg-surface-2" : ""}`}>
@@ -193,13 +254,20 @@ export default async function CommunicationsPage() {
                       <span className="flex-1 truncate">{item.preview}</span>
                       {item.unread > 0 ? <span className="rounded-full bg-primary px-1.5 font-mono text-[10px] text-primary-foreground">{item.unread}</span> : null}
                     </div>
+                    <div className="grid grid-cols-2 gap-x-2 gap-y-1 pl-5 font-mono text-[10px] text-muted-foreground">
+                      <span className="truncate">Lead {item.lead}</span>
+                      <span className="truncate">Last Message {item.lastMessage}</span>
+                      <span className="truncate">Owner {item.owner}</span>
+                      <span className="truncate">Qualification {item.qualification}</span>
+                      <span className="truncate">Last Activity {item.lastActivity}</span>
+                    </div>
                   </Link>
                 </li>
               );
             })
           ) : (
             <li className="flex h-48 items-center justify-center px-8 text-center text-[12.5px] text-muted-foreground">
-              WhatsApp, Instagram, Messenger, email, and extension conversations will appear here after capture or webhook sync.
+              Conversations matching this inbox view will appear after capture or webhook sync.
             </li>
           )}
         </ul>
@@ -218,7 +286,7 @@ export default async function CommunicationsPage() {
                     <span className="font-medium">{active.contact}</span>
                     <span className="text-muted-foreground">- {active.company}</span>
                   </div>
-                  <div className="font-mono text-[10.5px] text-muted-foreground">{active.channel} - last reply {active.time} ago</div>
+                  <div className="font-mono text-[10.5px] text-muted-foreground">{active.channel} - last activity {active.lastActivity} ago</div>
                 </div>
               </div>
               <div className="flex items-center gap-1.5">
@@ -241,11 +309,11 @@ export default async function CommunicationsPage() {
                 <div className="mt-3 grid gap-2 md:grid-cols-3">
                   <div className="rounded-[5px] border border-border/80 bg-background/60 p-2">
                     <div className="caption">Qualification</div>
-                    <div className="mt-1 text-[12px] text-foreground/90">{contextLead.qualificationStage.replace(/_/g, " ")}</div>
+                    <div className="mt-1 text-[12px] text-foreground/90">{active.qualification}</div>
                   </div>
                   <div className="rounded-[5px] border border-border/80 bg-background/60 p-2">
                     <div className="caption">Owner</div>
-                    <div className="mt-1 text-[12px] text-foreground/90">{contextLead.assigneeName || "Unassigned"}</div>
+                    <div className="mt-1 text-[12px] text-foreground/90">{active.owner}</div>
                   </div>
                   <div className="rounded-[5px] border border-border/80 bg-background/60 p-2">
                     <div className="caption">Suggested next action</div>
@@ -261,14 +329,13 @@ export default async function CommunicationsPage() {
                   <div
                     key={message.id}
                     className={`flex max-w-[78%] flex-col gap-1 rounded-[6px] border border-border p-3 ${
-                      message.from === "us" ? "ml-auto border-transparent bg-primary text-primary-foreground" : message.from === "ai" ? "border-primary/30 bg-primary/5" : ""
+                      message.from === "us" ? "ml-auto border-transparent bg-primary text-primary-foreground" : ""
                     }`}
                   >
                     <div className={`flex items-center gap-2 font-mono text-[10.5px] ${message.from === "us" ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
                       <span>{message.author}</span>
                       <span className="opacity-60">-</span>
                       <span>{message.time}</span>
-                      {message.from === "ai" ? <span className="ml-auto text-primary">AI signal</span> : null}
                     </div>
                     <p className="text-[13px] leading-relaxed">{message.text}</p>
                   </div>
