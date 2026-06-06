@@ -27,6 +27,7 @@ import { ManualLeadIntake } from "@/components/manual-lead-intake";
 import { SelectedLeadTasks } from "@/components/selected-lead-tasks";
 import { getCurrentSession } from "@/lib/auth";
 import { listCrmFollowUpTasks, type CrmFollowUpTask } from "@/lib/crm-store";
+import { conversationMessages } from "@/lib/conversation-contract";
 import { listExtensionTaskEvents, listExtensionTasks, type ExtensionTask, type ExtensionTaskEvent } from "@/lib/extension-store";
 import {
   leadProductPipelineStatuses,
@@ -245,10 +246,11 @@ function panelFromValue(value: string): LeadPanel {
 }
 
 function messagesForCommChannel(lead: LeadKnowledgeRecord, commChannel: CommChannelFilter) {
+  const visibleConversationMessages = conversationMessages(lead.messages);
   const filter = commFilters.find((candidate) => candidate.id === commChannel);
-  if (!filter?.channels) return lead.messages;
+  if (!filter?.channels) return visibleConversationMessages;
   const allowed = new Set(filter.channels);
-  return lead.messages.filter((message) => allowed.has(message.channel));
+  return visibleConversationMessages.filter((message) => allowed.has(message.channel));
 }
 
 function conversationsForCommChannel(lead: LeadKnowledgeRecord, commChannel: CommChannelFilter) {
@@ -1524,7 +1526,7 @@ function LeadTimelineTab({
   crmFollowUps: CrmFollowUpTask[];
   taskEvents: ExtensionTaskEvent[];
 }) {
-  const groupedMessages = groupMessagesForTimeline(lead.messages);
+  const groupedMessages = groupMessagesForTimeline(conversationMessages(lead.messages));
   return (
     <div className="space-y-4">
       <section className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">

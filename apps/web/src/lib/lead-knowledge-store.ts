@@ -2,6 +2,8 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { getDemoSession } from "@leadsy/security";
 import { leadsyDataDir } from "./data-dir";
+import { conversationMessages, internalNotes, latestConversationMessage } from "./conversation-contract";
+export { conversationMessages, internalNotes, systemEvents } from "./conversation-contract";
 import type {
   ExtensionConversationContact,
   ExtensionConversationEvent,
@@ -482,6 +484,14 @@ function inferQualificationFields(input: {
     firstMatch(text, [/\b(i am (?:the )?(?:owner|founder|decision maker|approver))\b/i, /\b((?:owner|founder|manager|director)\s+will\s+approve)\b/i]);
   fields.location = fields.location || valueAfterLabel(text, ["Location", "City", "Market"]) || firstMatch(text, [/\bin\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)(?:\s|$|[.,!?])/]);
   fields.serviceInterest = fields.serviceInterest || valueAfterLabel(text, ["Service Interest", "Service", "Package", "Plan"]) || fields.need;
+  fields.intent =
+    fields.intent ||
+    valueAfterLabel(text, ["Intent", "Intent level"]) ||
+    (fields.budget && fields.timeline && fields.authority ? "Very High Intent" : fields.need && (fields.budget || fields.timeline) ? "High Intent" : fields.need ? "Medium Intent" : undefined);
+  fields.risk =
+    fields.risk ||
+    valueAfterLabel(text, ["Risk", "Concern", "Objection"]) ||
+    firstMatch(text, [/\b(price is high|too expensive|not sure|need to compare|competitor|refund|complaint|legal)\b/i]);
 
   return Object.fromEntries(Object.entries(fields).filter(([, value]) => value?.trim())) as LeadQualificationFields;
 }
@@ -707,11 +717,8 @@ function addMessage(state: LeadKnowledgeState, scope: Scope, input: Omit<LeadKno
 function recalculateConversation(state: LeadKnowledgeState, conversationId: string) {
   const conversation = state.conversations.find((candidate) => candidate.id === conversationId);
   if (!conversation) return;
-  const messages = state.messages
-    .filter((message) => message.conversationId === conversationId)
-    .filter((message) => !message.hiddenAt)
-    .sort((left, right) => left.sentAt.localeCompare(right.sentAt));
-  const lastMessage = messages.at(-1);
+  const messages = conversationMessages(state.messages.filter((message) => message.conversationId === conversationId));
+  const lastMessage = latestConversationMessage(messages);
   conversation.messageCount = messages.length;
   conversation.inboundCount = messages.filter((message) => message.direction === "inbound").length;
   conversation.outboundCount = messages.filter((message) => message.direction === "outbound").length;
@@ -725,11 +732,8 @@ function updateLeadFromConversation(state: LeadKnowledgeState, leadId: string, i
   if (!lead) return;
   ensureLeadCrmDefaults(lead);
   const conversations = state.conversations.filter((conversation) => conversation.leadId === leadId);
-  const messages = state.messages
-    .filter((message) => message.leadId === leadId)
-    .filter((message) => !message.hiddenAt)
-    .sort((left, right) => left.sentAt.localeCompare(right.sentAt));
-  const lastMessage = messages.at(-1);
+  const messages = conversationMessages(state.messages.filter((message) => message.leadId === leadId));
+  const lastMessage = latestConversationMessage(messages);
   const qualification = qualificationDecisionForLead({ lead, messages });
   lead.qualificationFields = qualification.fields;
   lead.crmStatus = qualification.crmStatus;
@@ -1365,11 +1369,11 @@ function recordForLead(state: LeadKnowledgeState, scope: Scope, leadId: string):
   const conversations = state.conversations
     .filter((conversation) => conversation.leadId === lead.id && scopeMatches(scope, conversation))
     .sort((left, right) => (right.lastMessageAt ?? right.updatedAt).localeCompare(left.lastMessageAt ?? left.updatedAt));
-  const messages = state.messages
-    .filter((message) => message.leadId === lead.id && scopeMatches(scope, message))
-    .filter((message) => !message.hiddenAt)
-    .sort((left, right) => left.sentAt.localeCompare(right.sentAt));
-  const lastMessage = messages.at(-1);
+  const messages = [
+    ...conversationMessages(state.messages.filter((message) => message.leadId === lead.id && scopeMatches(scope, message))),
+    ...internalNotes(state.messages.filter((message) => message.leadId === lead.id && scopeMatches(scope, message)))
+  ].sort((left, right) => left.sentAt.localeCompare(right.sentAt) || left.id.localeCompare(right.id));
+  const lastMessage = latestConversationMessage(messages);
   return {
     ...lead,
     channels: uniqueStrings(conversations.map((conversation) => conversation.channel)) as LeadKnowledgeChannel[],
@@ -1389,6 +1393,74 @@ export async function listLeadKnowledgeRecords(scope: Scope) {
     .filter((lead) => scopeMatches(scope, lead) && !lead.deletedAt)
     .map((lead) => recordForLead(state, scope, lead.id))
     .sort((left, right) => (right.lastMessageAt ?? right.updatedAt).localeCompare(left.lastMessageAt ?? left.updatedAt));
+}
+
+export type QualificationInputAuditRow = {
+  field: Extract<LeadQualificationFieldKey, "need" | "budget" | "timeline" | "authority" | "location" | "company" | "serviceInterest" | "intent">;
+  value: string;
+  state: "Collected" | "Missing" | "Uncertain";
+  sourceMessage?: string;
+  messageId?: string;
+  confidence: "high" | "medium" | "low" | "none";
+  extractionMethod: "deterministic-label" | "deterministic-pattern" | "derived-from-conversation" | "not-traced";
+  valid: boolean;
+};
+
+const qualificationAuditFields: QualificationInputAuditRow["field"][] = ["need", "budget", "timeline", "authority", "location", "company", "serviceInterest", "intent"];
+
+function normalizedTraceText(value: string) {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function messageSupportsField(field: QualificationInputAuditRow["field"], value: string, message: LeadKnowledgeMessage) {
+  const body = normalizedTraceText(message.body);
+  const cleanValue = normalizedTraceText(value);
+  if (cleanValue && body.includes(cleanValue)) return true;
+  if (field === "intent") {
+    return /\b(need|want|looking for|interested|budget|timeline|owner|decision maker|today|tomorrow|week|month|days?)\b/i.test(message.body);
+  }
+  if (field === "serviceInterest") {
+    return Boolean(cleanValue && body.includes(cleanValue)) || /\b(service|package|plan|automation|crm|qualification|whatsapp)\b/i.test(message.body);
+  }
+  if (field === "authority") return /\b(owner|founder|decision maker|approver|approve|manager|director)\b/i.test(message.body);
+  if (field === "location") return new RegExp(`\\b${value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(message.body);
+  return false;
+}
+
+function extractionMethodForField(field: QualificationInputAuditRow["field"], value: string, source?: LeadKnowledgeMessage): QualificationInputAuditRow["extractionMethod"] {
+  if (!source) return "not-traced";
+  if (new RegExp(`\\b${field.replace(/[A-Z]/g, (char) => ` ${char.toLowerCase()}`)}\\s*[:=-]`, "i").test(source.body)) return "deterministic-label";
+  if (source.body.toLowerCase().includes(value.toLowerCase())) return "deterministic-pattern";
+  return "derived-from-conversation";
+}
+
+export function buildQualificationInputAudit(lead: LeadKnowledgeRecord) {
+  const messages = conversationMessages(lead.messages);
+  const fields = qualificationAuditFields.map((field): QualificationInputAuditRow => {
+    const value = lead.qualificationFields[field]?.trim();
+    if (!value) {
+      return {
+        field,
+        value: "Not Yet Collected",
+        state: "Missing",
+        confidence: "none",
+        extractionMethod: "not-traced",
+        valid: false
+      };
+    }
+    const source = messages.find((message) => messageSupportsField(field, value, message));
+    return {
+      field,
+      value,
+      state: source ? "Collected" : "Uncertain",
+      sourceMessage: source?.body,
+      messageId: source?.id,
+      confidence: source ? (extractionMethodForField(field, value, source) === "derived-from-conversation" ? "medium" : "high") : "none",
+      extractionMethod: extractionMethodForField(field, value, source),
+      valid: Boolean(source)
+    };
+  });
+  return { leadId: lead.id, fields };
 }
 
 export async function summarizeLeadKnowledgeHealth() {
@@ -1543,21 +1615,16 @@ export async function editLeadKnowledgeRecord(input: Scope & {
   lead.assigneeId = input.assigneeId?.trim() || lead.assigneeId || defaultAssignee.assigneeId;
   lead.assigneeName = input.assigneeName?.trim() || lead.assigneeName || defaultAssignee.assigneeName;
   lead.productPipelineStatus = input.productPipelineStatus ?? lead.productPipelineStatus;
+  const qualificationMessages = conversationMessages(state.messages.filter((message) => message.leadId === lead.id && scopeMatches(input, message)));
   lead.qualificationFields = inferQualificationFields({
     contact: lead.contact,
     existing: { ...lead.qualificationFields, ...(input.qualificationFields ?? {}) },
     facts: lead.facts,
-    messages: state.messages
-      .filter((message) => message.leadId === lead.id && scopeMatches(input, message))
-      .filter((message) => !message.hiddenAt)
-      .sort((left, right) => left.sentAt.localeCompare(right.sentAt))
+    messages: qualificationMessages
   });
   const qualification = qualificationDecisionForLead({
     lead,
-    messages: state.messages
-      .filter((message) => message.leadId === lead.id && scopeMatches(input, message))
-      .filter((message) => !message.hiddenAt)
-      .sort((left, right) => left.sentAt.localeCompare(right.sentAt))
+    messages: qualificationMessages
   });
   const preserveInternalStatusForProductUpdate = Boolean(input.productPipelineStatus && input.crmStatus === undefined && input.qualificationStage === undefined);
   lead.crmStatus = input.crmStatus ?? (preserveInternalStatusForProductUpdate ? lead.crmStatus : qualification.crmStatus);
@@ -1602,7 +1669,7 @@ export async function setLeadKnowledgeStatus(input: Scope & { leadId: string; le
   lead.leadStatus = input.leadStatus;
   lead.excludedAt = input.leadStatus === "excluded" ? nowIso() : undefined;
   lead.nextAction = nextActionForMessages(
-    state.messages.filter((message) => message.leadId === lead.id).sort((left, right) => left.sentAt.localeCompare(right.sentAt)),
+    conversationMessages(state.messages.filter((message) => message.leadId === lead.id)),
     lead.leadStatus
   );
   lead.updatedAt = nowIso();

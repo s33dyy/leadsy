@@ -446,7 +446,7 @@ async function main() {
     const workerOnlyLead = recordsAfterTaskSync.find((lead) => lead.contact.displayName === "Worker Only Lead");
     assert(workerOnlyLead, "worker-only tasks should appear as CRM lead knowledge records");
     assert.equal(workerOnlyLead.channels.includes("whatsapp-web"), true);
-    assert.equal(workerOnlyLead.messages.some((message) => message.body.includes("Worker task exists before any webhook")), true);
+    assert.equal(workerOnlyLead.messages.some((message) => message.body.includes("Worker task exists before any webhook")), false, "worker task records should not appear in visible customer conversation messages");
 
     await syncLeadKnowledgeFromExtensionTasks(scope, [
       {

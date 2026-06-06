@@ -24,6 +24,8 @@ async function main() {
     "apps/web/src/app/extension/page.tsx",
     "apps/web/src/app/app/connect/page.tsx",
     "apps/web/src/app/app/leads/page.tsx",
+    "apps/web/src/app/app/communications/page.tsx",
+    "apps/web/src/app/app/team/page.tsx",
     "apps/web/src/app/app/worker/page.tsx"
   ];
   const removedPages = [

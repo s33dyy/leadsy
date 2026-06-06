@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AtSign, Hash, Mail, MessageSquare, Paperclip, Pin, Search, Send, Sparkles, Star } from "lucide-react";
 import { getCurrentSession } from "@/lib/auth";
 import { listExtensionConversations } from "@/lib/extension-store";
+import { buildLeadBackedInboxItems } from "@/lib/inbox-stabilization";
 import { listLeadKnowledgeRecords } from "@/lib/lead-knowledge-store";
 import { listMetaOAuthConnections } from "@/lib/meta-oauth-store";
 import { listMetaWhatsAppConversations } from "@/lib/meta-whatsapp-webhook-store";
@@ -149,33 +150,7 @@ export default async function CommunicationsPage() {
       }))
     }));
 
-  const leadItems: InboxItem[] = leads
-    .filter((lead) => lead.messages.length)
-    .map((lead) => {
-      const contact = lead.contact.displayName || lead.contact.handle || lead.contact.phone || lead.contact.email || "Unknown lead";
-      const lastAt = lead.lastMessageAt ?? lead.updatedAt;
-      return {
-        id: `lead_${lead.id}`,
-        leadId: lead.id,
-        contact,
-        company: lead.leadSource || "Lead knowledge",
-        channel: lead.channels.includes("email") ? "Email" : lead.channels.includes("instagram") ? "Instagram" : lead.channels.includes("facebook") ? "Messenger" : "WhatsApp",
-        preview: lead.lastMessagePreview || lead.messages.at(-1)?.body || lead.summary || "Lead conversation captured.",
-        time: relativeTime(lastAt),
-        sortAt: timestampValue(lastAt),
-        conversionUrgency: lead.crmStatus === "needs_reply" ? 100 : lead.crmStatus === "human_review" ? 90 : lead.leadStatus === "lead" ? 50 : 10,
-        unread: lead.crmStatus === "needs_reply" ? 1 : 0,
-        important: lead.crmStatus === "human_review" || lead.crmStatus === "needs_reply",
-        href: `/app/leads?contact=${lead.id}&tab=comms`,
-        messages: lead.messages.slice(-8).map((message) => ({
-          id: message.id,
-          author: message.direction === "outbound" ? "Leadsy" : contact,
-          from: message.direction === "outbound" ? "us" : message.direction === "note" ? "ai" : "lead",
-          text: message.body,
-          time: relativeTime(message.sentAt)
-        }))
-      };
-    });
+  const leadItems: InboxItem[] = buildLeadBackedInboxItems(leads);
 
   const items = [...leadItems, ...whatsappItems, ...extensionItems]
     .sort((left, right) => right.conversionUrgency - left.conversionUrgency || right.sortAt - left.sortAt)

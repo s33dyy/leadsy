@@ -48,7 +48,7 @@ const workflowNav: ShellLink[] = [
   { href: "/app/leads", label: "Leads", icon: Users2 },
   { href: "/app/communications", label: "Inbox", icon: MessageSquare },
   { href: "/app/worker", label: "Automations", icon: Bot },
-  { href: "/app/settings?panel=team", label: "Team", icon: Users2 },
+  { href: "/app/team", label: "Team", icon: Users2 },
   { href: "/app?view=analytics", label: "Analytics", icon: Activity },
   { href: "/app/settings", label: "Settings", icon: SettingsIcon }
 ];
@@ -111,6 +111,7 @@ function pageTitle(pathname: string, searchParams: SearchParamsLike) {
   if (pathname.startsWith("/app/communications")) return "Inbox";
   if (pathname.startsWith("/app/tasks")) return "Follow-up tasks";
   if (pathname.startsWith("/app/integrations")) return "Integrations";
+  if (pathname.startsWith("/app/team")) return "Team";
   if (pathname.startsWith("/app/settings") && searchParams.get("panel") === "team") return "Team";
   if (pathname.startsWith("/app/settings")) return "Settings";
   if (pathname.startsWith("/app/connect")) return "Integrations";

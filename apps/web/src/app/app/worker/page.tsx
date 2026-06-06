@@ -28,10 +28,6 @@ function focusColumnFromTab(value: string) {
   return value === "pending" || value === "approval" || value === "approvals" ? "approval" : undefined;
 }
 
-function activeTaskCount(tasks: Awaited<ReturnType<typeof listExtensionTasks>>) {
-  return tasks.filter((task) => !["sent", "cancelled", "blocked", "failed"].includes(task.status)).length;
-}
-
 function workerRows({
   tasks,
   monitorHealth,
@@ -41,53 +37,40 @@ function workerRows({
   monitorHealth: ExtensionChannelMonitorHealth[];
   conversations: Awaited<ReturnType<typeof listExtensionConversations>>;
 }) {
-  const approvalQueue = tasks.filter((task) => ["pending_approval", "approval_required", "drafted"].includes(task.status)).length;
-  const failed = tasks.filter((task) => task.status === "failed").length;
-  const active = activeTaskCount(tasks);
   const platformCount = (platform: string) => tasks.filter((task) => task.platform === platform).length;
+  const lastSyncedAt = monitorHealth.find((item) => item.lastSyncedAt)?.lastSyncedAt;
+  const timeLabel = (value?: string) => value ? new Date(value).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "No Data Available";
   return [
     {
       name: "meta-research",
       kind: "Research",
-      status: monitorHealth.some((item) => item.platform.includes("instagram") || item.platform.includes("facebook")) ? "Running" : "Idle",
-      queue: platformCount("instagram-web") + platformCount("facebook-web"),
-      output: conversations.length,
-      success: failed ? 82 : 96,
-      lastRun: monitorHealth[0]?.lastSyncedAt ? new Date(monitorHealth[0].lastSyncedAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "never",
+      dataState: monitorHealth.some((item) => item.platform.includes("instagram") || item.platform.includes("facebook")) ? "Real Data" : "No Data Available",
+      evidence: `${platformCount("instagram-web") + platformCount("facebook-web")} stored browser tasks, ${conversations.length} stored conversations`,
+      lastSync: timeLabel(lastSyncedAt),
       approval: "Required"
     },
     {
       name: "qualifier-v3",
       kind: "Qualifier",
-      status: active ? "Running" : "Idle",
-      queue: approvalQueue,
-      output: tasks.length,
-      success: failed ? 76 : 91,
-      lastRun: tasks[0]?.updatedAt ? new Date(tasks[0].updatedAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "never",
-      approval: "Auto"
+      dataState: tasks.length ? "Real Data" : "No Data Available",
+      evidence: `${tasks.length} stored task records`,
+      lastSync: timeLabel(tasks[0]?.updatedAt),
+      approval: "Human review"
     },
     {
       name: "whatsapp-outreach",
       kind: "Outreach",
-      status: platformCount("whatsapp-web") ? "Running" : "Idle",
-      queue: platformCount("whatsapp-web"),
-      output: tasks.filter((task) => task.status === "sent").length,
-      success: failed ? 72 : 88,
-      lastRun: tasks.find((task) => task.platform === "whatsapp-web")?.updatedAt
-        ? new Date(tasks.find((task) => task.platform === "whatsapp-web")!.updatedAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })
-        : "never",
+      dataState: platformCount("whatsapp-web") ? "Real Data" : "No Data Available",
+      evidence: `${platformCount("whatsapp-web")} stored WhatsApp task records`,
+      lastSync: timeLabel(tasks.find((task) => task.platform === "whatsapp-web")?.updatedAt),
       approval: "Required"
     },
     {
       name: "extension-capture",
       kind: "Capture",
-      status: monitorHealth.some((item) => item.status === "active") ? "Running" : "Paused",
-      queue: monitorHealth.length,
-      output: conversations.length,
-      success: failed ? 79 : 94,
-      lastRun: monitorHealth.find((item) => item.lastSyncedAt)?.lastSyncedAt
-        ? new Date(monitorHealth.find((item) => item.lastSyncedAt)!.lastSyncedAt!).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })
-        : "never",
+      dataState: monitorHealth.length ? "Real Data" : "Not Configured",
+      evidence: `${monitorHealth.length} stored monitor records, ${conversations.length} stored conversations`,
+      lastSync: timeLabel(lastSyncedAt),
       approval: "Manual"
     }
   ];
@@ -112,7 +95,7 @@ export default async function WorkerPage({ searchParams }: WorkerPageProps) {
     <div className="grid h-full min-h-0 grid-cols-12 gap-px bg-border">
       <section className="col-span-12 flex min-h-0 flex-col bg-background xl:col-span-8">
         <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border px-3">
-          {["All", "Running", "Pending", "Failed", "Paused"].map((tab) => (
+          {["All", "Real Data", "No Data Available", "Not Configured"].map((tab) => (
             <span key={tab} className={`h-7 rounded-[5px] px-2.5 py-1.5 text-[12px] ${tab === "All" ? "bg-surface-3 text-foreground" : "text-muted-foreground"}`}>
               {tab}
             </span>
@@ -129,7 +112,7 @@ export default async function WorkerPage({ searchParams }: WorkerPageProps) {
           <table className="w-full text-[12.5px]">
             <thead className="sticky top-0 z-10 bg-background">
               <tr className="border-b border-border text-left text-muted-foreground">
-                {["Worker", "Kind", "Status", "Queue", "Output", "Success", "Last run", "Approval"].map((heading) => (
+                {["Worker", "Kind", "Data state", "Evidence", "Last sync", "Approval"].map((heading) => (
                   <th key={heading} className="h-9 px-3 font-mono text-[10.5px] font-normal uppercase tracking-[0.12em]">
                     {heading}
                   </th>
@@ -148,20 +131,11 @@ export default async function WorkerPage({ searchParams }: WorkerPageProps) {
                   <td className="h-10 px-3 text-muted-foreground">{worker.kind}</td>
                   <td className="h-10 px-3">
                     <span className="inline-flex items-center gap-1.5 rounded-[3px] bg-primary/10 px-1.5 py-0.5 font-mono text-[10.5px] text-primary">
-                      <span className="dot bg-primary pulse-dot" /> {worker.status}
+                      {worker.dataState}
                     </span>
                   </td>
-                  <td className="h-10 px-3 font-mono">{worker.queue}</td>
-                  <td className="h-10 px-3 font-mono">{worker.output}</td>
-                  <td className="h-10 px-3">
-                    <div className="flex w-28 items-center gap-2">
-                      <div className="relative h-1 flex-1 overflow-hidden rounded-full bg-surface-3">
-                        <div className="absolute inset-y-0 left-0 bg-primary/80" style={{ width: `${worker.success}%` }} />
-                      </div>
-                      <span className="font-mono text-muted-foreground">{worker.success}%</span>
-                    </div>
-                  </td>
-                  <td className="h-10 px-3 font-mono text-muted-foreground">{worker.lastRun}</td>
+                  <td className="h-10 px-3 text-muted-foreground">{worker.evidence}</td>
+                  <td className="h-10 px-3 font-mono text-muted-foreground">{worker.lastSync}</td>
                   <td className="h-10 px-3">
                     <span className="rounded-[3px] bg-surface-3 px-1.5 py-0.5 font-mono text-[10.5px] text-muted-foreground">{worker.approval}</span>
                   </td>
@@ -179,7 +153,7 @@ export default async function WorkerPage({ searchParams }: WorkerPageProps) {
           <p className="mt-0.5 text-[12px] text-muted-foreground">{active.kind} · approval: {active.approval}</p>
           <div className="mt-3 flex items-center gap-1.5">
             <span className="inline-flex h-7 items-center gap-1.5 rounded-[5px] bg-primary px-2.5 text-[12px] font-medium text-primary-foreground">
-              <Activity className="h-3 w-3" /> Running
+              <Activity className="h-3 w-3" /> {active.dataState}
             </span>
             <a href="/app/connect" className="inline-flex h-7 items-center gap-1.5 rounded-[5px] border border-border bg-surface-2 px-2.5 text-[12px] hover:bg-surface-3">
               <Settings2 className="h-3 w-3" /> Configure

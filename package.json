@@ -40,6 +40,7 @@
     "test:extension-download": "tsx scripts/extension-download-page.test.ts",
     "test:user-facing-surface": "tsx scripts/user-facing-surface.test.ts",
     "test:qualification-engine": "tsx scripts/qualification-engine.test.ts",
+    "test:crm-truth-stabilization": "tsx scripts/crm-truth-stabilization.test.ts",
     "test:google-workspace-auth": "NODE_OPTIONS='--conditions=react-server' tsx scripts/google-workspace-auth.test.ts",
     "seed": "npm --workspace @leadsy/db run seed",
     "seed:demo": "tsx scripts/seed-demo-workspace.ts",
