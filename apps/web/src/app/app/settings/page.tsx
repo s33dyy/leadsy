@@ -19,6 +19,7 @@ import {
 import { Badge } from "@/components/ui";
 import { automationWorkflowDefinitions } from "@/lib/automation-workflows";
 import { getAiCostDashboard, getInfrastructureStatus, type HealthTone } from "@/lib/infrastructure-status";
+import { getTwilioIntegrationStatus, type TwilioIntegrationStatus } from "@/lib/twilio-transport";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,7 @@ type SettingsSection =
   | "profile"
   | "workspace"
   | "integrations"
+  | "twilio"
   | "ai"
   | "workers"
   | "notifications"
@@ -42,6 +44,7 @@ const groups: Array<{ id: SettingsSection; label: string; icon: LucideIcon }> = 
   { id: "profile", label: "Profile", icon: User },
   { id: "workspace", label: "Workspace", icon: Building2 },
   { id: "integrations", label: "Integrations", icon: Plug },
+  { id: "twilio", label: "Twilio", icon: MessageSquare },
   { id: "ai", label: "AI", icon: Brain },
   { id: "workers", label: "Workers", icon: Bot },
   { id: "notifications", label: "Notifications", icon: Bell },
@@ -91,8 +94,20 @@ const sectionSummaries: Record<SettingsSection, {
     primaryLabel: "Open integrations",
     rows: [
       { label: "Meta", value: "OAuth and webhook intake stay in Leadsy" },
-      { label: "WhatsApp", value: "Provider actions are orchestrated by n8n" },
-      { label: "Extension", value: "Browser capture remains the capture layer" }
+      { label: "Twilio", value: "Primary WhatsApp transport stays in Leadsy" },
+      { label: "Extension", value: "Browser capture is the Legacy Capture Layer" }
+    ]
+  },
+  twilio: {
+    eyebrow: "Settings / Integrations / Twilio",
+    title: "Twilio WhatsApp",
+    detail: "Primary WhatsApp transport for inbound messages, outbound sends, and delivery callbacks.",
+    primaryHref: "/app/integrations",
+    primaryLabel: "Open integrations",
+    rows: [
+      { label: "Inbound", value: "Leadsy-owned Twilio webhook" },
+      { label: "Outbound", value: "Leadsy sends through Twilio API" },
+      { label: "Delivery", value: "Twilio status callback updates message records" }
     ]
   },
   ai: {
@@ -144,13 +159,13 @@ const sectionSummaries: Record<SettingsSection, {
   whatsapp: {
     eyebrow: "Settings / WhatsApp",
     title: "WhatsApp",
-    detail: "WhatsApp message storage stays in Leadsy while reply automation is configured through n8n.",
-    primaryHref: "/app/connect",
-    primaryLabel: "Open WhatsApp setup",
+    detail: "WhatsApp message storage stays in Leadsy. Twilio is the primary WhatsApp transport.",
+    primaryHref: "/app/settings?section=twilio",
+    primaryLabel: "Open Twilio setup",
     rows: [
       { label: "Inbound storage", value: "Leadsy" },
-      { label: "Cloud provider", value: "Configured in n8n env vars" },
-      { label: "Browser handoff", value: "Extension waits for WhatsApp readiness" }
+      { label: "Cloud provider", value: "Twilio WhatsApp API" },
+      { label: "Browser handoff", value: "Extension remains Legacy Capture Layer fallback" }
     ]
   },
   extension: {
@@ -202,11 +217,22 @@ function formatInr(value: number) {
   }).format(value);
 }
 
+function maskTwilioAccountSid(value?: string) {
+  if (!value) return "Not configured";
+  if (value.length <= 8) return "Configured";
+  return `${value.slice(0, 4)}...${value.slice(-4)}`;
+}
+
+function twilioDate(value?: string) {
+  if (!value) return "No callback yet";
+  return new Date(value).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
+}
+
 export default async function SettingsPage({ searchParams }: SettingsPageProps) {
   const params = searchParams ? await searchParams : {};
   const activeSection = sectionFromValue(paramValue(params, "section"));
   const section = sectionSummaries[activeSection];
-  const [infrastructure, aiCosts] = await Promise.all([getInfrastructureStatus(), getAiCostDashboard()]);
+  const [infrastructure, aiCosts, twilio] = await Promise.all([getInfrastructureStatus(), getAiCostDashboard(), getTwilioIntegrationStatus()]);
   const automation = infrastructure.automation;
   const backendLogic = infrastructure.backendLogic;
   const providerConfigs = infrastructure.providerConfigs;
@@ -250,7 +276,8 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
             {activeSection === "infrastructure" ? <Badge tone={toneForHealth(automation.health)}>n8n: {automation.health}</Badge> : null}
           </div>
 
-          {activeSection !== "infrastructure" ? <SettingsSectionPanel section={section} /> : null}
+          {activeSection !== "infrastructure" && activeSection !== "twilio" ? <SettingsSectionPanel section={section} /> : null}
+          {activeSection === "twilio" ? <TwilioSettingsPanel twilio={twilio} /> : null}
 
           {activeSection === "infrastructure" ? (
           <>
@@ -436,6 +463,58 @@ function SettingsSectionPanel({
         <div className="flex items-center gap-2 text-[12.5px]">
           <Check className="h-3.5 w-3.5 text-primary" />
           <span>Configuration here preserves Leadsy as the secure app boundary while n8n handles operational automation.</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TwilioSettingsPanel({ twilio }: { twilio: TwilioIntegrationStatus }) {
+  const rows = [
+    { label: "Connection Status", value: twilio.connected ? "Connected" : "Not configured" },
+    { label: "Account SID", value: maskTwilioAccountSid(twilio.accountSid) },
+    { label: "WhatsApp Number", value: twilio.whatsappNumber ?? "Not configured" },
+    {
+      label: "Last Webhook",
+      value: twilio.lastWebhook?.at
+        ? `${twilioDate(twilio.lastWebhook.at)} · ${twilio.lastWebhook.messageSid ?? "unknown SID"}`
+        : "No webhook yet"
+    },
+    {
+      label: "Last Delivery Callback",
+      value: twilio.lastDeliveryCallback?.at
+        ? `${twilioDate(twilio.lastDeliveryCallback.at)} · ${twilio.lastDeliveryCallback.status ?? "unknown status"}`
+        : "No callback yet"
+    }
+  ];
+
+  return (
+    <div className="mt-6 overflow-hidden rounded-[8px] border border-border bg-border">
+      <div className="bg-background p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold text-foreground">Twilio WhatsApp API</div>
+            <p className="mt-1 max-w-2xl text-[12.5px] leading-6 text-muted-foreground">
+              Twilio is the primary WhatsApp transport for Leadsy conversations. Secrets stay in environment variables and are never shown here.
+            </p>
+          </div>
+          <Badge tone={twilio.connected ? "lime" : "amber"}>{twilio.connected ? "Connected" : "Needs config"}</Badge>
+        </div>
+      </div>
+      <div className="grid min-w-0 grid-cols-1 gap-px md:grid-cols-2">
+        {rows.map((row) => (
+          <div key={row.label} className="min-w-0 bg-background p-4">
+            <div className="caption">{row.label}</div>
+            <div className="mt-1.5 min-w-0 truncate font-mono text-[12px] text-foreground">{row.value}</div>
+          </div>
+        ))}
+        <div className="min-w-0 bg-background p-4">
+          <div className="caption">Inbound Webhook URL</div>
+          <div className="mt-1.5 min-w-0 truncate font-mono text-[12px] text-foreground">/api/twilio/webhook</div>
+        </div>
+        <div className="min-w-0 bg-background p-4">
+          <div className="caption">Status Callback URL</div>
+          <div className="mt-1.5 min-w-0 truncate font-mono text-[12px] text-foreground">/api/twilio/status</div>
         </div>
       </div>
     </div>

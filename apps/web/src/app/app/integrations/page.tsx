@@ -5,6 +5,7 @@ import { getCurrentSession } from "@/lib/auth";
 import { listExtensionTokens } from "@/lib/extension-store";
 import { getInfrastructureStatus, type HealthTone } from "@/lib/infrastructure-status";
 import { listMetaOAuthConnections } from "@/lib/meta-oauth-store";
+import { getTwilioIntegrationStatus } from "@/lib/twilio-transport";
 
 export const dynamic = "force-dynamic";
 
@@ -30,10 +31,11 @@ function configured(...values: Array<string | undefined>) {
 
 export default async function IntegrationsPage() {
   const session = await getCurrentSession();
-  const [metaConnections, extensionTokens, infrastructure] = await Promise.all([
+  const [metaConnections, extensionTokens, infrastructure, twilio] = await Promise.all([
     session ? listMetaOAuthConnections(session.tenantId, session.id) : [],
     session ? listExtensionTokens(session.tenantId, session.id) : [],
-    getInfrastructureStatus()
+    getInfrastructureStatus(),
+    getTwilioIntegrationStatus()
   ]);
   const latestMeta = metaConnections[0];
   const openRouter = infrastructure.services.find((service) => service.key === "openrouter");
@@ -44,7 +46,6 @@ export default async function IntegrationsPage() {
   const openRouterConfig = providerConfigs.get("openrouter");
   const emailConfig = providerConfigs.get("email");
   const n8nHref = infrastructure.automation.dashboardUrl || "/app/settings";
-  const whatsappConnected = latestMeta?.channels.whatsapp.status === "connected";
   const emailConfigured = configured(process.env.SMTP_HOST, process.env.EMAIL_SERVER, process.env.RESEND_API_KEY, process.env.POSTMARK_SERVER_TOKEN);
 
   const items: IntegrationItem[] = [
@@ -59,14 +60,11 @@ export default async function IntegrationsPage() {
       externalHref: metaConfig?.managedByN8n ? n8nHref : undefined
     },
     {
-      name: "WhatsApp Business API",
-      desc: "Inbound messages are stored by Leadsy; approved reply/follow-up provider config is managed in n8n.",
-      status: whatsappConfig?.managedByN8n ? "Managed in n8n" : whatsappConnected ? "Connected" : "Needs config",
-      scope: whatsappConfig?.managedByN8n
-        ? `${whatsappConfig.workflowCount} workflows use n8n WhatsApp config`
-        : latestMeta?.phoneNumberId || latestMeta?.whatsappBusinessAccountId || "Add WhatsApp assets, then configure automation in n8n",
-      href: "/app/connect",
-      externalHref: whatsappConfig?.managedByN8n ? n8nHref : undefined
+      name: "Twilio WhatsApp",
+      desc: "Primary WhatsApp transport. Leadsy owns inbound storage, outbound sends, and delivery callbacks.",
+      status: twilio.connected ? "Connected" : "Needs config",
+      scope: twilio.whatsappNumber || latestMeta?.phoneNumberId || latestMeta?.whatsappBusinessAccountId || whatsappConfig?.detail || "Add Twilio WhatsApp env config",
+      href: "/app/settings?section=twilio"
     },
     {
       name: "OpenRouter",
