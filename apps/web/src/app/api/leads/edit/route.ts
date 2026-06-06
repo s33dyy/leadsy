@@ -66,7 +66,13 @@ export async function POST(request: NextRequest) {
       need: String(form.get("qualificationNeed") ?? "").trim() || undefined,
       teamOrQueryVolume: String(form.get("qualificationVolume") ?? "").trim() || undefined,
       budget: String(form.get("qualificationBudget") ?? "").trim() || undefined,
-      timeline: String(form.get("qualificationTimeline") ?? "").trim() || undefined
+      timeline: String(form.get("qualificationTimeline") ?? "").trim() || undefined,
+      authority: String(form.get("qualificationAuthority") ?? "").trim() || undefined,
+      location: String(form.get("qualificationLocation") ?? "").trim() || undefined,
+      serviceInterest: String(form.get("qualificationServiceInterest") ?? "").trim() || undefined,
+      intent: String(form.get("qualificationIntent") ?? "").trim() || undefined,
+      risk: String(form.get("qualificationRisk") ?? "").trim() || undefined,
+      recommendedAction: String(form.get("qualificationRecommendedAction") ?? "").trim() || undefined
     }
   });
 

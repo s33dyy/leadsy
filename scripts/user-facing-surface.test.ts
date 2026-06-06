@@ -207,9 +207,16 @@ async function main() {
   for (const actionField of ["Open Tasks", "Due Date", "AI Generated", "Human Generated", "Follow-up Status", "Pending", "Scheduled", "Completed", "Overdue", "Recent Activity", "Assignments", "Status Changes", "Qualification Updates", "Conversation Events"]) {
     assert(leadsPage.includes(actionField), `Phase 3B action workspace should expose ${actionField}`);
   }
-  for (const tabLabel of ["Overview", "Conversation", "Tasks", "Notes", "Timeline"]) {
+  for (const tabLabel of ["Overview", "Conversation", "Qualification", "Tasks", "Notes", "Timeline"]) {
     assert(leadsPage.includes(`label: "${tabLabel}"`), `Phase 3B tabs should include ${tabLabel}`);
   }
+  assert(leadsPage.includes("Qualification Summary Card"), "Phase 4 should add a qualification summary card inside Lead Detail");
+  assert(leadsPage.includes("Score Explanation"), "Phase 4 should explain qualification scores");
+  assert(leadsPage.includes("Missing Information Panel"), "Phase 4 should show missing qualification information");
+  assert(leadsPage.includes("Still Needed:"), "Phase 4 missing information panel should tell agents what to ask next");
+  assert(leadsPage.includes("Qualification History"), "Phase 4 should show qualification history inside existing lead timeline/detail systems");
+  assert(leadsPage.includes("Why score changed"), "Phase 4 qualification history should explain score movement");
+  assert(leadsPage.includes("One recommendation"), "Phase 4 recommended action engine should show one recommendation, not competing actions");
   assert(!leadsPage.includes('label: "Comms"'), "Phase 3B should rename Comms to Conversation without adding extra tabs");
   assert(leadsPage.includes("Relevant Notes"), "knowledge should be limited to relevant notes");
   assert(leadsPage.includes("Recent Insights"), "knowledge should be limited to recent insights");

@@ -33,7 +33,20 @@ export type LeadConversationKnowledgeStatus = "included" | "excluded";
 export type LeadCrmStatus = "new_lead" | "interested" | "needs_reply" | "human_review";
 export type LeadQualificationStage = "new" | "collecting" | "qualified" | "human_review";
 export type LeadProductPipelineStatus = "new" | "qualified" | "interested" | "contacted" | "won" | "lost";
-export type LeadQualificationFieldKey = "name" | "phone" | "company" | "need" | "teamOrQueryVolume" | "budget" | "timeline";
+export type LeadQualificationFieldKey =
+  | "name"
+  | "phone"
+  | "company"
+  | "need"
+  | "teamOrQueryVolume"
+  | "budget"
+  | "timeline"
+  | "authority"
+  | "location"
+  | "serviceInterest"
+  | "intent"
+  | "risk"
+  | "recommendedAction";
 export type LeadQualificationFields = Partial<Record<LeadQualificationFieldKey, string>>;
 
 export const leadProductPipelineStatuses: ReadonlyArray<{ id: LeadProductPipelineStatus; label: string }> = [
@@ -208,15 +221,18 @@ function normalizedMessageBody(body: string) {
   return body.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
-const qualificationFieldOrder: LeadQualificationFieldKey[] = ["name", "phone", "company", "need", "teamOrQueryVolume", "budget", "timeline"];
-const qualificationQuestions: Record<LeadQualificationFieldKey, string> = {
+const qualificationFieldOrder: LeadQualificationFieldKey[] = ["name", "phone", "company", "need", "teamOrQueryVolume", "budget", "timeline", "authority", "location", "serviceInterest"];
+const qualificationQuestions: Partial<Record<LeadQualificationFieldKey, string>> = {
   name: "Ask for the buyer's name before continuing qualification.",
   phone: "Confirm the preferred phone number for follow-up.",
   company: "Ask for the business or company name.",
   need: "Ask what they want to achieve with Leadsy or WhatsApp automation.",
   teamOrQueryVolume: "Ask how many queries, leads, or messages they handle each day.",
   budget: "Ask for budget range if the conversation is warm enough.",
-  timeline: "Ask when they want to start or book the next conversation."
+  timeline: "Ask when they want to start or book the next conversation.",
+  authority: "Ask whether they are the decision maker or who else must approve.",
+  location: "Ask which location or market this lead is buying for.",
+  serviceInterest: "Ask which service or package they are evaluating."
 };
 const humanReviewPattern = /\b(fuck|shit|angry|refund|legal|lawyer|complaint|human|agent|manager|stop|unsubscribe)\b/i;
 
@@ -459,7 +475,13 @@ function inferQualificationFields(input: {
       /\b(\d+\s*(?:queries|messages|leads)\s+(?:per\s+day|daily))/i
     ]);
   fields.budget = fields.budget || valueAfterLabel(text, ["Budget", "Estimated budget"]) || firstMatch(text, [/\b(?:budget|price range)\s*(?:is|:)?\s*([₹$]?\s*[\d,]+(?:\s*(?:inr|rs|usd))?)/i]);
-  fields.timeline = fields.timeline || valueAfterLabel(text, ["Timeline", "Start date"]) || firstMatch(text, [/\b(this week|next week|tomorrow|today|next month|as soon as possible)\b/i]);
+  fields.timeline = fields.timeline || valueAfterLabel(text, ["Timeline", "Start date"]) || firstMatch(text, [/\b(this week|next week|tomorrow|today|next month|as soon as possible|\d+\s*days?)\b/i]);
+  fields.authority =
+    fields.authority ||
+    valueAfterLabel(text, ["Authority", "Decision maker", "Approver"]) ||
+    firstMatch(text, [/\b(i am (?:the )?(?:owner|founder|decision maker|approver))\b/i, /\b((?:owner|founder|manager|director)\s+will\s+approve)\b/i]);
+  fields.location = fields.location || valueAfterLabel(text, ["Location", "City", "Market"]) || firstMatch(text, [/\bin\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)(?:\s|$|[.,!?])/]);
+  fields.serviceInterest = fields.serviceInterest || valueAfterLabel(text, ["Service Interest", "Service", "Package", "Plan"]) || fields.need;
 
   return Object.fromEntries(Object.entries(fields).filter(([, value]) => value?.trim())) as LeadQualificationFields;
 }
@@ -518,7 +540,7 @@ function qualificationDecisionForLead(input: {
       fields,
       crmStatus: "needs_reply" as const,
       qualificationStage: "collecting" as const,
-      nextAction: missing ? qualificationQuestions[missing] : "Reply and continue qualifying this lead."
+      nextAction: missing ? qualificationQuestions[missing] ?? "Reply and continue qualifying this lead." : "Reply and continue qualifying this lead."
     };
   }
 
@@ -526,7 +548,7 @@ function qualificationDecisionForLead(input: {
     fields,
     crmStatus: "new_lead" as const,
     qualificationStage: Object.keys(fields).length ? ("collecting" as const) : ("new" as const),
-    nextAction: missing ? qualificationQuestions[missing] : "Review this lead and choose the next action."
+    nextAction: missing ? qualificationQuestions[missing] ?? "Review this lead and choose the next action." : "Review this lead and choose the next action."
   };
 }
 

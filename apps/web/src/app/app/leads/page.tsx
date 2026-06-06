@@ -39,6 +39,12 @@ import {
   type LeadKnowledgeMessage,
   type LeadKnowledgeRecord
 } from "@/lib/lead-knowledge-store";
+import {
+  buildQualificationHistory,
+  buildQualificationSummary,
+  notYetCollectedLabel,
+  qualificationFieldLabels
+} from "@/lib/qualification-engine";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +53,7 @@ type LeadsPageProps = {
 };
 
 type ViewFilter = "all" | "needs-reply" | "active" | "meta" | "extension" | "excluded";
-type LeadWorkspaceTab = "overview" | "conversation" | "tasks" | "notes" | "timeline";
+type LeadWorkspaceTab = "overview" | "conversation" | "qualification" | "tasks" | "notes" | "timeline";
 type CommChannelFilter = "all" | "whatsapp" | "instagram" | "facebook" | "email" | "call" | "browser" | "manual";
 type LeadPanel = "crm" | "knowledge";
 
@@ -63,6 +69,7 @@ const viewFilters: Array<{ id: ViewFilter; label: string }> = [
 const workspaceTabs: Array<{ id: LeadWorkspaceTab; label: string }> = [
   { id: "overview", label: "Overview" },
   { id: "conversation", label: "Conversation" },
+  { id: "qualification", label: "Qualification" },
   { id: "tasks", label: "Tasks" },
   { id: "notes", label: "Notes" },
   { id: "timeline", label: "Timeline" }
@@ -709,6 +716,7 @@ function LeadRecordWorkspace({
 
           {activeTab === "overview" ? <LeadDetailsTab lead={lead} href={href} /> : null}
           {activeTab === "conversation" ? <LeadCommsTab lead={lead} activeView={activeView} query={query} commChannel={commChannel} /> : null}
+          {activeTab === "qualification" ? <LeadQualificationTab lead={lead} /> : null}
           {activeTab === "tasks" ? <LeadTasksTab lead={lead} tasks={tasks} crmFollowUps={crmFollowUps} taskEvents={scopedTaskEvents} /> : null}
           {activeTab === "notes" ? <LeadNotesTab lead={lead} /> : null}
           {activeTab === "timeline" ? <LeadTimelineTab lead={lead} tasks={tasks} crmFollowUps={crmFollowUps} taskEvents={scopedTaskEvents} /> : null}
@@ -723,35 +731,28 @@ function LeadRecordWorkspace({
 }
 
 function notYetCollected(value?: string) {
-  return value?.trim() || "Not Yet Collected";
+  return value?.trim() || notYetCollectedLabel;
 }
 
 function qualificationScore(lead: LeadKnowledgeRecord) {
-  const fields = [
-    lead.qualificationFields.budget,
-    lead.qualificationFields.timeline,
-    lead.qualificationFields.need,
-    lead.qualificationFields.company,
-    lead.qualificationFields.teamOrQueryVolume,
-    lead.contact.phone || lead.contact.email
-  ];
-  const collected = fields.filter((value) => value?.trim()).length;
-  return `${Math.round((collected / fields.length) * 100)}% collected`;
+  const score = buildQualificationSummary(lead).score;
+  return `${score.value} · ${score.label}`;
+}
+
+function qualificationScoreReasons(lead: LeadKnowledgeRecord) {
+  return buildQualificationSummary(lead).score.explanation;
 }
 
 function leadRisk(lead: LeadKnowledgeRecord) {
-  if (lead.qualificationStage === "human_review") return "Human review required before next reply.";
-  if (!lead.qualificationFields.budget) return "Budget not collected yet.";
-  if (!lead.qualificationFields.timeline) return "Timeline not collected yet.";
-  if (needsReply(lead)) return "Lead is waiting for a response.";
-  return "No major conversion risk recorded.";
+  return buildQualificationSummary(lead).fields.risk.displayValue;
 }
 
 function leadIntent(lead: LeadKnowledgeRecord) {
-  if (lead.qualificationStage === "qualified") return "Qualified buying intent";
-  if (needsReply(lead)) return "Active inbound intent";
-  if (lead.qualificationFields.need) return "Discovery intent";
-  return "Not Yet Collected";
+  return buildQualificationSummary(lead).fields.intent.displayValue;
+}
+
+function recommendedQualificationAction(lead: LeadKnowledgeRecord) {
+  return buildQualificationSummary(lead).recommendedAction;
 }
 
 function participantForMessage(message: LeadKnowledgeMessage) {
@@ -818,16 +819,17 @@ function LeadContextColumn({ lead, crmFollowUps }: { lead: LeadKnowledgeRecord; 
 }
 
 function QualificationSnapshot({ lead }: { lead: LeadKnowledgeRecord }) {
+  const summary = buildQualificationSummary(lead);
   return (
     <section className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
       <div className="text-sm font-semibold text-white">Qualification Snapshot</div>
       <div className="mt-3 grid gap-2">
-        <DetailLine label="Budget" value={notYetCollected(lead.qualificationFields.budget)} />
-        <DetailLine label="Timeline" value={notYetCollected(lead.qualificationFields.timeline)} />
-        <DetailLine label="Decision Maker" value={notYetCollected(lead.qualificationFields.name)} />
+        <DetailLine label="Budget" value={summary.fields.budget.displayValue} />
+        <DetailLine label="Timeline" value={summary.fields.timeline.displayValue} />
+        <DetailLine label="Decision Maker" value={summary.fields.authority.displayValue} />
         <DetailLine label="Team Size" value={notYetCollected(lead.qualificationFields.teamOrQueryVolume)} />
-        <DetailLine label="Location" value="Not Yet Collected" />
-        <DetailLine label="Service Interest" value={notYetCollected(lead.qualificationFields.need)} />
+        <DetailLine label="Location" value={summary.fields.location.displayValue} />
+        <DetailLine label="Service Interest" value={summary.fields.serviceInterest.displayValue} />
         <DetailLine label="Qualification Score" value={qualificationScore(lead)} />
       </div>
     </section>
@@ -850,6 +852,8 @@ function KnowledgeSupportCard({ lead }: { lead: LeadKnowledgeRecord }) {
 
 function FifteenSecondLeadBrief({ lead, crmFollowUps }: { lead: LeadKnowledgeRecord; crmFollowUps: CrmFollowUpTask[] }) {
   const qualificationSummary = lead.summary || lead.qualificationFields.need || "Qualification not captured yet.";
+  const score = buildQualificationSummary(lead).score;
+  const recommendation = recommendedQualificationAction(lead);
   return (
     <section className="rounded-[8px] border border-teal-300/25 bg-teal-300/[0.08] p-4" aria-label="15-second lead brief">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -869,9 +873,98 @@ function FifteenSecondLeadBrief({ lead, crmFollowUps }: { lead: LeadKnowledgeRec
         <DetailLine label="Timeline" value={notYetCollected(lead.qualificationFields.timeline)} />
         <DetailLine label="Intent" value={leadIntent(lead)} />
         <DetailLine label="Risk" value={leadRisk(lead)} />
-        <DetailLine label="Recommended Action" value={nextAction(lead)} />
+        <DetailLine label="Qualification Score" value={`${score.value} · ${score.label}`} />
+        <DetailLine label="Recommended Action" value={`${recommendation.action} — ${recommendation.why}`} />
       </div>
     </section>
+  );
+}
+
+function LeadQualificationTab({ lead }: { lead: LeadKnowledgeRecord }) {
+  const summary = buildQualificationSummary(lead);
+  const scoreReasons = qualificationScoreReasons(lead);
+  const history = buildQualificationHistory(lead);
+  return (
+    <div className="space-y-4">
+      <section className="rounded-[8px] border border-teal-300/25 bg-teal-300/[0.08] p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold text-white">Qualification Summary Card</div>
+            <p className="mt-2 text-sm leading-6 text-[var(--muted-2)]">Decision-support only. AI assists; humans decide.</p>
+          </div>
+          <Badge tone="teal">{summary.score.value} · {summary.score.label}</Badge>
+        </div>
+        <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+          <DetailLine label="Need" value={summary.fields.need.displayValue} />
+          <DetailLine label="Budget" value={summary.fields.budget.displayValue} />
+          <DetailLine label="Timeline" value={summary.fields.timeline.displayValue} />
+          <DetailLine label="Intent" value={summary.fields.intent.displayValue} />
+          <DetailLine label="Risk" value={summary.fields.risk.displayValue} />
+          <DetailLine label="Qualification Score" value={`${summary.score.value} · ${summary.score.label}`} />
+          <DetailLine label="Recommended Action" value={summary.recommendedAction.action} />
+        </div>
+        <div className="mt-4 rounded-[8px] border border-[var(--line)] bg-black/20 p-3">
+          <div className="mono text-[10px] uppercase text-[var(--muted)]">Why this action</div>
+          <p className="mt-2 text-sm leading-6 text-white">{summary.recommendedAction.why}</p>
+        </div>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-2">
+        <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
+          <div className="text-sm font-semibold text-white">Score Explanation</div>
+          <div className="mt-3 grid gap-3">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Reasons</div>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-6 text-[var(--muted-2)]">
+                {scoreReasons.reasons.map((reason) => <li key={reason}>{reason}</li>)}
+              </ul>
+            </div>
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Missing</div>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-6 text-[var(--muted-2)]">
+                {scoreReasons.missing.map((item) => <li key={item}>{item}</li>)}
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
+          <div className="text-sm font-semibold text-white">Missing Information Panel</div>
+          <p className="mt-2 text-xs leading-5 text-[var(--muted)]">Still Needed:</p>
+          <div className="mt-3 grid gap-2">
+            {summary.missingFields.length ? summary.missingFields.map((field) => (
+              <div key={field.key} className="flex items-center gap-2 rounded-[6px] border border-[var(--line)] bg-white/[0.03] px-3 py-2 text-sm text-white">
+                <span aria-hidden="true">□</span>
+                <span>{field.label}</span>
+              </div>
+            )) : <p className="text-sm leading-6 text-[var(--muted-2)]">No required qualification fields are missing.</p>}
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
+        <div className="text-sm font-semibold text-white">Qualification History</div>
+        <div className="mt-3 grid gap-2">
+          {history.map((event) => (
+            <div key={`${event.when}:${event.whatChanged}`} className="rounded-[6px] border border-[var(--line)] bg-white/[0.03] p-3">
+              <div className="font-mono text-[10.5px] text-[var(--muted)]">When: {shortDate(event.when)}</div>
+              <div className="mt-2 text-sm text-white">What changed: {event.whatChanged}</div>
+              <div className="mt-1 text-xs leading-5 text-[var(--muted-2)]">Why score changed: {event.whyScoreChanged}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
+        <div className="text-sm font-semibold text-white">All Qualification Fields</div>
+        <div className="mt-3 grid gap-2 md:grid-cols-2">
+          {qualificationFieldLabels.map((field) => {
+            const item = summary.fields[field.key];
+            return <DetailLine key={field.key} label={`${field.label} (${item.state})`} value={item.displayValue} />;
+          })}
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -949,6 +1042,12 @@ function LeadDetailsTab({ lead, href }: { lead: LeadKnowledgeRecord; href: strin
                 <LeadInput name="qualificationVolume" label="Team / query volume" value={lead.qualificationFields.teamOrQueryVolume} />
                 <LeadInput name="qualificationBudget" label="Budget" value={lead.qualificationFields.budget} />
                 <LeadInput name="qualificationTimeline" label="Timeline" value={lead.qualificationFields.timeline} />
+                <LeadInput name="qualificationAuthority" label="Authority" value={lead.qualificationFields.authority} />
+                <LeadInput name="qualificationLocation" label="Location" value={lead.qualificationFields.location} />
+                <LeadInput name="qualificationServiceInterest" label="Service Interest" value={lead.qualificationFields.serviceInterest} />
+                <LeadInput name="qualificationIntent" label="Intent" value={lead.qualificationFields.intent} />
+                <LeadInput name="qualificationRisk" label="Risk" value={lead.qualificationFields.risk} />
+                <LeadInput name="qualificationRecommendedAction" label="Recommended Action" value={lead.qualificationFields.recommendedAction} />
               </div>
             </div>
             <label className="grid gap-2 text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
@@ -1473,17 +1572,18 @@ function LeadActionPanel({
   crmFollowUps: CrmFollowUpTask[];
   taskEvents: ExtensionTaskEvent[];
 }) {
+  const recommendation = recommendedQualificationAction(lead);
   return (
     <div className="space-y-4">
       <section className="rounded-[8px] border border-teal-300/25 bg-teal-300/[0.08] p-4">
         <div className="text-sm font-semibold text-white">Next Action</div>
-        <p className="mt-2 text-sm leading-6 text-white">{nextAction(lead)}</p>
+        <p className="mt-2 text-sm leading-6 text-white">{recommendation.action}</p>
+        <p className="mt-2 text-xs leading-5 text-[var(--muted-2)]">Why: {recommendation.why}</p>
         <div className="mt-3 flex flex-wrap gap-2">
-          {href ? <a href={href} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-teal-300/30 bg-teal-300/[0.12] px-3 text-xs font-medium text-teal-100">Send Follow-Up</a> : null}
-          <a href={`tel:${(lead.contact.phone || lead.contact.waId || "").replace(/\D/g, "")}`} className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-[var(--line)] bg-white/[0.03] px-3 text-xs font-medium text-[var(--muted-2)]">Call Lead</a>
-          <Badge tone="amber">Request Budget</Badge>
-          <Badge tone="sky">Schedule Demo</Badge>
-          {lead.qualificationStage === "human_review" ? <Badge tone="amber">Escalate</Badge> : null}
+          {href ? <a href={href} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-teal-300/30 bg-teal-300/[0.12] px-3 text-xs font-medium text-teal-100">Open channel</a> : null}
+          {(lead.contact.phone || lead.contact.waId) ? <a href={`tel:${(lead.contact.phone || lead.contact.waId || "").replace(/\D/g, "")}`} className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-[var(--line)] bg-white/[0.03] px-3 text-xs font-medium text-[var(--muted-2)]">Call Lead</a> : null}
+          <Badge tone="amber">One recommendation</Badge>
+          <Badge tone="teal">Human decides</Badge>
         </div>
       </section>
       <section className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
