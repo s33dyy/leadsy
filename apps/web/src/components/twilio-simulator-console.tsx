@@ -27,12 +27,12 @@ type TwilioSimulatorConsoleProps = {
 };
 
 const defaultPricing: WhatsAppPricingEstimateInput = {
-  workspaceCount: 10,
-  inboundMessages: 1000,
-  outboundFreeformMessages: 800,
-  utilityTemplates: 250,
-  marketingTemplates: 100,
-  authenticationTemplates: 50,
+  workspaceCount: 1,
+  inboundMessages: 100,
+  outboundFreeformMessages: 100,
+  utilityTemplates: 0,
+  marketingTemplates: 0,
+  authenticationTemplates: 0,
   phoneNumberMonthlyUsd: 1.15,
   metaUtilityTemplateFeeUsd: 0,
   metaMarketingTemplateFeeUsd: 0,
@@ -199,6 +199,9 @@ export function TwilioSimulatorConsole({ sender, recentEvents }: TwilioSimulator
             <Calculator className="h-4 w-4 text-primary" />
             <h2 className="text-lg font-semibold">Pricing estimator</h2>
           </div>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+            The default below is a one-workspace starter estimate for real WhatsApp delivery. Simulator mode stays free because it only stores messages inside Leadsy.
+          </p>
           <div className="mt-4 grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {([
@@ -228,7 +231,14 @@ export function TwilioSimulatorConsole({ sender, recentEvents }: TwilioSimulator
               ))}
             </div>
             <div className="rounded-[8px] border border-border bg-background p-4">
-              <div className="caption">Monthly estimate</div>
+              <div className="rounded-[6px] border border-primary/30 bg-primary/10 p-3">
+                <div className="caption">Current simulator mode</div>
+                <div className="mt-2 flex items-end justify-between gap-3">
+                  <span className="text-sm text-muted-foreground">No external WhatsApp delivery</span>
+                  <span className="font-mono text-xl font-semibold">{money(estimate.simulatorMonthlyUsd, "USD")} / {money(0, "INR")}</span>
+                </div>
+              </div>
+              <div className="caption mt-4">Real Twilio starter estimate</div>
               <div className="mt-3 space-y-3 text-sm">
                 <div className="flex justify-between gap-3">
                   <span className="text-muted-foreground">Twilio message fee</span>

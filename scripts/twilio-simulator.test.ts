@@ -161,6 +161,11 @@ async function main() {
     assert.match(simulatorConsoleSource, /Create inbound lead message/);
     assert.match(simulatorConsoleSource, /Simulation mode: no external WhatsApp delivery/);
     assert.match(simulatorConsoleSource, /Pricing estimator/);
+    assert.match(simulatorConsoleSource, /workspaceCount: 1,/, "Pricing defaults should start at one workspace, not a scaled agency scenario");
+    assert.match(simulatorConsoleSource, /inboundMessages: 100,/, "Pricing defaults should use a modest starter inbound volume");
+    assert.match(simulatorConsoleSource, /outboundFreeformMessages: 100,/, "Pricing defaults should use a modest starter outbound volume");
+    assert.match(simulatorConsoleSource, /utilityTemplates: 0,/, "Pricing defaults should avoid paid template volume until the user opts in");
+    assert.match(simulatorConsoleSource, /Current simulator mode/, "Simulator page should lead with the zero-cost simulator baseline");
 
     const aliasSource = await readFile(join(process.cwd(), "apps/web/src/app/simulate-twillio/page.tsx"), "utf8");
     assert.match(aliasSource, /redirect\("\/simulate-twilio"\)/);
