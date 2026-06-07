@@ -35,7 +35,7 @@ async function main() {
 
     let [lead] = await listLeadKnowledgeRecords(scope);
     assert.equal(lead.leadSource, "Twilio WhatsApp", "Twilio inbound should be exposed as CRM lead source");
-    assert.equal(lead.assigneeName, "WhatsApp sales owner", "WhatsApp default routing should assign the lead");
+    assert.equal(lead.assigneeName, "Qualification AI", "new WhatsApp leads should start with the qualification agent");
     assert.equal(lead.crmStatus, "needs_reply", "first inbound should require a reply");
     assert.equal(lead.qualificationStage, "collecting", "first inbound should start qualification collection");
     assert.equal(lead.qualificationFields.need, "WhatsApp CRM automation");
@@ -62,8 +62,7 @@ async function main() {
     assert.equal(lead.qualificationFields.budget, "50000 INR");
 
     const rules = await listCrmAssignmentRules(scope);
-    assert.equal(rules.some((rule) => rule.sourceIncludes === "WhatsApp" && rule.assigneeName === "WhatsApp sales owner"), true);
-    assert.equal(rules.some((rule) => rule.sourceIncludes === "Google" && rule.assigneeName === "Website sales owner"), true);
+    assert.equal(rules.length, 0, "Leadsy should not install legacy source-based owner defaults");
 
     const followUp = await createCrmFollowUpTask({
       ...scope,
@@ -71,7 +70,7 @@ async function main() {
       topic: "Confirm demo slot",
       description: "Call InnoVibe and confirm the WhatsApp CRM demo time.",
       priority: "high",
-      assigneeName: "WhatsApp sales owner",
+      assigneeName: lead.assigneeName,
       dueAt: "2026-06-06T10:00:00.000Z"
     });
     assert.equal(followUp.type, "follow_up");
@@ -92,7 +91,7 @@ async function main() {
 
     const health = await summarizeCrmHealth(scope);
     assert.equal(health.followUpTasks, 1);
-    assert.equal(health.assigneeWorkload["WhatsApp sales owner"], 1);
+    assert.equal(health.assigneeWorkload["Qualification AI"], 1);
     assert.equal(health.statusPipeline.human_review, 1);
   } finally {
     await rm(tempDir, { recursive: true, force: true });

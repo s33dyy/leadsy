@@ -3,12 +3,15 @@ import type { ReactNode } from "react";
 import { Badge } from "@/components/ui";
 import { TeamspaceConsole } from "@/components/teamspace-console";
 import { getCurrentSession } from "@/lib/auth";
-import { listTeamMembers, summarizeTeamspaceHealth } from "@/lib/teamspace-store";
+import { ensureDefaultQualificationAgent, listTeamMembers, summarizeTeamspaceHealth } from "@/lib/teamspace-store";
 
 export const dynamic = "force-dynamic";
 
 export default async function TeamPage() {
   const session = await getCurrentSession();
+  if (session) {
+    await ensureDefaultQualificationAgent({ tenantId: session.tenantId, ownerId: session.id });
+  }
   const members = session ? await listTeamMembers({ tenantId: session.tenantId, ownerId: session.id }) : [];
   const health = await summarizeTeamspaceHealth();
 

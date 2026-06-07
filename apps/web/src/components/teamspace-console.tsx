@@ -67,7 +67,7 @@ export function TeamspaceConsole({ initialMembers }: TeamspaceConsoleProps) {
         return;
       }
       setMembers((current) => [...current, payload.member!]);
-      setNotice(`${payload.member.name} added to Teamspace.`);
+      setNotice(`${payload.member.name} added to Teamspace with ${payload.member.senderMode === "workspace" ? "the workspace sender" : payload.member.simulatorPhoneNumber ?? "a simulator sender"}.`);
     } finally {
       setPendingAction("");
     }
@@ -105,11 +105,11 @@ export function TeamspaceConsole({ initialMembers }: TeamspaceConsoleProps) {
       });
       const payload = (await response.json().catch(() => ({}))) as { error?: string };
       if (!response.ok) {
-        setNotice(payload.error || "Could not provision simulator sender.");
+        setNotice(payload.error || "Could not repair sender.");
         return;
       }
       await refreshMembers();
-      setNotice(`${member.name} now has a simulator sender identity.`);
+      setNotice(`${member.name} sender identity repaired.`);
     } finally {
       setPendingAction("");
     }
@@ -202,8 +202,17 @@ export function TeamspaceConsole({ initialMembers }: TeamspaceConsoleProps) {
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Badge tone={badgeToneForMember(member)}>{member.autoReplyEnabled ? "auto-reply on" : "auto-reply off"}</Badge>
-                    <Badge tone={member.senderMode === "simulator" ? "teal" : "neutral"}>{member.senderMode === "simulator" ? "simulator sender" : "no sender"}</Badge>
+                    <Badge tone={member.senderMode === "workspace" || member.senderMode === "simulator" ? "teal" : "neutral"}>
+                      {member.senderMode === "workspace" ? "workspace sender" : member.senderMode === "simulator" ? "simulator sender" : "no sender"}
+                    </Badge>
                   </div>
+                </div>
+                <div className="mt-2 font-mono text-[11px] text-muted-foreground">
+                  {member.senderMode === "workspace"
+                    ? member.workspaceSenderLabel || "Account owner WhatsApp"
+                    : member.simulatorPhoneNumber
+                      ? `${member.simulatorPhoneNumber} · ${member.simulatorSenderHandle}`
+                      : "No sender identity"}
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {member.pipelineStages.map((stage) => (
@@ -224,15 +233,17 @@ export function TeamspaceConsole({ initialMembers }: TeamspaceConsoleProps) {
                       Toggle auto-reply
                     </button>
                   ) : null}
-                  <button
-                    type="button"
-                    onClick={() => provisionSender(member)}
-                    disabled={pendingAction === `sender:${member.id}`}
-                    className="inline-flex h-9 items-center gap-2 rounded-[6px] border border-border px-3 text-sm text-foreground disabled:opacity-60"
-                  >
-                    {pendingAction === `sender:${member.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Radio className="h-4 w-4" />}
-                    Provision simulator sender
-                  </button>
+                  {member.senderMode === "none" ? (
+                    <button
+                      type="button"
+                      onClick={() => provisionSender(member)}
+                      disabled={pendingAction === `sender:${member.id}`}
+                      className="inline-flex h-9 items-center gap-2 rounded-[6px] border border-border px-3 text-sm text-foreground disabled:opacity-60"
+                    >
+                      {pendingAction === `sender:${member.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Radio className="h-4 w-4" />}
+                      Repair sender
+                    </button>
+                  ) : null}
                 </div>
               </div>
             ))

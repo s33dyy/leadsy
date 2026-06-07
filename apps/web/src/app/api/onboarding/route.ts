@@ -3,6 +3,7 @@ import { z } from "zod";
 import { audit, rateLimit } from "@leadsy/security";
 import { requireApiSession } from "@/lib/api-auth";
 import { completeUserOnboarding, saveUserOnboarding } from "@/lib/auth-store";
+import { ensureDefaultQualificationAgent } from "@/lib/teamspace-store";
 import { ensureWorkspaceWhatsAppSender, provisionLeadsyAssignedWhatsAppSender } from "@/lib/workspace-whatsapp-sender-store";
 
 export const runtime = "nodejs";
@@ -32,6 +33,12 @@ export async function POST(request: NextRequest) {
 
   const workspaceConfiguration = input.profile.workspaceConfiguration;
   let sender;
+  if (input.complete) {
+    await ensureDefaultQualificationAgent({
+      tenantId: auth.session.tenantId,
+      ownerId: auth.session.id
+    });
+  }
   if (workspaceConfiguration && typeof workspaceConfiguration === "object" && !Array.isArray(workspaceConfiguration)) {
     const config = workspaceConfiguration as Record<string, unknown>;
     const businessName = typeof config.businessName === "string" ? config.businessName : undefined;

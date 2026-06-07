@@ -7,7 +7,7 @@ const teamspaceFile = join(leadsyDataDir, "teamspace.json");
 export type TeamMemberType = "human" | "ai_agent_full" | "ai_agent_assisted";
 export type TeamMemberRole = "owner" | "admin" | "manager" | "agent";
 export type TeamMemberStatus = "active" | "paused" | "invited";
-export type TeamMemberSenderMode = "none" | "simulator" | "twilio";
+export type TeamMemberSenderMode = "none" | "simulator" | "twilio" | "workspace";
 export type TeamThreadAuthorType = "human" | "ai_agent" | "system";
 export type TeamThreadEventType =
   | "internal_note"
@@ -32,6 +32,8 @@ export type TeamMember = {
   escalationKeywords: string[];
   senderMode: TeamMemberSenderMode;
   simulatorSenderHandle?: string;
+  simulatorPhoneNumber?: string;
+  workspaceSenderLabel?: string;
   workload: {
     openLeads: number;
     openTasks: number;
@@ -115,6 +117,9 @@ function uniqueStrings(values: string[] = []) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
+export const defaultQualificationAgentName = "Qualification AI";
+const defaultQualificationStages = ["new", "collecting"];
+
 function scopeMatches(scope: Scope, item: Scope) {
   return item.tenantId === scope.tenantId && item.ownerId === scope.ownerId;
 }
@@ -183,10 +188,87 @@ function createHumanAuthUserId(input: CreateTeamMemberInput) {
   return `usr_${Buffer.from(basis).toString("base64url").slice(0, 12)}`;
 }
 
+function isDefaultQualificationAgent(member: Pick<TeamMember, "type" | "name">) {
+  return member.type === "ai_agent_full" && member.name.trim().toLowerCase() === defaultQualificationAgentName.toLowerCase();
+}
+
+function randomDigits(length: number) {
+  let digits = "";
+  while (digits.length < length) {
+    digits += crypto.randomUUID().replace(/\D/g, "");
+  }
+  return digits.slice(0, length);
+}
+
+function simulatorPhoneNumber() {
+  return `+1555${randomDigits(7)}`;
+}
+
+function simulatorSenderHandle(name: string) {
+  return `${name.trim() || "Team Member"} Simulator`;
+}
+
+function applyInitialSenderIdentity(member: TeamMember): TeamMember {
+  if (isDefaultQualificationAgent(member)) {
+    return {
+      ...member,
+      senderMode: "workspace",
+      simulatorSenderHandle: undefined,
+      simulatorPhoneNumber: undefined,
+      workspaceSenderLabel: "Account owner WhatsApp"
+    };
+  }
+
+  return {
+    ...member,
+    senderMode: "simulator",
+    simulatorSenderHandle: simulatorSenderHandle(member.name),
+    simulatorPhoneNumber: member.simulatorPhoneNumber ?? simulatorPhoneNumber(),
+    workspaceSenderLabel: undefined
+  };
+}
+
+function defaultQualificationAgent(scope: Scope, now: string, existing?: TeamMember): TeamMember {
+  return normalizeMember({
+    id: existing?.id ?? `tm_${crypto.randomUUID()}`,
+    tenantId: scope.tenantId,
+    ownerId: scope.ownerId,
+    type: "ai_agent_full",
+    name: defaultQualificationAgentName,
+    emailOrPhone: existing?.emailOrPhone,
+    authUserId: existing?.authUserId,
+    role: "agent",
+    status: "active",
+    pipelineStages: defaultQualificationStages,
+    behaviorInstructions: existing?.behaviorInstructions ?? "Qualify early-stage leads, keep replies concise, and stop after handoff.",
+    autoReplyEnabled: true,
+    escalationKeywords: uniqueStrings(existing?.escalationKeywords?.length ? existing.escalationKeywords : ["human", "manager", "refund", "legal", "stop"]),
+    senderMode: "workspace",
+    workspaceSenderLabel: "Account owner WhatsApp",
+    workload: existing?.workload ?? { openLeads: 0, openTasks: 0 },
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now
+  });
+}
+
 export async function createTeamMember(input: CreateTeamMemberInput) {
   return mutateState((state) => {
     const now = nowIso();
-    const member: TeamMember = {
+    if (isDefaultQualificationAgent({ type: input.type, name: input.name })) {
+      const existing = state.members.find((member) => scopeMatches(input, member) && isDefaultQualificationAgent(member));
+      const agent = defaultQualificationAgent(input, now, existing);
+      return {
+        state: {
+          ...state,
+          members: existing
+            ? state.members.map((member) => (member.id === existing.id ? agent : member))
+            : [...state.members, agent]
+        },
+        result: agent
+      };
+    }
+
+    const member: TeamMember = applyInitialSenderIdentity({
       id: `tm_${crypto.randomUUID()}`,
       tenantId: input.tenantId,
       ownerId: input.ownerId,
@@ -204,8 +286,25 @@ export async function createTeamMember(input: CreateTeamMemberInput) {
       workload: { openLeads: 0, openTasks: 0 },
       createdAt: now,
       updatedAt: now
-    };
+    });
     return { state: { ...state, members: [...state.members, member] }, result: member };
+  });
+}
+
+export async function ensureDefaultQualificationAgent(scope: Scope) {
+  return mutateState((state) => {
+    const now = nowIso();
+    const existing = state.members.find((member) => scopeMatches(scope, member) && isDefaultQualificationAgent(member));
+    const agent = defaultQualificationAgent(scope, now, existing);
+    return {
+      state: {
+        ...state,
+        members: existing
+          ? state.members.map((member) => (member.id === existing.id ? agent : member))
+          : [...state.members, agent]
+      },
+      result: agent
+    };
   });
 }
 
@@ -248,8 +347,7 @@ export async function getTeamMember(input: Scope & { memberId: string }) {
 }
 
 export async function findPrimaryQualificationAgent(scope: Scope) {
-  const members = await listTeamMembers(scope);
-  return members.find((member) => member.type === "ai_agent_full" && member.autoReplyEnabled && member.pipelineStages.some((stage) => stage === "new" || stage === "collecting")) ?? null;
+  return ensureDefaultQualificationAgent(scope);
 }
 
 export async function findPipelineOwner(scope: Scope, stage: string) {
@@ -266,11 +364,8 @@ export async function provisionTeamMemberSender(input: Scope & { memberId: strin
   return mutateState((state) => {
     const existing = state.members.find((member) => member.id === input.memberId && scopeMatches(input, member));
     if (!existing) throw new Error("Team member was not found.");
-    const simulatorSenderHandle = `${existing.name} Simulator`;
     const updated: TeamMember = {
-      ...existing,
-      senderMode: "simulator",
-      simulatorSenderHandle,
+      ...applyInitialSenderIdentity(existing),
       updatedAt: nowIso()
     };
     return {
@@ -282,8 +377,10 @@ export async function provisionTeamMemberSender(input: Scope & { memberId: strin
         member: updated,
         sender: {
           memberId: updated.id,
-          transportMode: "simulator" as const,
-          simulatorHandle: simulatorSenderHandle,
+          transportMode: updated.senderMode,
+          simulatorHandle: updated.simulatorSenderHandle,
+          simulatorPhoneNumber: updated.simulatorPhoneNumber,
+          workspaceSenderLabel: updated.workspaceSenderLabel,
           status: "approved" as const
         }
       }
