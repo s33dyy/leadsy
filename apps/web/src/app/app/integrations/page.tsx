@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 type IntegrationItem = {
   name: string;
   desc: string;
-  status: "Connected" | "Available" | "Needs config" | "Warning" | "Managed in n8n" | "Leadsy managed" | "Platform pending";
+  status: "Connected" | "Available" | "Needs config" | "Warning" | "Leadsy managed" | "Platform pending";
   scope?: string;
   href: string;
   externalHref?: string;
@@ -41,11 +41,9 @@ export default async function IntegrationsPage() {
   ]);
   const latestMeta = metaConnections[0];
   const openRouter = infrastructure.services.find((service) => service.key === "openrouter");
-  const n8n = infrastructure.services.find((service) => service.key === "n8n");
   const providerConfigs = new Map(infrastructure.providerConfigs.map((provider) => [provider.key, provider]));
   const whatsappConfig = providerConfigs.get("whatsapp");
   const emailConfig = providerConfigs.get("email");
-  const n8nHref = infrastructure.automation.dashboardUrl || "/app/settings";
   const emailConfigured = configured(process.env.SMTP_HOST, process.env.EMAIL_SERVER, process.env.RESEND_API_KEY, process.env.POSTMARK_SERVER_TOKEN);
 
   const items: IntegrationItem[] = [
@@ -65,7 +63,7 @@ export default async function IntegrationsPage() {
     },
     {
       name: "OpenRouter",
-      desc: "Model routing remains in Leadsy/Railway app configuration. n8n does not own research, qualification, drafting, or CRM decisions.",
+      desc: "Model routing remains in Leadsy/Railway app configuration for research, qualification, drafting, and CRM decisions.",
       status: openRouter?.status === "healthy" ? "Connected" : "Needs config",
       scope: openRouter?.detail,
       href: "/app/settings"
@@ -78,19 +76,11 @@ export default async function IntegrationsPage() {
       href: "/app/worker"
     },
     {
-      name: "n8n Automation",
-      desc: "One backend-agent workflow only for follow-up scheduling, reminder generation, task creation, and escalation rules.",
-      status: n8n?.status === "healthy" ? "Connected" : n8n?.status === "critical" ? "Warning" : "Needs config",
-      scope: `${infrastructure.automation.workflowCount} workflow - ${infrastructure.automation.detail}`,
-      href: "/app/settings"
-    },
-    {
       name: "Email",
-      desc: "Optional operator reminder and escalation notifications can be configured in n8n.",
-      status: emailConfig?.managedByN8n ? "Managed in n8n" : emailConfigured ? "Connected" : "Available",
-      scope: emailConfig?.managedByN8n ? `${emailConfig.workflowCount} workflows use n8n email config` : emailConfigured ? "Web fallback configured" : "Add email provider config in n8n",
-      href: "/app/settings",
-      externalHref: emailConfig?.managedByN8n ? n8nHref : undefined
+      desc: "Optional operator reminder and escalation notifications are configured on the Leadsy web service.",
+      status: emailConfigured ? "Connected" : "Available",
+      scope: emailConfig?.detail || (emailConfigured ? "Web service configured" : "Add SMTP, Resend, or Postmark config"),
+      href: "/app/settings"
     },
     {
       name: "Webhooks",
@@ -113,7 +103,7 @@ export default async function IntegrationsPage() {
             </p>
           </div>
           <Badge tone={serviceTone(infrastructure.automation.health)}>
-            n8n: {infrastructure.automation.health}
+            Automation: {infrastructure.automation.health}
           </Badge>
         </div>
 
@@ -130,7 +120,7 @@ export default async function IntegrationsPage() {
                     <div className="text-[11.5px] text-muted-foreground">{item.desc}</div>
                   </div>
                 </div>
-                {item.status === "Connected" || item.status === "Managed in n8n" ? (
+                {item.status === "Connected" ? (
                   <span className="inline-flex items-center gap-1 rounded-[3px] bg-primary/10 px-1.5 py-0.5 font-mono text-[10.5px] text-primary">
                     <Check className="h-3 w-3" /> {item.status}
                   </span>
@@ -146,7 +136,7 @@ export default async function IntegrationsPage() {
                   </Link>
                   {item.externalHref ? (
                     <a href={item.externalHref} className="inline-flex items-center gap-1 hover:text-foreground">
-                      n8n <ExternalLink className="h-3 w-3" />
+                      open <ExternalLink className="h-3 w-3" />
                     </a>
                   ) : null}
                 </div>

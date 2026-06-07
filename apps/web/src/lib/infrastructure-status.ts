@@ -1,11 +1,6 @@
 import "server-only";
 
-import {
-  automationWorkflowDefinitions,
-  n8nBackendLogicModules,
-  n8nProviderConfigByWorkflowKey,
-  n8nProviderConfigGroups
-} from "./automation-workflows";
+import { automationWorkflowDefinitions, type AutomationWorkflowKey } from "./automation-workflows";
 import { summarizeCrmHealth } from "./crm-store";
 import { summarizeExtensionHealth } from "./extension-store";
 import { summarizeLeadKnowledgeHealth } from "./lead-knowledge-store";
@@ -25,11 +20,6 @@ export type InfrastructureServiceStatus = {
 
 export type AutomationStatus = {
   configured: boolean;
-  publicUrl?: string;
-  internalUrl?: string;
-  dashboardUrl?: string;
-  backendAgentWorkflowId?: string;
-  backendAgentWorkflowUrl?: string;
   health: HealthTone;
   workflowCount: number;
   lastExecution?: string;
@@ -42,9 +32,9 @@ export type AutomationStatus = {
 export type ProviderConfigHubStatus = {
   key: string;
   label: string;
-  source: "n8n";
+  source: "leadsy";
   status: HealthTone;
-  managedByN8n: boolean;
+  managedByLeadsy: boolean;
   fieldCount: number;
   secretFieldCount: number;
   workflowCount: number;
@@ -54,7 +44,7 @@ export type ProviderConfigHubStatus = {
 export type BackendLogicHubStatus = {
   key: string;
   label: string;
-  owner: "n8n";
+  owner: "leadsy";
   editableFrom: string[];
   actionCount: number;
   guardrailCount: number;
@@ -74,102 +64,73 @@ export type AiCostWorkflowSummary = {
   failures: number;
 };
 
-function cleanUrl(value?: string) {
-  const clean = value?.trim().replace(/\/$/, "");
-  return clean || undefined;
-}
+const emailProviderFields = [
+  { key: "provider", label: "Email provider", env: "EMAIL_PROVIDER", secret: false },
+  { key: "smtpHost", label: "SMTP host", env: "SMTP_HOST", secret: false },
+  { key: "smtpUser", label: "SMTP user", env: "SMTP_USER", secret: false },
+  { key: "smtpPassword", label: "SMTP password", env: "SMTP_PASSWORD", secret: true },
+  { key: "resendApiKey", label: "Resend API key", env: "RESEND_API_KEY", secret: true },
+  { key: "postmarkServerToken", label: "Postmark server token", env: "POSTMARK_SERVER_TOKEN", secret: true }
+];
 
-function timeoutMs() {
-  const parsed = Number(process.env.N8N_HEALTH_TIMEOUT_MS);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 2500;
-}
+const workflowActionCounts: Record<AutomationWorkflowKey, number> = {
+  "follow-up-scheduled": 2,
+  "reminder-generated": 2,
+  "task-created": 2,
+  "escalation-triggered": 2
+};
 
-function backendAgentWorkflowId() {
-  return process.env.N8N_BACKEND_AGENT_WORKFLOW_ID?.trim() || "urS7zJDAyavE5PSJ";
-}
-
-async function probeN8nHealth(baseUrl?: string): Promise<{ health: HealthTone; latencyMs?: number; detail: string }> {
-  if (!baseUrl) {
-    return { health: "unknown", detail: "n8n URL is not configured." };
-  }
-
-  const startedAt = Date.now();
-  try {
-    const response = await fetch(`${baseUrl}/healthz`, {
-      cache: "no-store",
-      signal: AbortSignal.timeout(timeoutMs())
-    });
-    return {
-      health: response.ok ? "healthy" : "warning",
-      latencyMs: Date.now() - startedAt,
-      detail: response.ok ? "n8n health endpoint responded." : `n8n health returned HTTP ${response.status}.`
-    };
-  } catch (error) {
-    return {
-      health: "critical",
-      latencyMs: Date.now() - startedAt,
-      detail: error instanceof Error ? error.message : "n8n health check failed."
-    };
-  }
-}
+const workflowGuardrailCounts: Record<AutomationWorkflowKey, number> = {
+  "follow-up-scheduled": 2,
+  "reminder-generated": 2,
+  "task-created": 3,
+  "escalation-triggered": 2
+};
 
 export async function getAutomationStatus(): Promise<AutomationStatus> {
-  const publicUrl = cleanUrl(process.env.N8N_PUBLIC_URL);
-  const internalUrl = cleanUrl(process.env.N8N_INTERNAL_URL) ?? publicUrl;
-  const configured = Boolean(internalUrl || publicUrl);
-  const probe = await probeN8nHealth(internalUrl);
-  const workflowId = backendAgentWorkflowId();
-
   return {
-    configured,
-    publicUrl,
-    internalUrl,
-    dashboardUrl: publicUrl,
-    backendAgentWorkflowId: workflowId,
-    backendAgentWorkflowUrl: publicUrl ? `${publicUrl}/workflow/${workflowId}` : undefined,
-    health: configured ? probe.health : "unknown",
-    workflowCount: configured ? 1 : 0,
+    configured: true,
+    health: "healthy",
+    workflowCount: automationWorkflowDefinitions.length,
     failedExecutions: 0,
-    queueStatus: configured ? (probe.health === "healthy" ? "healthy" : "unknown") : "not_configured",
+    queueStatus: "healthy",
     checkedAt: new Date().toISOString(),
-    detail: configured
-      ? `${probe.detail} One backend-agent workflow handles ${automationWorkflowDefinitions.length} operational automation routes.`
-      : "Add n8n as a separate Railway service to enable follow-up scheduling, reminders, task creation, and escalation rules."
+    detail: `Leadsy-native automation handles ${automationWorkflowDefinitions.length} operational routes for follow-ups, reminders, tasks, and escalations.`
   };
 }
 
 function getBackendLogicHubStatus(): BackendLogicHubStatus[] {
-  return n8nBackendLogicModules.map((module) => ({
-    key: module.key,
-    label: module.label,
-    owner: module.owner,
-    editableFrom: module.editableFrom,
-    actionCount: module.actionPlan.length,
-    guardrailCount: module.guardrails.length,
-    providerConfigCount: module.providerConfigs.length,
-    detail: `${module.n8nOwns.join(", ")}. Leadsy keeps ${module.leadsyOwns.join(", ")}.`
+  return automationWorkflowDefinitions.map((workflow) => ({
+    key: workflow.key,
+    label: workflow.name,
+    owner: "leadsy",
+    editableFrom: ["leadsy-app", "codex"],
+    actionCount: workflowActionCounts[workflow.key],
+    guardrailCount: workflowGuardrailCounts[workflow.key],
+    providerConfigCount: workflow.dependencies.length,
+    detail: `${workflow.purpose} ${workflow.preserves}`
   }));
 }
 
-function getProviderConfigHubStatus(automation: AutomationStatus): ProviderConfigHubStatus[] {
-  return n8nProviderConfigGroups.map((group) => {
-    const workflowCount = Object.values(n8nProviderConfigByWorkflowKey).filter((requirements) =>
-      requirements.includes(group.key)
-    ).length;
-    return {
-      key: group.key,
-      label: group.label,
-      source: "n8n",
-      status: automation.configured ? automation.health : "warning",
-      managedByN8n: automation.configured,
-      fieldCount: group.fields.length,
-      secretFieldCount: group.fields.filter((field) => field.secret).length,
-      workflowCount,
-      detail: automation.configured
-        ? `${group.label} config is available in n8n for operator reminders and escalations. ${group.leadsyBoundary}`
-        : `Connect the n8n service before ${group.label} notification config can be managed there.`
-    };
-  });
+function getProviderConfigHubStatus(): ProviderConfigHubStatus[] {
+  const configured = Boolean(
+    process.env.SMTP_HOST || process.env.EMAIL_SERVER || process.env.RESEND_API_KEY || process.env.POSTMARK_SERVER_TOKEN
+  );
+  return [
+    {
+      key: "email",
+      label: "Operator Email Notifications",
+      source: "leadsy",
+      status: configured ? "healthy" : "warning",
+      managedByLeadsy: true,
+      fieldCount: emailProviderFields.length,
+      secretFieldCount: emailProviderFields.filter((field) => field.secret).length,
+      workflowCount: automationWorkflowDefinitions.length,
+      detail: configured
+        ? "Leadsy app email configuration is present for operator reminders and escalation notices."
+        : "Add SMTP, Resend, or Postmark configuration to the web service for operator notifications."
+    }
+  ];
 }
 
 export async function getInfrastructureStatus() {
@@ -181,7 +142,7 @@ export async function getInfrastructureStatus() {
   ]);
   const sources = sourceHealth();
   const now = new Date().toISOString();
-  const providerConfigs = getProviderConfigHubStatus(automation);
+  const providerConfigs = getProviderConfigHubStatus();
   const emailFallbackConfigured = Boolean(
     process.env.SMTP_HOST || process.env.EMAIL_SERVER || process.env.RESEND_API_KEY || process.env.POSTMARK_SERVER_TOKEN
   );
@@ -204,8 +165,8 @@ export async function getInfrastructureStatus() {
       detail: process.env.DATABASE_URL ? "DATABASE_URL is configured." : "DATABASE_URL is missing."
     },
     {
-      key: "n8n",
-      label: "n8n",
+      key: "automation",
+      label: "Automation",
       status: automation.health,
       errors: automation.health === "critical" ? 1 : 0,
       lastSync: automation.checkedAt,
@@ -242,14 +203,12 @@ export async function getInfrastructureStatus() {
     {
       key: "email",
       label: "Email",
-      status: automation.configured || emailFallbackConfigured ? "healthy" : "warning",
+      status: emailFallbackConfigured ? "healthy" : "warning",
       errors: 0,
       lastSync: now,
-      detail: automation.configured
-        ? "Optional operator reminder and escalation notification config can be managed in n8n."
-        : emailFallbackConfigured
-          ? "Email fallback configuration is present on the web service."
-          : "Email automation config should be added to n8n."
+      detail: emailFallbackConfigured
+        ? "Email configuration is present on the web service for operator notifications."
+        : "Add SMTP, Resend, or Postmark configuration to the web service for operator notifications."
     },
     {
       key: "extension",
@@ -292,6 +251,6 @@ export async function getAiCostDashboard() {
       modelUsage: {},
       failures: 0
     })),
-    detail: "OpenRouter cost events are computed by the AI package today. n8n does not own research, qualification, drafting, conversations, leads, or CRM decisions."
+    detail: "OpenRouter cost events are computed by the AI package today. Leadsy owns research, qualification, drafting, conversations, leads, and CRM decisions."
   };
 }

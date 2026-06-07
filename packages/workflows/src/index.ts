@@ -14,28 +14,6 @@ export {
   type AutomationWorkflowDefinition,
   type AutomationWorkflowKey
 } from "./automation-catalog";
-export {
-  n8nProviderConfigByWorkflowKey,
-  n8nProviderConfigGroups,
-  providerConfigKeysForWorkflow,
-  type N8nProviderConfigField,
-  type N8nProviderConfigGroup,
-  type N8nProviderConfigKey
-} from "./provider-config";
-export {
-  logicModuleForWorkflow,
-  n8nBackendLogicByWorkflowKey,
-  n8nBackendLogicModules,
-  type N8nBackendLogicModule,
-  type N8nLogicAction,
-  type N8nLogicEditSurface
-} from "./logic-modules";
-export {
-  n8nBackendAgentBlueprint,
-  n8nAutomationRouterBlueprint,
-  n8nWorkflowBlueprints,
-  type N8nWorkflowBlueprint
-} from "./n8n-blueprints";
 
 export type WorkflowEdge = {
   from: string;

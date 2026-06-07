@@ -1,7 +1,5 @@
 import { headers } from "next/headers";
 import {
-  Activity,
-  AlertTriangle,
   BadgeCheck,
   BrainCircuit,
   Building2,
@@ -11,7 +9,6 @@ import {
   MessageCircle,
   Phone,
   ShieldCheck,
-  Workflow,
   Webhook
 } from "lucide-react";
 import { ExtensionPairing } from "@/components/extension-pairing";
@@ -290,16 +287,16 @@ export default async function ConnectPage({ searchParams }: ConnectPageProps) {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <SectionTitle eyebrow="Infrastructure" title="Automation and service health" />
             <Badge tone={toneForHealth(infrastructure.automation.health)}>
-              n8n {infrastructure.automation.configured ? infrastructure.automation.health : "not configured"}
+              Automation {infrastructure.automation.health}
             </Badge>
           </div>
 
           <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {[
-              { label: "n8n URL", value: infrastructure.automation.publicUrl ?? "Not configured", icon: Workflow },
-              { label: "Workflow count", value: String(infrastructure.automation.workflowCount), icon: Activity },
+              { label: "Automation engine", value: "Leadsy native", icon: ShieldCheck },
+              { label: "Workflow count", value: String(infrastructure.automation.workflowCount), icon: CheckCircle2 },
               { label: "Last execution", value: compactDate(infrastructure.automation.lastExecution), icon: CheckCircle2 },
-              { label: "Failed executions", value: String(infrastructure.automation.failedExecutions), icon: AlertTriangle }
+              { label: "Failed executions", value: String(infrastructure.automation.failedExecutions), icon: ShieldCheck }
             ].map((item) => {
               const Icon = item.icon;
               return (
@@ -325,15 +322,6 @@ export default async function ConnectPage({ searchParams }: ConnectPageProps) {
                     Service status, latency, errors, and sync signals for Leadsy operations.
                   </p>
                 </div>
-                {infrastructure.automation.dashboardUrl ? (
-                  <a
-                    href={infrastructure.automation.dashboardUrl}
-                    className="inline-flex h-9 items-center gap-2 rounded-[6px] border border-[var(--line)] bg-white/[0.03] px-3 text-sm font-medium text-[var(--muted-2)] hover:text-white"
-                  >
-                    Open n8n
-                    <ExternalLink size={14} />
-                  </a>
-                ) : null}
               </div>
 
               <div className="mt-4 overflow-hidden rounded-[8px] border border-[var(--line)]">
@@ -372,7 +360,7 @@ export default async function ConnectPage({ searchParams }: ConnectPageProps) {
                 <div>
                   <div className="text-sm font-semibold text-white">Automation workflows</div>
                   <p className="mt-1 text-sm leading-6 text-[var(--muted-2)]">
-                    Workflow catalog for n8n orchestration. Leadsy remains the source of truth.
+                    Workflow catalog for Leadsy-native scheduling, reminders, task creation, and escalations.
                   </p>
                 </div>
                 <Badge tone={infrastructure.automation.queueStatus === "healthy" ? "lime" : "neutral"}>
@@ -398,17 +386,7 @@ export default async function ConnectPage({ searchParams }: ConnectPageProps) {
                         </td>
                         <td className="px-3 py-3 text-xs leading-5 text-[var(--muted-2)]">{workflow.trigger}</td>
                         <td className="px-3 py-3">
-                          {infrastructure.automation.publicUrl ? (
-                            <a
-                              href={`${infrastructure.automation.publicUrl}/workflow/${workflow.key}`}
-                              className="inline-flex h-8 items-center gap-1 rounded-[6px] border border-[var(--line)] px-2 text-xs text-[var(--muted-2)] hover:text-white"
-                            >
-                              Open
-                              <ExternalLink size={12} />
-                            </a>
-                          ) : (
-                            <span className="text-xs text-[var(--muted)]">Pending n8n</span>
-                          )}
+                          <span className="text-xs text-[var(--muted)]">Native</span>
                         </td>
                       </tr>
                     ))}

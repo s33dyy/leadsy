@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
     tenantId: auth.session.tenantId,
     actorId: auth.session.id,
     action: "infrastructure.automation.status.read",
-    resource: "automation:n8n",
+    resource: "automation:leadsy",
     metadata: { configured: automation.configured, health: automation.health }
   });
 

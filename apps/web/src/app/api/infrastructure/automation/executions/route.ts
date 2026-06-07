@@ -18,7 +18,6 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     executions: [],
-    detail: "No durable n8n execution metadata has been recorded by Leadsy yet.",
-    n8nExecutionsUrl: automation.publicUrl ? `${automation.publicUrl}/executions` : undefined
+    detail: "No durable Leadsy-native automation execution metadata has been recorded yet."
   });
 }

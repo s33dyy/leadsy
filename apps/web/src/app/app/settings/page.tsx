@@ -8,7 +8,6 @@ import {
   Building2,
   Check,
   ChevronRight,
-  ExternalLink,
   MessageSquare,
   Monitor,
   Plug,
@@ -85,7 +84,7 @@ const sectionSummaries: Record<SettingsSection, {
     rows: [
       { label: "Tenant isolation", value: "Next.js gateway + Postgres" },
       { label: "Business state", value: "Stored in Leadsy" },
-      { label: "Automation", value: "Orchestrated by n8n" }
+      { label: "Automation", value: "Leadsy-native scheduler and task engine" }
     ]
   },
   integrations: {
@@ -132,7 +131,7 @@ const sectionSummaries: Record<SettingsSection, {
     primaryLabel: "Open workers",
     rows: [
       { label: "Queue ownership", value: "Leadsy stores task state" },
-      { label: "Execution", value: "n8n schedules reminders, task creation, and escalations only" },
+      { label: "Execution", value: "Leadsy schedules reminders, task creation, and escalations" },
       { label: "Approval", value: "Operators approve before send actions" }
     ]
   },
@@ -143,7 +142,7 @@ const sectionSummaries: Record<SettingsSection, {
     rows: [
       { label: "Approvals", value: "Visible in the top bar and approval center" },
       { label: "Failures", value: "Escalation rules can create manager-visible tasks" },
-      { label: "Follow-ups", value: "Driven by n8n schedules, stored in Leadsy" }
+      { label: "Follow-ups", value: "Driven and stored in Leadsy" }
     ]
   },
   meta: {
@@ -185,7 +184,7 @@ const sectionSummaries: Record<SettingsSection, {
   infrastructure: {
     eyebrow: "Settings / Infrastructure",
     title: "Automation",
-    detail: "n8n is limited to follow-up scheduling, reminder generation, task creation, and escalation rules. Leadsy keeps auth, CRM, conversations, assignments, leads, APIs, and Postgres.",
+    detail: "Leadsy owns follow-up scheduling, reminder generation, task creation, escalation rules, auth, CRM, conversations, assignments, leads, APIs, and Postgres.",
     rows: []
   }
 };
@@ -244,9 +243,6 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   const automation = infrastructure.automation;
   const backendLogic = infrastructure.backendLogic;
   const providerConfigs = infrastructure.providerConfigs;
-  const dashboardUrl = automation.dashboardUrl;
-  const backendAgentUrl = automation.backendAgentWorkflowUrl;
-  const executionsUrl = dashboardUrl ? `${dashboardUrl}/executions` : undefined;
 
   return (
     <div className="grid h-full min-h-0 min-w-0 grid-cols-12 gap-px overflow-hidden bg-border">
@@ -281,7 +277,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                 {section.detail}
               </p>
             </div>
-            {activeSection === "infrastructure" ? <Badge tone={toneForHealth(automation.health)}>n8n: {automation.health}</Badge> : null}
+            {activeSection === "infrastructure" ? <Badge tone={toneForHealth(automation.health)}>Automation: {automation.health}</Badge> : null}
           </div>
 
           {activeSection !== "infrastructure" && activeSection !== "twilio" ? <SettingsSectionPanel section={section} /> : null}
@@ -292,14 +288,8 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           <div className="mt-6 grid min-w-0 grid-cols-2 gap-px overflow-hidden rounded-[8px] border border-border bg-border md:grid-cols-3">
             {[
               {
-                k: "n8n URL",
-                v: automation.publicUrl ? (
-                  <a className="inline-flex min-w-0 max-w-full items-center gap-1 text-primary hover:underline" href={automation.publicUrl}>
-                    <span className="truncate">{automation.publicUrl.replace(/^https?:\/\//, "")}</span> <ExternalLink className="h-3 w-3 shrink-0" />
-                  </a>
-                ) : (
-                  <span className="text-muted-foreground">Not configured</span>
-                )
+                k: "Automation engine",
+                v: <span className="font-mono">Leadsy native</span>
               },
               { k: "Health", v: <span className="inline-flex items-center gap-1.5 text-primary"><span className="dot bg-primary pulse-dot" /> {automation.health}</span> },
               { k: "Workflow count", v: <span className="font-mono">{automation.workflowCount}</span> },
@@ -307,7 +297,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
               { k: "Last execution", v: <span className="font-mono">{compactDate(automation.lastExecution)}</span> },
               { k: "Failed executions", v: <span className="font-mono text-destructive">{automation.failedExecutions}</span> },
               { k: "Queue", v: <span className="font-mono">{automation.queueStatus.replace(/_/g, " ")}</span> },
-              { k: "Internal URL", v: <span className="truncate font-mono text-[11px] text-muted-foreground">{automation.internalUrl || "Not configured"}</span> },
+              { k: "Owner", v: <span className="font-mono">Leadsy app</span> },
               { k: "Checked", v: <span className="font-mono">{compactDate(automation.checkedAt)}</span> }
             ].map((stat) => (
               <div key={stat.k} className="min-w-0 overflow-hidden bg-background p-4">
@@ -317,28 +307,10 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
             ))}
           </div>
 
-          <div className="mt-5 flex flex-wrap items-center gap-2">
-            {dashboardUrl ? (
-              <a href={dashboardUrl} className="inline-flex h-7 items-center gap-1.5 rounded-[5px] bg-primary px-2.5 text-[12px] font-medium text-primary-foreground hover:bg-primary/90">
-                Open n8n dashboard <ExternalLink className="h-3 w-3" />
-              </a>
-            ) : null}
-            {backendAgentUrl ? (
-              <a href={backendAgentUrl} className="inline-flex h-7 items-center gap-1.5 rounded-[5px] border border-border bg-surface-2 px-2.5 text-[12px] hover:bg-surface-3">
-                Open backend agent <ExternalLink className="h-3 w-3" />
-              </a>
-            ) : null}
-            {executionsUrl ? (
-              <a href={executionsUrl} className="inline-flex h-7 items-center gap-1.5 rounded-[5px] border border-border bg-surface-2 px-2.5 text-[12px] hover:bg-surface-3">
-                Open executions <ExternalLink className="h-3 w-3" />
-              </a>
-            ) : null}
-          </div>
-
           <section className="mt-6">
             <div className="flex items-center justify-between">
               <h2 className="text-[14px] font-medium">Backend logic modules</h2>
-              <span className="caption">owned by n8n</span>
+              <span className="caption">owned by Leadsy</span>
             </div>
             <div className="mt-3 min-w-0 divide-y divide-border overflow-hidden rounded-[8px] border border-border">
               {backendLogic.map((module) => (
@@ -361,7 +333,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           <section className="mt-6">
             <div className="flex items-center justify-between">
               <h2 className="text-[14px] font-medium">Provider config hub</h2>
-              <span className="caption">managed in n8n</span>
+              <span className="caption">web service config</span>
             </div>
             <div className="mt-3 grid min-w-0 grid-cols-1 gap-px overflow-hidden rounded-[8px] border border-border bg-border md:grid-cols-2">
               {providerConfigs.map((provider) => (
@@ -372,7 +344,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                       <p className="mt-1 text-[11.5px] leading-5 text-muted-foreground">{provider.detail}</p>
                     </div>
                     <Badge className="shrink-0" tone={toneForHealth(provider.status)}>
-                      {provider.managedByN8n ? "n8n owned" : "connect n8n"}
+                      {provider.managedByLeadsy ? "Leadsy owned" : "Needs config"}
                     </Badge>
                   </div>
                   <div className="mt-3 grid min-w-0 grid-cols-3 gap-px overflow-hidden rounded-[6px] border border-border bg-border text-[11px]">
@@ -396,8 +368,8 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
 
           <section className="mt-6">
             <div className="flex items-center justify-between">
-              <h2 className="text-[14px] font-medium">Backend agent event map</h2>
-              <span className="caption">single n8n backend agent</span>
+              <h2 className="text-[14px] font-medium">Automation event map</h2>
+              <span className="caption">Leadsy native routes</span>
             </div>
             <ul className="mt-3 min-w-0 divide-y divide-border overflow-hidden rounded-[6px] border border-border">
               {automationWorkflowDefinitions.map((workflow) => (
@@ -405,13 +377,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                   <span className="col-span-12 min-w-0 truncate font-mono md:col-span-3">{workflow.key}</span>
                   <span className="col-span-12 min-w-0 truncate md:col-span-3">{workflow.name}</span>
                   <span className="col-span-10 truncate text-muted-foreground md:col-span-5">{workflow.purpose}</span>
-                  {backendAgentUrl ? (
-                    <a href={backendAgentUrl} className="col-span-2 justify-self-end text-muted-foreground hover:text-foreground md:col-span-1">
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  ) : (
-                    <ChevronRight className="col-span-2 h-3.5 w-3.5 justify-self-end text-muted-foreground md:col-span-1" />
-                  )}
+                  <ChevronRight className="col-span-2 h-3.5 w-3.5 justify-self-end text-muted-foreground md:col-span-1" />
                 </li>
               ))}
             </ul>
@@ -436,7 +402,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
               <span>{automation.detail}</span>
             </div>
             <p className="mt-1 text-[11.5px] text-muted-foreground">
-              Edit operational schedules and escalation rules in n8n; keep payload storage, CRM decisions, conversations, assignments, and lead state in Leadsy.
+              Leadsy handles operational schedules, escalation rules, payload storage, CRM decisions, conversations, assignments, and lead state in the app.
             </p>
           </section>
           </>
@@ -470,7 +436,7 @@ function SettingsSectionPanel({
       <div className="rounded-[8px] border border-border bg-black/20 p-4">
         <div className="flex items-center gap-2 text-[12.5px]">
           <Check className="h-3.5 w-3.5 text-primary" />
-          <span>Configuration here preserves Leadsy as the secure app boundary while n8n handles operational automation.</span>
+          <span>Configuration here preserves Leadsy as the secure app boundary for operational automation.</span>
         </div>
       </div>
     </div>

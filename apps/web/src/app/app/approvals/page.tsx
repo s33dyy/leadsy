@@ -195,13 +195,13 @@ export default async function ApprovalsPage() {
               </div>
               <div className="mt-5 caption">AI rationale</div>
               <p className="mt-2 text-[12.5px] leading-relaxed text-muted-foreground">
-                Leadsy keeps the business state in Postgres. n8n only receives this approved event after an operator action.
+                Leadsy keeps the business state in Postgres and records approved operator actions inside the app.
               </p>
               <div className="mt-5 caption">Audit</div>
               <ul className="mt-2 space-y-1.5 font-mono text-[10.5px] text-muted-foreground">
                 <li>queued - {active.worker}</li>
                 <li>pending - human approval required</li>
-                <li>route - Next.js API to the n8n backend agent after approval</li>
+                <li>route - Next.js API to Leadsy-native automation after approval</li>
               </ul>
             </div>
           </>
