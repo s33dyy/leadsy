@@ -1,7 +1,6 @@
-import { copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { cp, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { leadsyDataDir } from "./data-dir";
 
 export type ResetClassification = "SAFE_TO_DELETE" | "SHOULD_BACKUP" | "MUST_PRESERVE" | "MIXED";
@@ -13,121 +12,90 @@ export type ResetStoreManifestItem = {
   resetBehavior: string;
 };
 
-export const preTwilioResetManifest: ResetStoreManifestItem[] = [
-  {
-    file: "auth.json",
-    store: "Authentication users and sessions",
-    classification: "MUST_PRESERVE",
-    resetBehavior: "Back up only; users and sessions are not modified by the CRM reset."
-  },
+const appDataStores = [
   {
     file: "lead-knowledge.json",
-    store: "Lead records, conversations, messages, qualification history",
-    classification: "SAFE_TO_DELETE",
+    store: "Leads, conversations, external messages, qualification inputs",
+    classification: "SHOULD_BACKUP",
     resetBehavior: "Clear leads, conversations, and messages after backup."
   },
   {
-    file: "extension.json",
-    store: "Legacy extension tokens, captured conversations, messages, events, approvals, tasks",
+    file: "lead-crm.json",
+    store: "Assignment rules, assignment history, follow-up tasks, qualification profiles",
     classification: "MIXED",
-    resetBehavior: "Preserve extension tokens; clear captured conversations, messages, events, tasks, and task events."
+    resetBehavior: "Clear CRM execution data; profile presets may be preserved by app-data-only reset."
   },
   {
     file: "lead-magnet.json",
-    store: "Archived lead magnet briefs, generated leads, runs, drafts, and search sessions",
-    classification: "MIXED",
-    resetBehavior: "Preserve briefs, brief history, and owner search memory; clear generated leads, runs, drafts, agent runs, and search sessions."
-  },
-  {
-    file: "lead-crm.json",
-    store: "CRM assignment rules, assignment history, follow-up tasks, qualification profiles",
-    classification: "MIXED",
-    resetBehavior: "Preserve qualification profiles; clear assignment rules, assignment history, and follow-up tasks."
+    store: "Archived lead capture drafts and runs",
+    classification: "SAFE_TO_DELETE",
+    resetBehavior: "Clear archived capture data after backup."
   },
   {
     file: "agency-clients.json",
-    store: "Agency/client configuration",
-    classification: "MUST_PRESERVE",
-    resetBehavior: "Back up only; agency/client configuration is not modified by the CRM reset."
-  }
-];
-
-export const fullProductResetManifest: ResetStoreManifestItem[] = [
-  {
-    file: "auth.json",
-    store: "Authentication users and sessions",
-    classification: "SAFE_TO_DELETE",
-    resetBehavior: "Clear all app users and auth sessions after backup."
-  },
-  {
-    file: "lead-knowledge.json",
-    store: "Lead records, conversations, messages, qualification history",
-    classification: "SAFE_TO_DELETE",
-    resetBehavior: "Clear all lead records, conversations, and messages after backup."
-  },
-  {
-    file: "extension.json",
-    store: "Legacy extension tokens, captured conversations, messages, events, approvals, tasks",
-    classification: "SAFE_TO_DELETE",
-    resetBehavior: "Clear all extension data while preserving extension code and APIs."
-  },
-  {
-    file: "lead-magnet.json",
-    store: "Lead magnet briefs, generated leads, runs, drafts, and search sessions",
-    classification: "SAFE_TO_DELETE",
-    resetBehavior: "Clear all lead magnet data after backup."
-  },
-  {
-    file: "lead-crm.json",
-    store: "CRM assignment rules, assignment history, follow-up tasks, qualification profiles",
-    classification: "SAFE_TO_DELETE",
-    resetBehavior: "Clear all assignment, task, and CRM configuration data after backup."
-  },
-  {
-    file: "agency-clients.json",
-    store: "Agency/client configuration",
-    classification: "SAFE_TO_DELETE",
-    resetBehavior: "Clear agency and client records after backup."
-  },
-  {
-    file: "meta-oauth.json",
-    store: "Meta OAuth connections",
-    classification: "SAFE_TO_DELETE",
-    resetBehavior: "Clear Meta OAuth connections after backup."
-  },
-  {
-    file: "meta-whatsapp-inbound.json",
-    store: "Meta WhatsApp inbound status cache",
-    classification: "SAFE_TO_DELETE",
-    resetBehavior: "Clear Meta WhatsApp inbound and contact status records after backup."
+    store: "Agency and client workspace records",
+    classification: "SHOULD_BACKUP",
+    resetBehavior: "Clear client records for full reset."
   },
   {
     file: "workspace-whatsapp-senders.json",
-    store: "Leadsy-managed workspace WhatsApp sender registry",
-    classification: "SAFE_TO_DELETE",
-    resetBehavior: "Clear all assigned sender records after backup."
+    store: "Workspace WhatsApp sender registry",
+    classification: "SHOULD_BACKUP",
+    resetBehavior: "Clear sender records for full reset."
   },
   {
     file: "twilio-integration.json",
     store: "Twilio webhook and delivery status cache",
     classification: "SAFE_TO_DELETE",
-    resetBehavior: "Clear Twilio status cache after backup."
+    resetBehavior: "Clear transport status cache after backup."
+  },
+  {
+    file: "teamspace.json",
+    store: "Team members, AI agents, and internal team thread messages",
+    classification: "SHOULD_BACKUP",
+    resetBehavior: "Clear teamspace records for full reset."
+  },
+  {
+    file: "calendar.json",
+    store: "Availability windows, busy blocks, and lead-linked meetings",
+    classification: "SHOULD_BACKUP",
+    resetBehavior: "Clear calendar records for full reset."
   }
+] satisfies ResetStoreManifestItem[];
+
+export const preTwilioResetManifest: ResetStoreManifestItem[] = [
+  {
+    file: "auth.json",
+    store: "Users and sessions",
+    classification: "MUST_PRESERVE",
+    resetBehavior: "Preserve users and sessions for app-data-only reset."
+  },
+  ...appDataStores
 ];
 
-type JsonObject = Record<string, unknown>;
+export const fullProductResetManifest: ResetStoreManifestItem[] = [
+  {
+    file: "auth.json",
+    store: "Users and sessions",
+    classification: "SHOULD_BACKUP",
+    resetBehavior: "Clear all users and sessions after backup."
+  },
+  ...appDataStores.map((item) => ({
+    ...item,
+    resetBehavior: item.file === "lead-crm.json" ? "Clear all CRM configuration and execution data after backup." : item.resetBehavior
+  }))
+];
 
 export type ResetStoreSummary = {
   auth: { users: number; sessions: number };
   leadKnowledge: { leads: number; conversations: number; messages: number };
-  extension: { tokens: number; conversations: number; messages: number; events: number; tasks: number; taskEvents: number };
+  leadCrm: { assignmentRules: number; assignmentHistory: number; followUpTasks: number; qualificationProfiles: number };
   leadMagnet: { briefs: number; briefHistory: number; leads: number; runs: number; drafts: number; agentRuns: number; searchSessions: number; ownerSearchMemory: number };
-  crm: { assignmentRules: number; assignmentHistory: number; followUpTasks: number; qualificationProfiles: number };
-  agencyClients: { records: number };
-  metaOAuth?: { connections: number };
-  metaWhatsAppInbound?: { messages: number; contactStatuses: number };
-  workspaceSenders?: { senders: number };
-  twilioIntegration?: { records: number };
+  agencyClients: { clients: number };
+  workspaceSenders: { senders: number };
+  twilioIntegration: { entries: number };
+  teamspace: { members: number; threadMessages: number };
+  calendar: { events: number };
 };
 
 export type PreTwilioBackupResult = {
@@ -141,29 +109,19 @@ export type PreTwilioResetResult = {
     leads: number;
     conversations: number;
     messages: number;
-    extensionConversations: number;
-    extensionMessages: number;
-    extensionEvents: number;
-    extensionTasks: number;
-    extensionTaskEvents: number;
-    leadMagnetLeads: number;
-    leadMagnetRuns: number;
-    leadMagnetDrafts: number;
-    leadMagnetAgentRuns: number;
-    leadMagnetSearchSessions: number;
-    crmAssignmentRules: number;
     crmAssignmentHistory: number;
     crmFollowUpTasks: number;
+    archivedCaptureRecords: number;
+    teamMembers: number;
+    internalMessages: number;
+    calendarEvents: number;
   };
   preserved: {
     authUsers: number;
     authSessions: number;
-    extensionTokens: number;
-    leadMagnetBriefs: number;
-    leadMagnetBriefHistory: number;
-    leadMagnetOwnerSearchMemory: number;
-    crmQualificationProfiles: number;
-    agencyClients: number;
+    crmAssignmentRules: number;
+    qualificationProfiles: number;
+    workspaceSenders: number;
   };
 };
 
@@ -174,74 +132,77 @@ export type FullProductResetResult = {
     leads: number;
     conversations: number;
     messages: number;
-    extensionTokens: number;
-    extensionConversations: number;
-    extensionMessages: number;
-    extensionEvents: number;
-    extensionTasks: number;
-    extensionTaskEvents: number;
-    leadMagnetBriefs: number;
-    leadMagnetBriefHistory: number;
-    leadMagnetLeads: number;
-    leadMagnetRuns: number;
-    leadMagnetDrafts: number;
-    leadMagnetAgentRuns: number;
-    leadMagnetSearchSessions: number;
-    leadMagnetOwnerSearchMemory: number;
     crmAssignmentRules: number;
     crmAssignmentHistory: number;
     crmFollowUpTasks: number;
-    crmQualificationProfiles: number;
+    qualificationProfiles: number;
+    archivedCaptureRecords: number;
     agencyClients: number;
-    metaConnections: number;
-    metaWhatsAppMessages: number;
-    metaWhatsAppContactStatuses: number;
     workspaceSenders: number;
-    twilioIntegrationRecords: number;
+    twilioStatusEntries: number;
+    teamMembers: number;
+    internalMessages: number;
+    calendarEvents: number;
   };
+  preserved: Record<string, never>;
 };
 
-function arrayCount(value: unknown) {
-  return Array.isArray(value) ? value.length : 0;
-}
-
-async function readJsonFile(dataDir: string, file: string): Promise<unknown> {
+async function readJsonFile(dataDir: string, file: string) {
   try {
     const raw = await readFile(join(dataDir, file), "utf8");
-    if (!raw.trim()) return {};
-    return JSON.parse(raw);
+    return raw.trim() ? (JSON.parse(raw) as unknown) : {};
   } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code === "ENOENT" || error instanceof SyntaxError) return {};
+    if ((error as NodeJS.ErrnoException).code === "ENOENT" || error instanceof SyntaxError) return {};
     throw error;
   }
 }
 
 async function writeJsonFile(dataDir: string, file: string, value: unknown) {
-  await mkdir(dataDir, { recursive: true });
-  await writeFile(join(dataDir, file), `${JSON.stringify(value, null, 2)}\n`);
+  const path = join(dataDir, file);
+  await mkdir(dirname(path), { recursive: true });
+  const tempFile = `${path}.${randomUUID()}.tmp`;
+  await writeFile(tempFile, `${JSON.stringify(value, null, 2)}\n`);
+  await rename(tempFile, path);
 }
 
-function objectValue(value: unknown): JsonObject {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonObject) : {};
+function objectValue(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
-function arrayValue(value: unknown): unknown[] {
+function arrayValue(value: unknown) {
   return Array.isArray(value) ? value : [];
 }
 
-function backupLabel() {
-  return new Date().toISOString().replace(/[:.]/g, "-");
+function arrayCount(value: unknown) {
+  return arrayValue(value).length;
+}
+
+function objectEntryCount(value: unknown) {
+  return Object.keys(objectValue(value)).length;
+}
+
+function archivedCaptureCount(value: Record<string, unknown>) {
+  return (
+    arrayCount(value.briefs) +
+    arrayCount(value.briefHistory) +
+    arrayCount(value.leads) +
+    arrayCount(value.runs) +
+    arrayCount(value.drafts) +
+    arrayCount(value.agentRuns) +
+    arrayCount(value.searchSessions) +
+    arrayCount(value.ownerSearchMemory)
+  );
 }
 
 export async function summarizePreTwilioResetStores(input: { dataDir?: string } = {}): Promise<ResetStoreSummary> {
   const dataDir = input.dataDir ?? leadsyDataDir;
   const auth = objectValue(await readJsonFile(dataDir, "auth.json"));
   const leadKnowledge = objectValue(await readJsonFile(dataDir, "lead-knowledge.json"));
-  const extension = objectValue(await readJsonFile(dataDir, "extension.json"));
+  const leadCrm = objectValue(await readJsonFile(dataDir, "lead-crm.json"));
   const leadMagnet = objectValue(await readJsonFile(dataDir, "lead-magnet.json"));
-  const crm = objectValue(await readJsonFile(dataDir, "lead-crm.json"));
-  const agencyClients = await readJsonFile(dataDir, "agency-clients.json");
+  const workspaceSenders = objectValue(await readJsonFile(dataDir, "workspace-whatsapp-senders.json"));
+  const teamspace = objectValue(await readJsonFile(dataDir, "teamspace.json"));
+  const calendar = objectValue(await readJsonFile(dataDir, "calendar.json"));
 
   return {
     auth: {
@@ -253,13 +214,11 @@ export async function summarizePreTwilioResetStores(input: { dataDir?: string } 
       conversations: arrayCount(leadKnowledge.conversations),
       messages: arrayCount(leadKnowledge.messages)
     },
-    extension: {
-      tokens: arrayCount(extension.tokens),
-      conversations: arrayCount(extension.conversations),
-      messages: arrayCount(extension.messages),
-      events: arrayCount(extension.events),
-      tasks: arrayCount(extension.tasks),
-      taskEvents: arrayCount(extension.taskEvents)
+    leadCrm: {
+      assignmentRules: arrayCount(leadCrm.assignmentRules),
+      assignmentHistory: arrayCount(leadCrm.assignmentHistory),
+      followUpTasks: arrayCount(leadCrm.followUpTasks),
+      qualificationProfiles: arrayCount(leadCrm.qualificationProfiles)
     },
     leadMagnet: {
       briefs: arrayCount(leadMagnet.briefs),
@@ -271,42 +230,51 @@ export async function summarizePreTwilioResetStores(input: { dataDir?: string } 
       searchSessions: arrayCount(leadMagnet.searchSessions),
       ownerSearchMemory: arrayCount(leadMagnet.ownerSearchMemory)
     },
-    crm: {
-      assignmentRules: arrayCount(crm.assignmentRules),
-      assignmentHistory: arrayCount(crm.assignmentHistory),
-      followUpTasks: arrayCount(crm.followUpTasks),
-      qualificationProfiles: arrayCount(crm.qualificationProfiles)
-    },
     agencyClients: {
-      records: arrayCount(agencyClients)
-    }
-  };
-}
-
-export async function summarizeFullProductResetStores(input: { dataDir?: string } = {}): Promise<ResetStoreSummary> {
-  const dataDir = input.dataDir ?? leadsyDataDir;
-  const summary = await summarizePreTwilioResetStores({ dataDir });
-  const metaOAuth = objectValue(await readJsonFile(dataDir, "meta-oauth.json"));
-  const metaWhatsAppInbound = objectValue(await readJsonFile(dataDir, "meta-whatsapp-inbound.json"));
-  const workspaceSenders = objectValue(await readJsonFile(dataDir, "workspace-whatsapp-senders.json"));
-  const twilioIntegration = objectValue(await readJsonFile(dataDir, "twilio-integration.json"));
-
-  return {
-    ...summary,
-    metaOAuth: {
-      connections: arrayCount(metaOAuth.connections)
-    },
-    metaWhatsAppInbound: {
-      messages: arrayCount(metaWhatsAppInbound.messages),
-      contactStatuses: arrayCount(metaWhatsAppInbound.contactStatuses)
+      clients: arrayCount(await readJsonFile(dataDir, "agency-clients.json"))
     },
     workspaceSenders: {
       senders: arrayCount(workspaceSenders.senders)
     },
     twilioIntegration: {
-      records: Object.keys(twilioIntegration).length
+      entries: objectEntryCount(await readJsonFile(dataDir, "twilio-integration.json"))
+    },
+    teamspace: {
+      members: arrayCount(teamspace.members),
+      threadMessages: arrayCount(teamspace.threadMessages)
+    },
+    calendar: {
+      events: arrayCount(calendar.events)
     }
   };
+}
+
+export async function summarizeFullProductResetStores(input: { dataDir?: string } = {}) {
+  return summarizePreTwilioResetStores(input);
+}
+
+async function backupStores(input: {
+  dataDir: string;
+  backupRoot: string;
+  label: string;
+  manifest: ResetStoreManifestItem[];
+}) {
+  const backupDir = join(input.backupRoot, input.label);
+  await mkdir(backupDir, { recursive: true });
+  const files: string[] = [];
+  for (const item of input.manifest) {
+    const source = join(input.dataDir, item.file);
+    try {
+      await stat(source);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      throw error;
+    }
+    await cp(source, join(backupDir, item.file));
+    files.push(item.file);
+  }
+  await writeFile(join(backupDir, "RESET_MANIFEST.json"), `${JSON.stringify(input.manifest, null, 2)}\n`);
+  return { backupDir, files };
 }
 
 export async function createPreTwilioResetBackup(input: {
@@ -316,24 +284,12 @@ export async function createPreTwilioResetBackup(input: {
 } = {}): Promise<PreTwilioBackupResult> {
   const dataDir = input.dataDir ?? leadsyDataDir;
   const backupRoot = input.backupRoot ?? join(process.cwd(), "backups/pre-twilio-reset");
-  const backupDir = join(backupRoot, input.label?.trim() || backupLabel());
-  await mkdir(backupDir, { recursive: true });
-
-  const files: string[] = [];
-  for (const item of preTwilioResetManifest) {
-    const source = join(dataDir, item.file);
-    if (!existsSync(source)) continue;
-    await copyFile(source, join(backupDir, item.file));
-    files.push(item.file);
-  }
-
-  const summary = await summarizePreTwilioResetStores({ dataDir });
-  await writeFile(
-    join(backupDir, "manifest.json"),
-    `${JSON.stringify({ createdAt: new Date().toISOString(), dataDir, files, summary, stores: preTwilioResetManifest }, null, 2)}\n`
-  );
-
-  return { backupDir, files, summary };
+  const label = input.label ?? backupRunId();
+  const backup = await backupStores({ dataDir, backupRoot, label, manifest: preTwilioResetManifest });
+  return {
+    ...backup,
+    summary: await summarizePreTwilioResetStores({ dataDir })
+  };
 }
 
 export async function createFullProductResetBackup(input: {
@@ -343,167 +299,41 @@ export async function createFullProductResetBackup(input: {
 } = {}): Promise<PreTwilioBackupResult> {
   const dataDir = input.dataDir ?? leadsyDataDir;
   const backupRoot = input.backupRoot ?? "/data/leadsy/backups";
-  const backupDir = join(backupRoot, input.label?.trim() || `full-product-reset-${backupLabel()}`);
-  await mkdir(backupDir, { recursive: true });
+  const label = input.label ?? fullProductResetRunId();
+  const backup = await backupStores({ dataDir, backupRoot, label, manifest: fullProductResetManifest });
+  return {
+    ...backup,
+    summary: await summarizeFullProductResetStores({ dataDir })
+  };
+}
 
-  const files: string[] = [];
-  for (const item of fullProductResetManifest) {
-    const source = join(dataDir, item.file);
-    if (!existsSync(source)) continue;
-    await copyFile(source, join(backupDir, item.file));
-    files.push(item.file);
+async function assertBackupDir(path?: string) {
+  if (!path) throw new Error("A successful backup directory is required before reset.");
+  try {
+    const info = await stat(path);
+    if (!info.isDirectory()) throw new Error("A successful backup directory is required before reset.");
+  } catch {
+    throw new Error("A successful backup directory is required before reset.");
   }
-
-  const summary = await summarizeFullProductResetStores({ dataDir });
-  await writeFile(
-    join(backupDir, "manifest.json"),
-    `${JSON.stringify({ createdAt: new Date().toISOString(), dataDir, files, summary, stores: fullProductResetManifest }, null, 2)}\n`
-  );
-
-  return { backupDir, files, summary };
 }
 
 export async function resetLocalCrmForTwilio(input: {
   dataDir?: string;
-  requiredBackupDir: string;
-}): Promise<PreTwilioResetResult> {
+  requiredBackupDir?: string;
+} = {}): Promise<PreTwilioResetResult> {
+  await assertBackupDir(input.requiredBackupDir);
   const dataDir = input.dataDir ?? leadsyDataDir;
-  if (!input.requiredBackupDir) {
-    throw new Error("A successful pre-Twilio reset backup directory is required before reset.");
-  }
-  const backupStats = await stat(input.requiredBackupDir).catch(() => undefined);
-  if (!backupStats?.isDirectory()) {
-    throw new Error("A successful pre-Twilio reset backup directory is required before reset.");
-  }
-
-  const auth = objectValue(await readJsonFile(dataDir, "auth.json"));
-  const leadKnowledge = objectValue(await readJsonFile(dataDir, "lead-knowledge.json"));
-  const extension = objectValue(await readJsonFile(dataDir, "extension.json"));
-  const leadMagnet = objectValue(await readJsonFile(dataDir, "lead-magnet.json"));
-  const crm = objectValue(await readJsonFile(dataDir, "lead-crm.json"));
-  const agencyClients = await readJsonFile(dataDir, "agency-clients.json");
-
-  const result: PreTwilioResetResult = {
-    removed: {
-      leads: arrayCount(leadKnowledge.leads),
-      conversations: arrayCount(leadKnowledge.conversations),
-      messages: arrayCount(leadKnowledge.messages),
-      extensionConversations: arrayCount(extension.conversations),
-      extensionMessages: arrayCount(extension.messages),
-      extensionEvents: arrayCount(extension.events),
-      extensionTasks: arrayCount(extension.tasks),
-      extensionTaskEvents: arrayCount(extension.taskEvents),
-      leadMagnetLeads: arrayCount(leadMagnet.leads),
-      leadMagnetRuns: arrayCount(leadMagnet.runs),
-      leadMagnetDrafts: arrayCount(leadMagnet.drafts),
-      leadMagnetAgentRuns: arrayCount(leadMagnet.agentRuns),
-      leadMagnetSearchSessions: arrayCount(leadMagnet.searchSessions),
-      crmAssignmentRules: arrayCount(crm.assignmentRules),
-      crmAssignmentHistory: arrayCount(crm.assignmentHistory),
-      crmFollowUpTasks: arrayCount(crm.followUpTasks)
-    },
-    preserved: {
-      authUsers: arrayCount(auth.users),
-      authSessions: arrayCount(auth.sessions),
-      extensionTokens: arrayCount(extension.tokens),
-      leadMagnetBriefs: arrayCount(leadMagnet.briefs),
-      leadMagnetBriefHistory: arrayCount(leadMagnet.briefHistory),
-      leadMagnetOwnerSearchMemory: arrayCount(leadMagnet.ownerSearchMemory),
-      crmQualificationProfiles: arrayCount(crm.qualificationProfiles),
-      agencyClients: arrayCount(agencyClients)
-    }
-  };
+  const before = await summarizePreTwilioResetStores({ dataDir });
+  const leadCrm = objectValue(await readJsonFile(dataDir, "lead-crm.json"));
+  const workspaceSenders = objectValue(await readJsonFile(dataDir, "workspace-whatsapp-senders.json"));
 
   await writeJsonFile(dataDir, "lead-knowledge.json", { leads: [], conversations: [], messages: [] });
-  await writeJsonFile(dataDir, "extension.json", {
-    tokens: arrayValue(extension.tokens),
-    conversations: [],
-    messages: [],
-    events: [],
-    tasks: [],
-    taskEvents: []
-  });
-  await writeJsonFile(dataDir, "lead-magnet.json", {
-    briefs: arrayValue(leadMagnet.briefs),
-    briefHistory: arrayValue(leadMagnet.briefHistory),
-    leads: [],
-    runs: [],
-    drafts: [],
-    agentRuns: [],
-    searchSessions: [],
-    ownerSearchMemory: arrayValue(leadMagnet.ownerSearchMemory)
-  });
   await writeJsonFile(dataDir, "lead-crm.json", {
-    assignmentRules: [],
+    assignmentRules: arrayValue(leadCrm.assignmentRules),
     assignmentHistory: [],
     followUpTasks: [],
-    qualificationProfiles: arrayValue(crm.qualificationProfiles)
+    qualificationProfiles: arrayValue(leadCrm.qualificationProfiles)
   });
-
-  return result;
-}
-
-export async function resetFullProductData(input: {
-  dataDir?: string;
-  requiredBackupDir: string;
-}): Promise<FullProductResetResult> {
-  const dataDir = input.dataDir ?? leadsyDataDir;
-  if (!input.requiredBackupDir) {
-    throw new Error("A successful full product reset backup directory is required before reset.");
-  }
-  const backupStats = await stat(input.requiredBackupDir).catch(() => undefined);
-  if (!backupStats?.isDirectory()) {
-    throw new Error("A successful full product reset backup directory is required before reset.");
-  }
-
-  const auth = objectValue(await readJsonFile(dataDir, "auth.json"));
-  const leadKnowledge = objectValue(await readJsonFile(dataDir, "lead-knowledge.json"));
-  const extension = objectValue(await readJsonFile(dataDir, "extension.json"));
-  const leadMagnet = objectValue(await readJsonFile(dataDir, "lead-magnet.json"));
-  const crm = objectValue(await readJsonFile(dataDir, "lead-crm.json"));
-  const agencyClients = await readJsonFile(dataDir, "agency-clients.json");
-  const metaOAuth = objectValue(await readJsonFile(dataDir, "meta-oauth.json"));
-  const metaWhatsAppInbound = objectValue(await readJsonFile(dataDir, "meta-whatsapp-inbound.json"));
-  const workspaceSenders = objectValue(await readJsonFile(dataDir, "workspace-whatsapp-senders.json"));
-  const twilioIntegration = objectValue(await readJsonFile(dataDir, "twilio-integration.json"));
-
-  const result: FullProductResetResult = {
-    removed: {
-      authUsers: arrayCount(auth.users),
-      authSessions: arrayCount(auth.sessions),
-      leads: arrayCount(leadKnowledge.leads),
-      conversations: arrayCount(leadKnowledge.conversations),
-      messages: arrayCount(leadKnowledge.messages),
-      extensionTokens: arrayCount(extension.tokens),
-      extensionConversations: arrayCount(extension.conversations),
-      extensionMessages: arrayCount(extension.messages),
-      extensionEvents: arrayCount(extension.events),
-      extensionTasks: arrayCount(extension.tasks),
-      extensionTaskEvents: arrayCount(extension.taskEvents),
-      leadMagnetBriefs: arrayCount(leadMagnet.briefs),
-      leadMagnetBriefHistory: arrayCount(leadMagnet.briefHistory),
-      leadMagnetLeads: arrayCount(leadMagnet.leads),
-      leadMagnetRuns: arrayCount(leadMagnet.runs),
-      leadMagnetDrafts: arrayCount(leadMagnet.drafts),
-      leadMagnetAgentRuns: arrayCount(leadMagnet.agentRuns),
-      leadMagnetSearchSessions: arrayCount(leadMagnet.searchSessions),
-      leadMagnetOwnerSearchMemory: arrayCount(leadMagnet.ownerSearchMemory),
-      crmAssignmentRules: arrayCount(crm.assignmentRules),
-      crmAssignmentHistory: arrayCount(crm.assignmentHistory),
-      crmFollowUpTasks: arrayCount(crm.followUpTasks),
-      crmQualificationProfiles: arrayCount(crm.qualificationProfiles),
-      agencyClients: arrayCount(agencyClients),
-      metaConnections: arrayCount(metaOAuth.connections),
-      metaWhatsAppMessages: arrayCount(metaWhatsAppInbound.messages),
-      metaWhatsAppContactStatuses: arrayCount(metaWhatsAppInbound.contactStatuses),
-      workspaceSenders: arrayCount(workspaceSenders.senders),
-      twilioIntegrationRecords: Object.keys(twilioIntegration).length
-    }
-  };
-
-  await writeJsonFile(dataDir, "auth.json", { users: [], sessions: [] });
-  await writeJsonFile(dataDir, "lead-knowledge.json", { leads: [], conversations: [], messages: [] });
-  await writeJsonFile(dataDir, "extension.json", { tokens: [], conversations: [], messages: [], events: [], tasks: [], taskEvents: [] });
   await writeJsonFile(dataDir, "lead-magnet.json", {
     briefs: [],
     briefHistory: [],
@@ -514,23 +344,92 @@ export async function resetFullProductData(input: {
     searchSessions: [],
     ownerSearchMemory: []
   });
+  await writeJsonFile(dataDir, "teamspace.json", { members: [], threadMessages: [] });
+  await writeJsonFile(dataDir, "calendar.json", { events: [] });
+  await writeJsonFile(dataDir, "twilio-integration.json", {});
+  await writeJsonFile(dataDir, "workspace-whatsapp-senders.json", {
+    senders: arrayValue(workspaceSenders.senders)
+  });
+
+  return {
+    removed: {
+      leads: before.leadKnowledge.leads,
+      conversations: before.leadKnowledge.conversations,
+      messages: before.leadKnowledge.messages,
+      crmAssignmentHistory: before.leadCrm.assignmentHistory,
+      crmFollowUpTasks: before.leadCrm.followUpTasks,
+      archivedCaptureRecords: archivedCaptureCount(before.leadMagnet),
+      teamMembers: before.teamspace.members,
+      internalMessages: before.teamspace.threadMessages,
+      calendarEvents: before.calendar.events
+    },
+    preserved: {
+      authUsers: before.auth.users,
+      authSessions: before.auth.sessions,
+      crmAssignmentRules: before.leadCrm.assignmentRules,
+      qualificationProfiles: before.leadCrm.qualificationProfiles,
+      workspaceSenders: before.workspaceSenders.senders
+    }
+  };
+}
+
+export async function resetFullProductData(input: {
+  dataDir?: string;
+  requiredBackupDir?: string;
+} = {}): Promise<FullProductResetResult> {
+  await assertBackupDir(input.requiredBackupDir);
+  const dataDir = input.dataDir ?? leadsyDataDir;
+  const before = await summarizeFullProductResetStores({ dataDir });
+
+  await writeJsonFile(dataDir, "auth.json", { users: [], sessions: [] });
+  await writeJsonFile(dataDir, "lead-knowledge.json", { leads: [], conversations: [], messages: [] });
   await writeJsonFile(dataDir, "lead-crm.json", {
     assignmentRules: [],
     assignmentHistory: [],
     followUpTasks: [],
     qualificationProfiles: []
   });
+  await writeJsonFile(dataDir, "lead-magnet.json", {
+    briefs: [],
+    briefHistory: [],
+    leads: [],
+    runs: [],
+    drafts: [],
+    agentRuns: [],
+    searchSessions: [],
+    ownerSearchMemory: []
+  });
   await writeJsonFile(dataDir, "agency-clients.json", []);
-  await writeJsonFile(dataDir, "meta-oauth.json", { connections: [] });
-  await writeJsonFile(dataDir, "meta-whatsapp-inbound.json", { messages: [], contactStatuses: [] });
   await writeJsonFile(dataDir, "workspace-whatsapp-senders.json", { senders: [] });
   await writeJsonFile(dataDir, "twilio-integration.json", {});
+  await writeJsonFile(dataDir, "teamspace.json", { members: [], threadMessages: [] });
+  await writeJsonFile(dataDir, "calendar.json", { events: [] });
 
-  return result;
+  return {
+    removed: {
+      authUsers: before.auth.users,
+      authSessions: before.auth.sessions,
+      leads: before.leadKnowledge.leads,
+      conversations: before.leadKnowledge.conversations,
+      messages: before.leadKnowledge.messages,
+      crmAssignmentRules: before.leadCrm.assignmentRules,
+      crmAssignmentHistory: before.leadCrm.assignmentHistory,
+      crmFollowUpTasks: before.leadCrm.followUpTasks,
+      qualificationProfiles: before.leadCrm.qualificationProfiles,
+      archivedCaptureRecords: archivedCaptureCount(before.leadMagnet),
+      agencyClients: before.agencyClients.clients,
+      workspaceSenders: before.workspaceSenders.senders,
+      twilioStatusEntries: before.twilioIntegration.entries,
+      teamMembers: before.teamspace.members,
+      internalMessages: before.teamspace.threadMessages,
+      calendarEvents: before.calendar.events
+    },
+    preserved: {}
+  };
 }
 
 export function resetConfirmationToken() {
-  return "RESET_TWILIO_CRM";
+  return "RESET_LEADSY_CRM";
 }
 
 export function backupRunId() {
@@ -538,7 +437,7 @@ export function backupRunId() {
 }
 
 export function fullProductResetConfirmationToken() {
-  return "RESET_FULL_PRODUCT_DATA_AND_USERS";
+  return "RESET_ALL_LEADSY_APP_DATA_AND_USERS";
 }
 
 export function fullProductResetRunId() {

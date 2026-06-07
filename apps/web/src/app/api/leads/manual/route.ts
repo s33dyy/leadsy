@@ -21,12 +21,6 @@ function channelFromValue(value: FormDataEntryValue | null): LeadKnowledgeChanne
   const channel = clean(value);
   if (
     channel === "whatsapp" ||
-    channel === "instagram" ||
-    channel === "facebook" ||
-    channel === "whatsapp-web" ||
-    channel === "instagram-web" ||
-    channel === "facebook-web" ||
-    channel === "generic-web-chat" ||
     channel === "email" ||
     channel === "call" ||
     channel === "manual"

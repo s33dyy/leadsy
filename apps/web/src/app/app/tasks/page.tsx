@@ -3,7 +3,6 @@ import { Filter, MoreHorizontal, Search, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui";
 import { getCurrentSession } from "@/lib/auth";
 import { listCrmFollowUpTasks, type CrmFollowUpTask } from "@/lib/crm-store";
-import { listExtensionTasks, type ExtensionTask } from "@/lib/extension-store";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +30,7 @@ function dueLabel(value?: string) {
   return new Date(value).toLocaleString("en-IN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
-function priorityLabel(value: ExtensionTask["priority"] | CrmFollowUpTask["priority"]): TaskRow["priority"] {
+function priorityLabel(value: CrmFollowUpTask["priority"]): TaskRow["priority"] {
   if (value === "urgent") return "Urgent";
   if (value === "high") return "High";
   if (value === "low") return "Low";
@@ -56,24 +55,6 @@ function taskTypeLabel(value: string) {
     custom: "Custom"
   };
   return labels[value] ?? statusLabel(value);
-}
-
-function rowFromExtensionTask(task: ExtensionTask): TaskRow {
-  const owner = task.platform === "whatsapp-web" ? "WhatsApp worker" : task.platform === "instagram-web" ? "Instagram worker" : "Extension worker";
-  const needsApproval = ["awaiting_send_approval", "awaiting_approval", "draft"].includes(task.status);
-  return {
-    id: task.id,
-    title: task.contextSummary || task.draftMessage || task.type.replace(/_/g, " "),
-    typeLabel: taskTypeLabel(task.type),
-    status: statusLabel(task.status),
-    priority: priorityLabel(task.priority),
-    owner,
-    ownerInitials: initials(owner),
-    due: dueLabel(task.dueAt),
-    source: "AI",
-    approval: needsApproval ? "Pending" : task.approvedAt ? "Approved" : "None",
-    href: "/app/worker"
-  };
 }
 
 function rowFromCrmTask(task: CrmFollowUpTask): TaskRow {
@@ -113,13 +94,10 @@ function groupedTasks(rows: TaskRow[]) {
 
 export default async function TasksPage() {
   const session = await getCurrentSession();
-  const [extensionTasks, crmTasks] = session
-    ? await Promise.all([
-        listExtensionTasks(session.tenantId, session.id),
-        listCrmFollowUpTasks({ tenantId: session.tenantId, ownerId: session.id }, { includeClosed: true })
-      ])
-    : [[], []];
-  const rows = [...extensionTasks.map(rowFromExtensionTask), ...crmTasks.map(rowFromCrmTask)];
+  const crmTasks = session
+    ? await listCrmFollowUpTasks({ tenantId: session.tenantId, ownerId: session.id }, { includeClosed: true })
+    : [];
+  const rows = crmTasks.map(rowFromCrmTask);
   const groups = groupedTasks(rows);
 
   return (

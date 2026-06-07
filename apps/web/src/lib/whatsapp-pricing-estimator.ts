@@ -8,9 +8,9 @@ export type WhatsAppPricingEstimateInput = {
   marketingTemplates: number;
   authenticationTemplates: number;
   phoneNumberMonthlyUsd: number;
-  metaUtilityTemplateFeeUsd: number;
-  metaMarketingTemplateFeeUsd: number;
-  metaAuthenticationTemplateFeeUsd: number;
+  providerUtilityTemplateFeeUsd: number;
+  providerMarketingTemplateFeeUsd: number;
+  providerAuthenticationTemplateFeeUsd: number;
   fxRateInr: number;
 };
 
@@ -20,7 +20,7 @@ export type WhatsAppPricingEstimate = {
   templateMessageCount: number;
   twilioMessageFeesUsd: number;
   phoneNumberFeesUsd: number;
-  metaTemplateFeesUsd: number;
+  providerTemplateFeesUsd: number;
   totalUsd: number;
   totalInr: number;
   simulatorMonthlyUsd: number;
@@ -41,18 +41,18 @@ export function calculateTwilioPricingEstimate(input: WhatsAppPricingEstimateInp
   const totalMessageCount = inboundMessages + outboundFreeformMessages + templateMessageCount;
   const twilioMessageFeesUsd = totalMessageCount * twilioWhatsAppMessageFeeUsd;
   const phoneNumberFeesUsd = workspaceCount * amount(input.phoneNumberMonthlyUsd);
-  const metaTemplateFeesUsd =
-    utilityTemplates * amount(input.metaUtilityTemplateFeeUsd) +
-    marketingTemplates * amount(input.metaMarketingTemplateFeeUsd) +
-    authenticationTemplates * amount(input.metaAuthenticationTemplateFeeUsd);
-  const totalUsd = twilioMessageFeesUsd + phoneNumberFeesUsd + metaTemplateFeesUsd;
+  const providerTemplateFeesUsd =
+    utilityTemplates * amount(input.providerUtilityTemplateFeeUsd) +
+    marketingTemplates * amount(input.providerMarketingTemplateFeeUsd) +
+    authenticationTemplates * amount(input.providerAuthenticationTemplateFeeUsd);
+  const totalUsd = twilioMessageFeesUsd + phoneNumberFeesUsd + providerTemplateFeesUsd;
   return {
     workspaceCount,
     totalMessageCount,
     templateMessageCount,
     twilioMessageFeesUsd,
     phoneNumberFeesUsd,
-    metaTemplateFeesUsd,
+    providerTemplateFeesUsd,
     totalUsd,
     totalInr: totalUsd * amount(input.fxRateInr),
     simulatorMonthlyUsd: 0

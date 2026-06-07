@@ -1,13 +1,12 @@
-import { scrypt as scryptCallback } from "node:crypto";
+import { randomUUID, scrypt as scryptCallback } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { leadsyDataDir } from "./data-dir";
-import type { LeadKnowledgeChannel, LeadKnowledgeDirection, LeadKnowledgeSource } from "./lead-knowledge-store";
-import type { ExtensionPlatform, ExtensionTaskPriority, ExtensionTaskStatus, ExtensionTaskType } from "./extension-store";
 
 const authFile = join(leadsyDataDir, "auth.json");
 const knowledgeFile = join(leadsyDataDir, "lead-knowledge.json");
-const extensionFile = join(leadsyDataDir, "extension.json");
+const teamspaceFile = join(leadsyDataDir, "teamspace.json");
+const calendarFile = join(leadsyDataDir, "calendar.json");
 
 const demoOwner = {
   id: "usr_demo_agency_owner",
@@ -19,9 +18,15 @@ const demoOwner = {
   createdAt: "2026-06-03T06:00:00.000Z"
 };
 
+const demoQualificationAgentId = "tm_demo_qualification_ai";
+const demoSalesOwnerId = "tm_demo_sales_owner";
+const demoLeadId = "lead_demo_asha_whatsapp";
+const demoConversationId = "leadconv_demo_asha_whatsapp";
+
 type AuthUser = typeof demoOwner & {
   passwordHash: string;
-  lastLoginAt?: string;
+  onboardingCompletedAt?: string;
+  onboardingProfile?: Record<string, unknown>;
 };
 
 type AuthState = {
@@ -29,76 +34,7 @@ type AuthState = {
   sessions: unknown[];
 };
 
-type DemoLead = {
-  id: string;
-  contact: {
-    displayName?: string;
-    phone?: string;
-    email?: string;
-    handle?: string;
-    profileUrl?: string;
-    waId?: string;
-  };
-  identityKeys: string[];
-  leadStatus?: "lead" | "excluded";
-  summary: string;
-  nextAction: string;
-  facts: string[];
-  conversations: Array<{
-    id: string;
-    channel: LeadKnowledgeChannel;
-    source: LeadKnowledgeSource;
-    externalKey: string;
-    sourceUrl?: string;
-    knowledgeStatus?: "included" | "excluded";
-    summary?: string;
-    nextAction?: string;
-    messages: Array<{
-      id: string;
-      externalId: string;
-      direction: LeadKnowledgeDirection;
-      body: string;
-      messageType?: string;
-      sentAt: string;
-      generatedBy?: "leadsy" | "fallback" | "human" | "manual";
-    }>;
-  }>;
-};
-
-type KnowledgeState = {
-  leads: Array<Record<string, unknown>>;
-  conversations: Array<Record<string, unknown>>;
-  messages: Array<Record<string, unknown>>;
-};
-
-type ExtensionState = {
-  tokens: unknown[];
-  conversations: unknown[];
-  messages: unknown[];
-  events: unknown[];
-  tasks: Array<Record<string, unknown>>;
-  taskEvents: Array<Record<string, unknown>>;
-};
-
-type DemoTask = {
-  id: string;
-  type: ExtensionTaskType;
-  status: ExtensionTaskStatus;
-  priority: ExtensionTaskPriority;
-  leadId: string;
-  conversationId?: string;
-  platform: ExtensionPlatform;
-  targetUrl?: string;
-  contact: { displayName?: string; phone?: string; email?: string; handle?: string; profileUrl?: string };
-  draftMessage: string;
-  contextSummary: string;
-  resultSummary?: string;
-  blockedReason?: string;
-  preparedAt?: string;
-  sendApprovedAt?: string;
-  completedAt?: string;
-  dueAt?: string;
-};
+type JsonObject = Record<string, unknown>;
 
 const scryptOptions = { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 
@@ -132,451 +68,276 @@ async function readJson<T>(path: string, fallback: T): Promise<T> {
 
 async function writeJson(path: string, value: unknown) {
   await mkdir(dirname(path), { recursive: true });
-  const tempFile = `${path}.${crypto.randomUUID()}.tmp`;
+  const tempFile = `${path}.${randomUUID()}.tmp`;
   await writeFile(tempFile, `${JSON.stringify(value, null, 2)}\n`);
   await rename(tempFile, path);
 }
 
-function nowFor(index: number) {
-  return new Date(Date.UTC(2026, 5, 3, 6, index * 4, 0)).toISOString();
-}
-
-const demoLeads: DemoLead[] = [
-  {
-    id: "lead_demo_ria_admissions",
-    contact: {
-      displayName: "Ria Sharma",
-      phone: "+91 98300 11111",
-      waId: "919830011111",
-      email: "ria.sharma@example.edu"
-    },
-    identityKeys: ["phone:919830011111", "email:ria.sharma@example.edu"],
-    summary: "Ria is evaluating MCA admissions and wants fees, scholarship details, and a weekend counselling slot.",
-    nextAction: "Approve the prepared WhatsApp follow-up and confirm Saturday counselling availability.",
-    facts: ["Asked for MCA fees.", "Parent prefers weekend counselling.", "Email brochure was sent."],
-    conversations: [
-      {
-        id: "leadconv_demo_ria_whatsapp",
-        channel: "whatsapp",
-        source: "meta-webhook",
-        externalKey: "meta:whatsapp:919830011111",
-        sourceUrl: "https://web.whatsapp.com/send?phone=919830011111",
-        messages: [
-          {
-            id: "leadmsg_demo_ria_wa_1",
-            externalId: "demo-ria-wa-1",
-            direction: "inbound",
-            body: "Hi, can you share MCA fees and admission dates?",
-            sentAt: nowFor(1)
-          },
-          {
-            id: "leadmsg_demo_ria_wa_2",
-            externalId: "demo-ria-wa-2",
-            direction: "outbound",
-            body: "Sure, I can share the fee range and help book a counselling slot.",
-            sentAt: nowFor(2),
-            generatedBy: "leadsy"
-          }
-        ]
-      },
-      {
-        id: "leadconv_demo_ria_email",
-        channel: "email",
-        source: "manual",
-        externalKey: "manual:lead_demo_ria_admissions:email",
-        messages: [
-          {
-            id: "leadmsg_demo_ria_email_1",
-            externalId: "demo-ria-email-1",
-            direction: "outbound",
-            body: "Sent MCA brochure, fees, scholarship ranges, and hostel details.",
-            messageType: "manual",
-            sentAt: nowFor(3),
-            generatedBy: "manual"
-          }
-        ]
-      },
-      {
-        id: "leadconv_demo_ria_call",
-        channel: "call",
-        source: "manual",
-        externalKey: "manual:lead_demo_ria_admissions:call",
-        messages: [
-          {
-            id: "leadmsg_demo_ria_call_1",
-            externalId: "demo-ria-call-1",
-            direction: "note",
-            body: "Call note: parent wants Saturday after 4 PM for counselling.",
-            messageType: "manual",
-            sentAt: nowFor(4),
-            generatedBy: "manual"
-          }
-        ]
-      }
-    ]
-  },
-  {
-    id: "lead_demo_zoya_events",
-    contact: {
-      displayName: "Zoya Khan",
-      handle: "zoya.events",
-      profileUrl: "https://www.instagram.com/zoya.events"
-    },
-    identityKeys: ["instagram:handle:zoya.events", "instagram:profile:www.instagram.com/zoya.events"],
-    summary: "Zoya asked on Instagram about event booking automation for wedding venue enquiries.",
-    nextAction: "Send an Instagram follow-up asking expected monthly enquiry volume.",
-    facts: ["Runs a wedding venue enquiry page.", "Interested in response speed and booking conversion."],
-    conversations: [
-      {
-        id: "leadconv_demo_zoya_instagram",
-        channel: "instagram",
-        source: "meta-webhook",
-        externalKey: "meta:instagram:zoya.events",
-        sourceUrl: "https://www.instagram.com/zoya.events",
-        messages: [
-          {
-            id: "leadmsg_demo_zoya_ig_1",
-            externalId: "demo-zoya-ig-1",
-            direction: "inbound",
-            body: "Can your team handle Instagram DMs for venue bookings?",
-            sentAt: nowFor(5)
-          }
-        ]
-      }
-    ]
-  },
-  {
-    id: "lead_demo_omar_property",
-    contact: {
-      displayName: "Omar Realty",
-      handle: "omar.realty",
-      profileUrl: "https://www.facebook.com/omar.realty"
-    },
-    identityKeys: ["facebook:handle:omar.realty", "facebook:profile:www.facebook.com/omar.realty"],
-    summary: "Omar requested a callback about property lead qualification and missed follow-ups.",
-    nextAction: "Manual review the blocked Facebook task and add a better contact URL.",
-    facts: ["Needs callback today.", "Property team misses high-intent Facebook leads."],
-    conversations: [
-      {
-        id: "leadconv_demo_omar_facebook",
-        channel: "facebook",
-        source: "meta-webhook",
-        externalKey: "meta:facebook:omar.realty",
-        sourceUrl: "https://www.facebook.com/omar.realty",
-        messages: [
-          {
-            id: "leadmsg_demo_omar_fb_1",
-            externalId: "demo-omar-fb-1",
-            direction: "inbound",
-            body: "Need a callback today about property lead follow-ups.",
-            sentAt: nowFor(6)
-          }
-        ]
-      }
-    ]
-  },
-  {
-    id: "lead_demo_meera_health",
-    contact: {
-      displayName: "Meera Wellness",
-      email: "hello@meerawellness.example",
-      profileUrl: "https://chat.example.com/meera"
-    },
-    identityKeys: ["email:hello@meerawellness.example", "generic:profile:chat.example.com/meera"],
-    summary: "Meera synced from a browser chat and wants patient appointment triage.",
-    nextAction: "Review included manual note; browser chat is excluded from AI knowledge for now.",
-    facts: ["Healthcare team.", "Wants appointment triage.", "Browser thread excluded due privacy preference."],
-    conversations: [
-      {
-        id: "leadconv_demo_meera_browser",
-        channel: "generic-web-chat",
-        source: "extension",
-        externalKey: "extension:generic-web-chat:https://chat.example.com/meera",
-        sourceUrl: "https://chat.example.com/meera",
-        knowledgeStatus: "excluded",
-        messages: [
-          {
-            id: "leadmsg_demo_meera_browser_1",
-            externalId: "demo-meera-browser-1",
-            direction: "inbound",
-            body: "We need appointment triage, but please exclude this private browser thread from AI.",
-            sentAt: nowFor(7),
-            generatedBy: "human"
-          }
-        ]
-      },
-      {
-        id: "leadconv_demo_meera_manual",
-        channel: "manual",
-        source: "manual",
-        externalKey: "manual:lead_demo_meera_health",
-        messages: [
-          {
-            id: "leadmsg_demo_meera_manual_1",
-            externalId: "demo-meera-manual-1",
-            direction: "note",
-            body: "Manual note: clinic manager approved AI context from call notes only.",
-            messageType: "manual",
-            sentAt: nowFor(8),
-            generatedBy: "manual"
-          }
-        ]
-      }
-    ]
-  },
-  {
-    id: "lead_demo_excluded_vendor",
-    contact: {
-      displayName: "Vendor Pitch",
-      email: "vendor@example.com"
-    },
-    identityKeys: ["email:vendor@example.com"],
-    leadStatus: "excluded",
-    summary: "Vendor solicitation. Kept for history, excluded from sales follow-up.",
-    nextAction: "Track only. No sales follow-up.",
-    facts: ["Excluded vendor solicitation."],
-    conversations: [
-      {
-        id: "leadconv_demo_vendor_email",
-        channel: "email",
-        source: "manual",
-        externalKey: "manual:lead_demo_excluded_vendor:email",
-        messages: [
-          {
-            id: "leadmsg_demo_vendor_email_1",
-            externalId: "demo-vendor-email-1",
-            direction: "inbound",
-            body: "We sell lead lists. Can we pitch?",
-            messageType: "manual",
-            sentAt: nowFor(9),
-            generatedBy: "manual"
-          }
-        ]
-      }
-    ]
-  }
-];
-
-const demoTasks: DemoTask[] = [
-  {
-    id: "exttask_demo_ria_approval",
-    type: "follow_up",
-    status: "awaiting_send_approval",
-    priority: "urgent",
-    leadId: "lead_demo_ria_admissions",
-    conversationId: "leadconv_demo_ria_whatsapp",
-    platform: "whatsapp-web",
-    targetUrl: "https://web.whatsapp.com/send?phone=919830011111",
-    contact: { displayName: "Ria Sharma", phone: "+91 98300 11111", email: "ria.sharma@example.edu" },
-    draftMessage: "Hi Ria, Saturday after 4 PM is available. Should I reserve that counselling slot?",
-    contextSummary: "Ria needs MCA fees and a weekend counselling slot.",
-    preparedAt: nowFor(10),
-    dueAt: nowFor(13)
-  },
-  {
-    id: "exttask_demo_zoya_queued",
-    type: "initiate_conversation",
-    status: "queued",
-    priority: "high",
-    leadId: "lead_demo_zoya_events",
-    conversationId: "leadconv_demo_zoya_instagram",
-    platform: "instagram-web",
-    targetUrl: "https://www.instagram.com/zoya.events",
-    contact: { displayName: "Zoya Khan", handle: "zoya.events", profileUrl: "https://www.instagram.com/zoya.events" },
-    draftMessage: "Hi Zoya, roughly how many venue enquiries do you handle each month right now?",
-    contextSummary: "Instagram lead asking about venue booking automation.",
-    dueAt: nowFor(14)
-  },
-  {
-    id: "exttask_demo_omar_blocked",
-    type: "manual_review",
-    status: "blocked",
-    priority: "normal",
-    leadId: "lead_demo_omar_property",
-    conversationId: "leadconv_demo_omar_facebook",
-    platform: "facebook-web",
-    targetUrl: "https://www.facebook.com/omar.realty",
-    contact: { displayName: "Omar Realty", handle: "omar.realty", profileUrl: "https://www.facebook.com/omar.realty" },
-    draftMessage: "Hi Omar, what areas and property types should the assistant qualify first?",
-    contextSummary: "Facebook contact requested callback; worker needs a confirmed profile target.",
-    resultSummary: "Worker could not confirm the Facebook target profile.",
-    blockedReason: "target_profile_unconfirmed",
-    completedAt: nowFor(15)
-  },
-  {
-    id: "exttask_demo_meera_sent",
-    type: "report_update",
-    status: "sent",
-    priority: "low",
-    leadId: "lead_demo_meera_health",
-    conversationId: "leadconv_demo_meera_manual",
-    platform: "generic-web-chat",
-    targetUrl: "https://chat.example.com/meera",
-    contact: { displayName: "Meera Wellness", email: "hello@meerawellness.example" },
-    draftMessage: "Thanks, Meera. I logged that AI should use call notes only for now.",
-    contextSummary: "Manual privacy preference was recorded.",
-    resultSummary: "Worker reported the privacy-safe note back to Leadsy.",
-    completedAt: nowFor(16)
-  }
-];
-
-function cleanPreview(body: string) {
-  return body.trim().replace(/\s+/g, " ").slice(0, 180);
-}
-
-function latestMessage(messages: DemoLead["conversations"][number]["messages"]) {
-  return [...messages].sort((left, right) => left.sentAt.localeCompare(right.sentAt)).at(-1);
-}
-
-function leadUpdatedAt(lead: DemoLead) {
-  return lead.conversations
-    .flatMap((conversation) => conversation.messages.map((message) => message.sentAt))
-    .sort()
-    .at(-1) ?? lead.conversations[0]?.messages[0]?.sentAt ?? demoOwner.createdAt;
+function nowFor(minutes: number) {
+  return new Date(Date.UTC(2026, 5, 3, 6, minutes, 0)).toISOString();
 }
 
 async function seedOwner(password: string) {
   const state = await readJson<AuthState>(authFile, { users: [], sessions: [] });
-  const existed = state.users.some((user) => user.id === demoOwner.id || user.normalizedLogin === demoOwner.normalizedLogin);
   const passwordHash = await hashDemoPassword(password);
   const existing = state.users.find((user) => user.id === demoOwner.id || user.normalizedLogin === demoOwner.normalizedLogin);
   const user: AuthUser = {
     ...demoOwner,
     passwordHash,
-    lastLoginAt: existing?.lastLoginAt
+    onboardingCompletedAt: nowFor(0),
+    onboardingProfile: {
+      businessName: "Leadsy Demo Agency",
+      industry: "Sales automation",
+      whatsappTransport: "leadsy_managed_twilio",
+      leadSources: ["Assigned WhatsApp number", "Website"],
+      assignmentPreference: ["AI qualification first", "Human sales owner after qualification"],
+      followUpPreference: ["Calendar-backed meeting proposals"]
+    }
   };
-  state.users = [user, ...state.users.filter((candidate) => candidate.id !== demoOwner.id && candidate.normalizedLogin !== demoOwner.normalizedLogin)];
-  await writeJson(authFile, state);
-  return { user, created: !existed };
+
+  await writeJson(authFile, {
+    users: existing
+      ? state.users.map((candidate) => (candidate.id === existing.id ? user : candidate))
+      : [...state.users, user],
+    sessions: state.sessions.filter((session) => {
+      const maybeSession = session as { userId?: string };
+      return maybeSession.userId !== demoOwner.id;
+    })
+  });
+
+  return { user, created: !existing };
 }
 
 async function seedKnowledge() {
-  const state = await readJson<KnowledgeState>(knowledgeFile, { leads: [], conversations: [], messages: [] });
-  state.leads = state.leads.filter((lead) => lead.tenantId !== demoOwner.tenantId || lead.ownerId !== demoOwner.id);
-  state.conversations = state.conversations.filter((conversation) => conversation.tenantId !== demoOwner.tenantId || conversation.ownerId !== demoOwner.id);
-  state.messages = state.messages.filter((message) => message.tenantId !== demoOwner.tenantId || message.ownerId !== demoOwner.id);
+  const state = await readJson<{
+    leads: JsonObject[];
+    conversations: JsonObject[];
+    messages: JsonObject[];
+  }>(knowledgeFile, { leads: [], conversations: [], messages: [] });
 
-  for (const lead of demoLeads) {
-    const updatedAt = leadUpdatedAt(lead);
-    state.leads.push({
-      id: lead.id,
+  const scopeMatches = (item: JsonObject) => item.tenantId === demoOwner.tenantId && item.ownerId === demoOwner.id;
+  const withoutDemoScope = <T extends JsonObject>(items: T[]) => items.filter((item) => !scopeMatches(item));
+
+  const lead = {
+    id: demoLeadId,
+    tenantId: demoOwner.tenantId,
+    ownerId: demoOwner.id,
+    identityKeys: ["phone:919000000001"],
+    contact: {
+      displayName: "Asha Buyer",
+      phone: "+919000000001",
+      waId: "919000000001"
+    },
+    leadStatus: "lead",
+    crmStatus: "needs_reply",
+    productPipelineStatus: "new",
+    leadSource: "WhatsApp Simulator",
+    assigneeId: demoQualificationAgentId,
+    assigneeName: "Qualification AI",
+    qualificationFields: {
+      name: "Asha Buyer",
+      phone: "+919000000001",
+      company: "LensMart",
+      need: "WhatsApp CRM follow-up",
+      timeline: "today"
+    },
+    qualificationStage: "collecting",
+    summary: "Asha asked about WhatsApp CRM follow-up for LensMart.",
+    nextAction: "Qualification AI should ask one concise follow-up question before handoff.",
+    facts: ["Company: LensMart", "Need: WhatsApp CRM follow-up", "Timeline: today"],
+    createdAt: nowFor(1),
+    updatedAt: nowFor(3)
+  };
+
+  const conversation = {
+    id: demoConversationId,
+    tenantId: demoOwner.tenantId,
+    ownerId: demoOwner.id,
+    leadId: demoLeadId,
+    channel: "whatsapp",
+    source: "twilio_simulator",
+    externalKey: "phone:919000000001",
+    contact: lead.contact,
+    knowledgeStatus: "included",
+    messageCount: 2,
+    inboundCount: 1,
+    outboundCount: 1,
+    lastMessageAt: nowFor(3),
+    lastMessagePreview: "Thanks Asha. What volume of WhatsApp enquiries does LensMart handle each day?",
+    summary: lead.summary,
+    nextAction: lead.nextAction,
+    sentiment: "positive",
+    createdAt: nowFor(1),
+    updatedAt: nowFor(3)
+  };
+
+  const messages = [
+    {
+      id: "leadmsg_demo_asha_inbound",
       tenantId: demoOwner.tenantId,
       ownerId: demoOwner.id,
-      identityKeys: lead.identityKeys,
-      contact: lead.contact,
-      leadStatus: lead.leadStatus ?? "lead",
-      excludedAt: lead.leadStatus === "excluded" ? updatedAt : undefined,
-      summary: lead.summary,
-      nextAction: lead.nextAction,
-      facts: lead.facts,
-      createdAt: demoOwner.createdAt,
-      updatedAt
-    });
-
-    for (const conversation of lead.conversations) {
-      const messages = conversation.messages;
-      const last = latestMessage(messages);
-      state.conversations.push({
-        id: conversation.id,
-        tenantId: demoOwner.tenantId,
-        ownerId: demoOwner.id,
-        leadId: lead.id,
-        channel: conversation.channel,
-        source: conversation.source,
-        externalKey: conversation.externalKey,
-        sourceUrl: conversation.sourceUrl,
-        contact: lead.contact,
-        knowledgeStatus: conversation.knowledgeStatus ?? "included",
-        excludedAt: conversation.knowledgeStatus === "excluded" ? last?.sentAt : undefined,
-        messageCount: messages.length,
-        inboundCount: messages.filter((message) => message.direction === "inbound").length,
-        outboundCount: messages.filter((message) => message.direction === "outbound").length,
-        lastMessageAt: last?.sentAt,
-        lastMessagePreview: last ? cleanPreview(last.body) : undefined,
-        summary: conversation.summary ?? lead.summary,
-        nextAction: conversation.nextAction ?? lead.nextAction,
-        createdAt: demoOwner.createdAt,
-        updatedAt: last?.sentAt ?? updatedAt
-      });
-
-      for (const message of messages) {
-        state.messages.push({
-          id: message.id,
-          tenantId: demoOwner.tenantId,
-          ownerId: demoOwner.id,
-          leadId: lead.id,
-          conversationId: conversation.id,
-          source: conversation.source,
-          channel: conversation.channel,
-          externalId: message.externalId,
-          direction: message.direction,
-          body: message.body,
-          messageType: message.messageType ?? "text",
-          sentAt: message.sentAt,
-          receivedAt: message.sentAt,
-          generatedBy: message.generatedBy,
-          raw: { demo: true }
-        });
-      }
+      leadId: demoLeadId,
+      conversationId: demoConversationId,
+      source: "twilio_simulator",
+      channel: "whatsapp",
+      externalId: "sim_demo_asha_inbound",
+      providerMessageSid: "sim_demo_asha_inbound",
+      direction: "inbound",
+      body: "Company: LensMart\nNeed: WhatsApp CRM follow-up\nTimeline: today",
+      messageType: "text",
+      sentAt: nowFor(2),
+      receivedAt: nowFor(2),
+      deliveryStatus: "received",
+      statusUpdatedAt: nowFor(2),
+      raw: { demo: true }
+    },
+    {
+      id: "leadmsg_demo_asha_ai_reply",
+      tenantId: demoOwner.tenantId,
+      ownerId: demoOwner.id,
+      leadId: demoLeadId,
+      conversationId: demoConversationId,
+      source: "twilio_simulator",
+      channel: "whatsapp",
+      externalId: "sim_demo_asha_ai_reply",
+      providerMessageSid: "sim_demo_asha_ai_reply",
+      direction: "outbound",
+      body: "Thanks Asha. What volume of WhatsApp enquiries does LensMart handle each day?",
+      messageType: "text",
+      sentAt: nowFor(3),
+      receivedAt: nowFor(3),
+      generatedBy: "ai_agent",
+      deliveryStatus: "simulated_delivered",
+      statusUpdatedAt: nowFor(3),
+      raw: { demo: true }
     }
-  }
+  ];
 
-  await writeJson(knowledgeFile, state);
-  return {
-    leads: demoLeads.length,
-    conversations: demoLeads.flatMap((lead) => lead.conversations).length,
-    messages: demoLeads.flatMap((lead) => lead.conversations.flatMap((conversation) => conversation.messages)).length
-  };
+  await writeJson(knowledgeFile, {
+    leads: [...withoutDemoScope(state.leads), lead],
+    conversations: [...withoutDemoScope(state.conversations), conversation],
+    messages: [...withoutDemoScope(state.messages), ...messages]
+  });
+
+  return { leads: 1, conversations: 1, messages: messages.length };
 }
 
-async function seedTasks() {
-  const state = await readJson<ExtensionState>(extensionFile, {
-    tokens: [],
-    conversations: [],
-    messages: [],
-    events: [],
-    tasks: [],
-    taskEvents: []
+async function seedTeamspace() {
+  const state = await readJson<{
+    members: JsonObject[];
+    threadMessages: JsonObject[];
+  }>(teamspaceFile, { members: [], threadMessages: [] });
+
+  const scopeMatches = (item: JsonObject) => item.tenantId === demoOwner.tenantId && item.ownerId === demoOwner.id;
+  const withoutDemoScope = <T extends JsonObject>(items: T[]) => items.filter((item) => !scopeMatches(item));
+
+  const members = [
+    {
+      id: demoQualificationAgentId,
+      tenantId: demoOwner.tenantId,
+      ownerId: demoOwner.id,
+      type: "ai_agent_full",
+      name: "Qualification AI",
+      role: "agent",
+      status: "active",
+      pipelineStages: ["new", "collecting"],
+      behaviorInstructions: "Ask short qualification questions and stop after handoff.",
+      autoReplyEnabled: true,
+      escalationKeywords: ["human", "manager", "angry", "refund", "legal"],
+      senderMode: "simulator",
+      simulatorSenderHandle: "Qualification AI Simulator",
+      workload: { openLeads: 1, openTasks: 0 },
+      createdAt: nowFor(0),
+      updatedAt: nowFor(3)
+    },
+    {
+      id: demoSalesOwnerId,
+      tenantId: demoOwner.tenantId,
+      ownerId: demoOwner.id,
+      type: "human",
+      name: "Demo Sales Owner",
+      emailOrPhone: "sales-owner@leadsy.local",
+      authUserId: "usr_demo_sales_owner",
+      role: "manager",
+      status: "active",
+      pipelineStages: ["qualified", "interested", "contacted"],
+      autoReplyEnabled: false,
+      escalationKeywords: [],
+      senderMode: "none",
+      workload: { openLeads: 0, openTasks: 0 },
+      createdAt: nowFor(0),
+      updatedAt: nowFor(3)
+    }
+  ];
+
+  const threadMessages = [
+    {
+      id: "teammsg_demo_asha_handoff",
+      tenantId: demoOwner.tenantId,
+      ownerId: demoOwner.id,
+      leadId: demoLeadId,
+      conversationId: demoConversationId,
+      authorMemberId: demoQualificationAgentId,
+      authorType: "ai_agent",
+      body: "Qualification started. Awaiting query volume before handoff to sales owner.",
+      eventType: "handoff_summary",
+      triggerId: "demo-seed-handoff",
+      visibility: "internal",
+      createdAt: nowFor(4)
+    }
+  ];
+
+  await writeJson(teamspaceFile, {
+    members: [...withoutDemoScope(state.members), ...members],
+    threadMessages: [...withoutDemoScope(state.threadMessages), ...threadMessages]
   });
-  state.tasks = state.tasks.filter((task) => task.tenantId !== demoOwner.tenantId || task.ownerId !== demoOwner.id);
-  state.taskEvents = state.taskEvents.filter((event) => event.tenantId !== demoOwner.tenantId || event.ownerId !== demoOwner.id);
 
-  for (const [index, task] of demoTasks.entries()) {
-    const now = task.completedAt ?? task.preparedAt ?? task.dueAt ?? nowFor(index + 10);
-    state.tasks.push({
-      ...task,
+  return { teamMembers: members.length, internalMessages: threadMessages.length };
+}
+
+async function seedCalendar() {
+  const state = await readJson<{ events: JsonObject[] }>(calendarFile, { events: [] });
+  const events = [
+    {
+      id: "calev_demo_sales_availability",
       tenantId: demoOwner.tenantId,
       ownerId: demoOwner.id,
-      approvedAt: task.status === "queued" ? undefined : nowFor(index + 10),
-      claimedAt: task.status === "awaiting_send_approval" ? nowFor(index + 9) : undefined,
-      createdAt: nowFor(index + 9),
-      updatedAt: now
-    });
-    state.taskEvents.push({
-      id: `taskevt_${task.id}`,
+      memberId: demoSalesOwnerId,
+      title: "Sales owner availability",
+      startAt: nowFor(8),
+      endAt: nowFor(68),
+      eventType: "availability",
+      status: "available",
+      attendees: [],
+      createdAt: nowFor(0),
+      updatedAt: nowFor(0)
+    },
+    {
+      id: "calev_demo_asha_proposed",
       tenantId: demoOwner.tenantId,
       ownerId: demoOwner.id,
-      taskId: task.id,
-      type:
-        task.status === "awaiting_send_approval"
-          ? "worker_prepared"
-          : task.status === "blocked"
-            ? "worker_blocked"
-            : task.status === "sent"
-              ? "worker_sent"
-              : "monitoring_event",
-      summary:
-        task.resultSummary ??
-        (task.status === "awaiting_send_approval"
-          ? "Worker prepared the draft and is waiting for Leadsy approval."
-          : "Task is ready for the browser worker."),
-      reason: task.blockedReason,
-      occurredAt: now
-    });
-  }
+      memberId: demoSalesOwnerId,
+      leadId: demoLeadId,
+      conversationId: demoConversationId,
+      title: "Proposed LensMart discovery call",
+      startAt: nowFor(90),
+      endAt: nowFor(120),
+      eventType: "meeting",
+      status: "proposed",
+      attendees: ["Asha Buyer", "Demo Sales Owner"],
+      createdAt: nowFor(4),
+      updatedAt: nowFor(4)
+    }
+  ];
 
-  await writeJson(extensionFile, state);
-  return { tasks: demoTasks.length, taskEvents: demoTasks.length };
+  await writeJson(calendarFile, {
+    events: [
+      ...state.events.filter((event) => event.tenantId !== demoOwner.tenantId || event.ownerId !== demoOwner.id),
+      ...events
+    ]
+  });
+
+  return { calendarEvents: events.length };
 }
 
 export async function seedLeadsyDemoWorkspace(options: { requirePassword?: boolean } = {}) {
@@ -591,7 +352,9 @@ export async function seedLeadsyDemoWorkspace(options: { requirePassword?: boole
 
   const owner = await seedOwner(password);
   const knowledgeCounts = await seedKnowledge();
-  const taskCounts = await seedTasks();
+  const teamspaceCounts = await seedTeamspace();
+  const calendarCounts = await seedCalendar();
+
   return {
     owner: {
       id: owner.user.id,
@@ -610,7 +373,8 @@ export async function seedLeadsyDemoWorkspace(options: { requirePassword?: boole
     },
     counts: {
       ...knowledgeCounts,
-      ...taskCounts
+      ...teamspaceCounts,
+      ...calendarCounts
     }
   };
 }

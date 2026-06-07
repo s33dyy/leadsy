@@ -1,16 +1,16 @@
 import type { ReactNode } from "react";
 import { AppShell } from "@/components/app-shell";
 import { requireAgencySession } from "@/lib/auth";
-import { listExtensionTasks, taskNeedsApproval } from "@/lib/extension-store";
+import { listLeadKnowledgeRecords } from "@/lib/lead-knowledge-store";
 import { getWorkspaceWhatsAppSender } from "@/lib/workspace-whatsapp-sender-store";
 
 export default async function WorkspaceLayout({ children }: { children: ReactNode }) {
   const session = await requireAgencySession();
-  const [tasks, whatsAppSender] = await Promise.all([
-    listExtensionTasks(session.tenantId, session.id),
+  const [leads, whatsAppSender] = await Promise.all([
+    listLeadKnowledgeRecords({ tenantId: session.tenantId, ownerId: session.id }),
     getWorkspaceWhatsAppSender({ tenantId: session.tenantId, ownerId: session.id })
   ]);
-  const pendingApprovalCount = tasks.filter(taskNeedsApproval).length;
+  const pendingApprovalCount = leads.filter((lead) => lead.crmStatus === "human_review").length;
   return (
     <AppShell
       session={session}

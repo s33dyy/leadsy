@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Bot, Cable, Download, MessageCircle, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowRight, Bot, Cable, CalendarDays, MessageCircle, ShieldCheck, Sparkles } from "lucide-react";
 import { LandingScene } from "@/components/landing-scene";
 import { Badge, GhostLink, PrimaryLink } from "@/components/ui";
 
@@ -7,7 +7,7 @@ const modules = [
   {
     icon: MessageCircle,
     title: "Capture leads",
-    detail: "Bring Meta, WhatsApp, browser extension, and manual lead intake into one conversion workspace."
+    detail: "Bring Leadsy-managed WhatsApp, AI qualification, Teamspace, and manual lead intake into one conversion workspace."
   },
   {
     icon: Cable,
@@ -20,9 +20,9 @@ const modules = [
     detail: "Create owner assignments, approval queues, and follow-up tasks while Leadsy keeps the source of truth."
   },
   {
-    icon: Download,
-    title: "Draft with approval",
-    detail: "Prepare outreach drafts without sending autonomously; operators approve every action first."
+    icon: CalendarDays,
+    title: "AI team handoff",
+    detail: "Initial AI qualification can auto-reply inside guardrails, then hand off to human or AI pipeline owners."
   },
   {
     icon: ShieldCheck,
@@ -46,12 +46,6 @@ export default function Home() {
           <a href="/login?next=/app/leads" className="rounded-[6px] px-3 py-2 text-sm text-[var(--muted-2)] hover:text-white">
             Workspace
           </a>
-          <a href="/extension" className="rounded-[6px] px-3 py-2 text-sm text-[var(--muted-2)] hover:text-white">
-            Extension
-          </a>
-          <a href="/login?next=/app/connect" className="rounded-[6px] px-3 py-2 text-sm text-[var(--muted-2)] hover:text-white">
-            Connect
-          </a>
         </nav>
       </header>
 
@@ -69,7 +63,7 @@ export default function Home() {
               Open Leads
               <ArrowRight className="ml-2" size={16} />
             </PrimaryLink>
-            <GhostLink href="/extension">Download extension</GhostLink>
+            <GhostLink href="/login?next=/app/communications">Open Inbox</GhostLink>
           </div>
         </div>
         <LandingScene />

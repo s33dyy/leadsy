@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 function redirectToLead(request: NextRequest, leadId: string) {
   const url = urlForRequestHost(request, "/app/leads");
   url.searchParams.set("contact", leadId);
-  url.searchParams.set("tab", "comms");
+  url.searchParams.set("tab", "conversation");
   url.searchParams.set("notice", "manual-message-added");
   return NextResponse.redirect(url, 303);
 }
@@ -22,12 +22,6 @@ function channelFromValue(value: FormDataEntryValue | null): LeadKnowledgeChanne
   const channel = String(value ?? "manual");
   if (
     channel === "whatsapp" ||
-    channel === "instagram" ||
-    channel === "facebook" ||
-    channel === "whatsapp-web" ||
-    channel === "instagram-web" ||
-    channel === "facebook-web" ||
-    channel === "generic-web-chat" ||
     channel === "email" ||
     channel === "call" ||
     channel === "manual"

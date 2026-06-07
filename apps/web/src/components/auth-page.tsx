@@ -12,7 +12,7 @@ const loginErrors: Record<string, string> = {
   google_unconfigured: "Google signup is not connected yet. Please contact Leadsy support.",
   google_state: "Google signup expired. Please try again.",
   google_failed: "Google signup could not be completed.",
-  meta_session: "Your Leadsy session expired before Meta authorization could finish. Log in, then reconnect Meta from Integrations."
+  session_expired: "Your Leadsy session expired. Log in again to continue."
 };
 
 const modeCopy: Record<AuthMode, { eyebrow: string; title: string; body: string }> = {
@@ -24,7 +24,7 @@ const modeCopy: Record<AuthMode, { eyebrow: string; title: string; body: string 
   signup: {
     eyebrow: "Create workspace",
     title: "Start converting leads with AI qualification",
-    body: "Create your workspace with Google, then connect Meta, WhatsApp, and the browser extension when you are ready."
+    body: "Create your workspace with Google. Leadsy will prepare WhatsApp routing and AI qualification during onboarding."
   },
   forgot: {
     eyebrow: "Account help",
@@ -173,7 +173,7 @@ function OperatorPreview() {
             </div>
             <div className="mt-5 space-y-4 text-sm">
               <div className="rounded-[8px] border border-dashed border-[var(--line)] p-4 text-[var(--muted-2)]">
-                Connect Meta, WhatsApp, or the extension to populate real source performance.
+                Leadsy-managed WhatsApp and manual intake populate real source performance.
               </div>
             </div>
           </div>

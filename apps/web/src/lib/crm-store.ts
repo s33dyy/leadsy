@@ -126,11 +126,11 @@ function defaultAssignmentRules(scope: Scope): CrmAssignmentRule[] {
   return [
     {
       ...scope,
-      id: "default-meta-ctwa",
-      title: "Meta CTWA leads",
-      sourceIncludes: "Meta CTWA",
-      assigneeId: "meta-sales-owner",
-      assigneeName: "Meta sales owner",
+      id: "default-whatsapp-inbound",
+      title: "WhatsApp inbound leads",
+      sourceIncludes: "WhatsApp",
+      assigneeId: "whatsapp-sales-owner",
+      assigneeName: "WhatsApp sales owner",
       createdAt: now,
       updatedAt: now
     },

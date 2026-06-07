@@ -4,10 +4,11 @@ import { conversationMessages, latestConversationMessage } from "./conversation-
 export type StabilizedInboxItem = {
   id: string;
   leadId: string;
+  conversationId: string;
   lead: string;
   contact: string;
   company: string;
-  channel: "WhatsApp" | "Instagram" | "Messenger" | "Email" | "Extension";
+  channel: "WhatsApp" | "Email" | "Call" | "Manual";
   preview: string;
   lastMessage: string;
   time: string;
@@ -49,9 +50,8 @@ export function timestampValue(value?: string) {
 
 export function channelLabelForInbox(channels: LeadKnowledgeChannel[]): StabilizedInboxItem["channel"] {
   if (channels.includes("email")) return "Email";
-  if (channels.includes("instagram") || channels.includes("instagram-web")) return "Instagram";
-  if (channels.includes("facebook") || channels.includes("facebook-web")) return "Messenger";
-  if (channels.some((channel) => channel.endsWith("-web") || channel === "generic-web-chat")) return "Extension";
+  if (channels.includes("call")) return "Call";
+  if (channels.includes("manual")) return "Manual";
   return "WhatsApp";
 }
 
@@ -71,6 +71,8 @@ export function buildLeadBackedInboxItems(leads: LeadKnowledgeRecord[]): Stabili
     const visibleMessages = conversationMessages(lead.messages);
     const lastMessage = latestConversationMessage(visibleMessages);
     if (!lastMessage) continue;
+    const conversation = lead.conversations.find((candidate) => candidate.id === lastMessage.conversationId) ?? lead.conversations[0];
+    if (!conversation) continue;
 
     const contact = lead.contact.displayName || lead.contact.handle || lead.contact.phone || lead.contact.email || "Unknown lead";
     const time = relativeTime(lastMessage.sentAt);
@@ -78,6 +80,7 @@ export function buildLeadBackedInboxItems(leads: LeadKnowledgeRecord[]): Stabili
     const item: StabilizedInboxItem = {
       id: `lead_${lead.id}`,
       leadId: lead.id,
+      conversationId: conversation.id,
       lead: contact,
       contact,
       company: lead.leadSource || "Lead knowledge",
@@ -94,7 +97,7 @@ export function buildLeadBackedInboxItems(leads: LeadKnowledgeRecord[]): Stabili
       owner: lead.assigneeName || "Unassigned",
       qualification: labelFromSlug(lead.qualificationStage),
       important: lead.crmStatus === "human_review" || lead.crmStatus === "needs_reply",
-      href: `/app/leads?contact=${lead.id}&tab=conversation`,
+      href: `/app/communications?conversation=${conversation.id}`,
       messages: visibleMessages.slice(-8).map((message) => ({
         id: message.id,
         author: message.direction === "outbound" ? "Leadsy" : contact,

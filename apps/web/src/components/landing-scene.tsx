@@ -1,4 +1,4 @@
-import { Activity, ArrowRight, Bot, Cable, Download, MessageCircle, Phone } from "lucide-react";
+import { Activity, ArrowRight, Bot, Cable, CalendarDays, MessageCircle, Phone } from "lucide-react";
 import { Badge } from "./ui";
 
 export function LandingScene() {
@@ -14,7 +14,7 @@ export function LandingScene() {
             </div>
             <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
               {[
-                ["Sources", "Connect Meta, WhatsApp, extension, or manual intake."],
+                ["Sources", "Leadsy-managed WhatsApp, AI Teamspace, calendar, or manual intake."],
                 ["Leads", "Records appear after the first captured conversation."],
                 ["Qualification", "AI fields stay empty until real answers arrive."],
                 ["Follow-up", "Tasks and approvals appear from real lead activity."]
@@ -31,7 +31,7 @@ export function LandingScene() {
                 <span className="mono text-teal-200">setup required</span>
               </div>
               <div className="grid gap-2 md:grid-cols-4">
-                {["Meta App", "WhatsApp Text", "Lead Record", "Follow-up"].map((step) => (
+                {["Leadsy Number", "WhatsApp Inbox", "Lead Record", "Follow-up"].map((step) => (
                   <div key={step} className="h-16 rounded-[6px] border border-dashed border-[var(--line)] bg-black/20 p-3">
                     <div className="mono text-[10px] uppercase text-[var(--muted)]">{step}</div>
                     <div className="mt-2 h-1.5 rounded-full bg-white/[0.08]" />
@@ -100,9 +100,9 @@ export function LandingScene() {
             </div>
             <div className="space-y-2">
               {[
-                { icon: MessageCircle, label: "WhatsApp webhook", detail: "receive incoming ad messages" },
+                { icon: MessageCircle, label: "WhatsApp webhook", detail: "receive inbound lead messages" },
                 { icon: Activity, label: "Lead context", detail: "sync every conversation" },
-                { icon: Download, label: "Extension", detail: "install private browser helper" }
+                 { icon: CalendarDays, label: "Calendar", detail: "offer real meeting times" }
               ].map((source) => {
                 const Icon = source.icon;
                 return (

@@ -8,11 +8,11 @@ async function main() {
   assert(settingsPage.includes("getTwilioIntegrationStatus"), "settings page should read Twilio integration status");
   assert(settingsPage.includes("getWorkspaceWhatsAppSender"), "settings page should read the workspace assigned sender");
   assert(settingsPage.includes('id: "twilio"'), "settings navigation should expose Twilio under integrations");
-  for (const label of ["Workspace Sender Status", "Assigned Lead Number", "Provisioning Detail", "Platform Connection Status", "Platform Account SID", "Platform Default Sender", "Last Webhook", "Last Delivery Callback"]) {
+  for (const label of ["Workspace sender status", "Assigned lead number", "Provisioning detail", "Platform connection status", "Platform account SID", "Platform default sender", "Last webhook", "Last delivery callback"]) {
     assert(settingsPage.includes(label), `settings Twilio panel should display ${label}`);
   }
   assert(settingsPage.includes("maskTwilioAccountSid"), "settings should mask the Twilio account SID before display");
-  assert(settingsPage.includes("Leadsy assigns the workspace a dedicated WhatsApp lead number"), "settings should describe Leadsy-assigned sender ownership");
+  assert(settingsPage.includes("Leadsy assigns each workspace a dedicated WhatsApp lead number"), "settings should describe Leadsy-assigned sender ownership");
   assert(settingsPage.includes("/api/twilio/webhook"), "settings should show the Twilio inbound webhook route");
   assert(settingsPage.includes("/api/twilio/status"), "settings should show the Twilio status callback route");
   for (const secretLeak of ["TWILIO_AUTH_TOKEN", "Auth Token", "authToken"]) {

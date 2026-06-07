@@ -142,14 +142,14 @@ async function main() {
       marketingTemplates: 25,
       authenticationTemplates: 10,
       phoneNumberMonthlyUsd: 1.15,
-      metaUtilityTemplateFeeUsd: 0.004,
-      metaMarketingTemplateFeeUsd: 0.01,
-      metaAuthenticationTemplateFeeUsd: 0.003,
+      providerUtilityTemplateFeeUsd: 0.004,
+      providerMarketingTemplateFeeUsd: 0.01,
+      providerAuthenticationTemplateFeeUsd: 0.003,
       fxRateInr: 83
     });
     closeTo(estimate.twilioMessageFeesUsd, 8.175);
     closeTo(estimate.phoneNumberFeesUsd, 2.3);
-    closeTo(estimate.metaTemplateFeesUsd, 0.68);
+    closeTo(estimate.providerTemplateFeesUsd, 0.68);
     closeTo(estimate.totalUsd, 11.155);
     closeTo(estimate.totalInr, 925.865);
     assert.equal(estimate.simulatorMonthlyUsd, 0);

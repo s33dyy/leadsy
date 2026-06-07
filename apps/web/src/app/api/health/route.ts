@@ -4,24 +4,24 @@ import {
   campaigns,
   deals,
   discoveredLeads,
-  leadMagnetSources,
-  metaLeads,
-  whatsappConversations
+  leadMagnetSources
 } from "@leadsy/domain";
 import { listAgencyClients } from "@/lib/agency-client-store";
 import { summarizeAuthHealth } from "@/lib/auth-store";
+import { summarizeCalendarHealth } from "@/lib/calendar-store";
 import { summarizeCrmHealth } from "@/lib/crm-store";
-import { summarizeExtensionHealth } from "@/lib/extension-store";
 import { summarizeLeadKnowledgeHealth } from "@/lib/lead-knowledge-store";
+import { summarizeTeamspaceHealth } from "@/lib/teamspace-store";
 import { listWorkspaceWhatsAppSenders } from "@/lib/workspace-whatsapp-sender-store";
 
 export async function GET() {
-  const [agencyClients, leadKnowledge, extension, crm, auth, workspaceWhatsAppSenders] = await Promise.all([
+  const [agencyClients, leadKnowledge, crm, auth, teamspace, calendar, workspaceWhatsAppSenders] = await Promise.all([
     listAgencyClients(),
     summarizeLeadKnowledgeHealth(),
-    summarizeExtensionHealth(),
     summarizeCrmHealth(),
     summarizeAuthHealth(),
+    summarizeTeamspaceHealth(),
+    summarizeCalendarHealth(),
     listWorkspaceWhatsAppSenders()
   ]);
   return NextResponse.json({
@@ -35,15 +35,15 @@ export async function GET() {
       leads: leadKnowledge.records,
       campaigns: campaigns.length,
       agencyClients: agencyClients.length,
-      metaLeads: leadKnowledge.metaSourced || metaLeads.length,
       leadMagnetSources: leadMagnetSources.length,
       discoveredLeads: discoveredLeads.length,
-      whatsappConversations: leadKnowledge.conversations || extension.conversations || whatsappConversations.length,
-      extensionTasks: extension.visibleTasks,
-      pendingApprovals: extension.pendingApprovals,
+      whatsappConversations: leadKnowledge.conversations,
       crmFollowUpTasks: crm.followUpTasks,
       authUsers: auth.users,
       authSessions: auth.sessions,
+      teamMembers: teamspace.members,
+      aiAgents: teamspace.aiAgents,
+      calendarEvents: calendar.events,
       workspaceWhatsAppSenders: workspaceWhatsAppSenders.length,
       interestedLeads: leadKnowledge.interestedLeads,
       humanReviewLeads: leadKnowledge.humanReviewLeads
@@ -53,7 +53,8 @@ export async function GET() {
       senders: workspaceWhatsAppSenders.length
     },
     leadKnowledge,
-    extension,
+    teamspace,
+    calendar,
     crm: {
       ...crm,
       statusPipeline: leadKnowledge.statusPipeline,

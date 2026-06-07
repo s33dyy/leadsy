@@ -4,31 +4,15 @@ import { getDemoSession } from "@leadsy/security";
 import { leadsyDataDir } from "./data-dir";
 import { conversationMessages, internalNotes, latestConversationMessage } from "./conversation-contract";
 export { conversationMessages, internalNotes, systemEvents } from "./conversation-contract";
-import type {
-  ExtensionConversationContact,
-  ExtensionConversationEvent,
-  ExtensionConversationInsight,
-  ExtensionCaptureSource,
-  ExtensionMessageDirection,
-  ExtensionMessageGeneratedBy,
-  ExtensionPlatform,
-  ExtensionTask
-} from "./extension-store";
 
 const knowledgeFile = join(leadsyDataDir, "lead-knowledge.json");
 
 export type LeadKnowledgeChannel =
   | "whatsapp"
-  | "instagram"
-  | "facebook"
-  | "whatsapp-web"
-  | "instagram-web"
-  | "facebook-web"
-  | "generic-web-chat"
   | "email"
   | "call"
   | "manual";
-export type LeadKnowledgeSource = "meta-webhook" | "twilio" | "twilio_simulator" | "extension" | "manual";
+export type LeadKnowledgeSource = "twilio" | "twilio_simulator" | "manual";
 export type LeadKnowledgeDirection = "inbound" | "outbound" | "system" | "note";
 export type LeadKnowledgeStatus = "lead" | "excluded";
 export type LeadConversationKnowledgeStatus = "included" | "excluded";
@@ -112,7 +96,7 @@ export type LeadKnowledgeConversation = {
   lastMessagePreview?: string;
   summary?: string;
   nextAction?: string;
-  sentiment?: ExtensionConversationInsight["sentiment"];
+  sentiment?: "positive" | "neutral" | "negative" | "unknown";
   createdAt: string;
   updatedAt: string;
 };
@@ -132,7 +116,7 @@ export type LeadKnowledgeMessage = {
   messageType: string;
   sentAt: string;
   receivedAt: string;
-  generatedBy?: ExtensionMessageGeneratedBy | "manual";
+  generatedBy?: "leadsy" | "manual" | "ai_agent";
   deliveryStatus?: string;
   statusUpdatedAt?: string;
   hiddenAt?: string;
@@ -171,51 +155,12 @@ type Scope = {
   ownerId: string;
 };
 
-type MetaNormalizedMessage = {
-  channel: Extract<LeadKnowledgeChannel, "whatsapp" | "instagram" | "facebook">;
-  externalConversationKey: string;
-  sourceUrl?: string;
-  contact: LeadKnowledgeContact;
-  identityKeys: string[];
-  externalId: string;
-  direction: LeadKnowledgeDirection;
-  body: string;
-  messageType: string;
-  sentAt: string;
-  receivedAt: string;
-  raw: unknown;
-};
-
 function emptyState(): LeadKnowledgeState {
   return { leads: [], conversations: [], messages: [] };
 }
 
 function nowIso() {
   return new Date().toISOString();
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
-}
-
-function asArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
-}
-
-function asString(value: unknown) {
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-function timestampToIso(timestamp: unknown, fallback: string) {
-  const value = typeof timestamp === "number" ? String(timestamp) : asString(timestamp);
-  if (!value) return fallback;
-  const numeric = Number(value);
-  if (Number.isFinite(numeric) && numeric > 0) {
-    const millis = numeric > 10_000_000_000 ? numeric : numeric * 1000;
-    return new Date(millis).toISOString();
-  }
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? fallback : date.toISOString();
 }
 
 function cleanPreview(body: string) {
@@ -287,10 +232,14 @@ function ensureLeadCrmDefaults(lead: LeadKnowledgeLead) {
 }
 
 function channelFamily(channel: LeadKnowledgeChannel) {
-  if (channel === "whatsapp" || channel === "whatsapp-web") return "whatsapp";
-  if (channel === "instagram" || channel === "instagram-web") return "instagram";
-  if (channel === "facebook" || channel === "facebook-web") return "facebook";
   return channel;
+}
+
+function channelLabelForSource(channel: LeadKnowledgeChannel) {
+  if (channel === "whatsapp") return "WhatsApp";
+  if (channel === "email") return "Email";
+  if (channel === "call") return "Call";
+  return "Manual";
 }
 
 function timestampDeltaMs(left: string, right: string) {
@@ -323,8 +272,8 @@ function scopeMatches(scope: Scope, item: Scope) {
 export function defaultWebhookScope(): Scope {
   const demo = getDemoSession();
   return {
-    tenantId: process.env.LEADSY_META_TENANT_ID?.trim() || demo.tenantId,
-    ownerId: process.env.LEADSY_META_OWNER_ID?.trim() || demo.id
+    tenantId: demo.tenantId,
+    ownerId: demo.id
   };
 }
 
@@ -378,11 +327,6 @@ function profileKey(channel: string, value?: string) {
   }
 }
 
-function displayNameKey(channel: string, value?: string) {
-  const clean = value?.trim().replace(/\s+/g, " ").toLowerCase();
-  return clean ? `${channel}:display:${clean}` : undefined;
-}
-
 function cleanContact(contact: LeadKnowledgeContact = {}): LeadKnowledgeContact {
   return {
     displayName: contact.displayName?.trim() || undefined,
@@ -401,13 +345,6 @@ function identityKeysForContact(channel: string, contact: LeadKnowledgeContact) 
     emailKey(contact.email),
     handleKey(channel, contact.handle),
     profileKey(channel, contact.profileUrl)
-  ]);
-}
-
-function extensionIdentityKeysForContact(channel: string, contact: LeadKnowledgeContact) {
-  return uniqueStrings([
-    ...identityKeysForContact(channel, contact),
-    displayNameKey(channel, contact.displayName)
   ]);
 }
 
@@ -505,8 +442,8 @@ function nextMissingQualificationField(fields: LeadQualificationFields) {
 
 function defaultAssigneeForLeadSource(leadSource?: string) {
   if (!leadSource) return {};
-  if (/meta|ctwa|whatsapp/i.test(leadSource)) {
-    return { assigneeId: "meta-sales-owner", assigneeName: "Meta sales owner" };
+  if (/whatsapp/i.test(leadSource)) {
+    return { assigneeId: "whatsapp-sales-owner", assigneeName: "WhatsApp sales owner" };
   }
   if (/google|website|gads|organic/i.test(leadSource)) {
     return { assigneeId: "website-sales-owner", assigneeName: "Website sales owner" };
@@ -653,7 +590,7 @@ function upsertConversation(state: LeadKnowledgeState, scope: Scope, input: {
   contact?: LeadKnowledgeContact;
   summary?: string;
   nextAction?: string;
-  sentiment?: ExtensionConversationInsight["sentiment"];
+  sentiment?: LeadKnowledgeConversation["sentiment"];
 }) {
   const now = nowIso();
   const existing = state.conversations.find(
@@ -730,7 +667,7 @@ function recalculateConversation(state: LeadKnowledgeState, conversationId: stri
   conversation.updatedAt = nowIso();
 }
 
-function updateLeadFromConversation(state: LeadKnowledgeState, leadId: string, insight?: ExtensionConversationInsight) {
+function updateLeadFromConversation(state: LeadKnowledgeState, leadId: string, insight?: { summary?: string; nextAction?: string; qualification?: string }) {
   const lead = state.leads.find((candidate) => candidate.id === leadId);
   if (!lead) return;
   ensureLeadCrmDefaults(lead);
@@ -761,559 +698,6 @@ function nextActionForMessages(messages: LeadKnowledgeMessage[], leadStatus: Lea
   if (latest.direction === "inbound") return "Reply in Leadsy-approved channel and qualify intent.";
   if (latest.direction === "outbound") return "Wait for reply or log the next outcome.";
   return "Review the latest note and decide the next action.";
-}
-
-function textForWhatsAppMessage(message: Record<string, unknown>) {
-  const text = asRecord(message.text);
-  const button = asRecord(message.button);
-  const interactive = asRecord(message.interactive);
-  const image = asRecord(message.image);
-  const document = asRecord(message.document);
-  const video = asRecord(message.video);
-  const audio = asRecord(message.audio);
-  return (
-    asString(text?.body) ||
-    asString(button?.text) ||
-    asString(asRecord(interactive?.button_reply)?.title) ||
-    asString(asRecord(interactive?.list_reply)?.title) ||
-    asString(image?.caption) ||
-    asString(document?.caption) ||
-    asString(video?.caption) ||
-    (audio ? "Voice message" : undefined)
-  );
-}
-
-function referralForWhatsApp(message: Record<string, unknown>) {
-  const referral = asRecord(message.referral);
-  if (!referral) return undefined;
-  return {
-    sourceType: asString(referral.source_type),
-    sourceId: asString(referral.source_id),
-    sourceUrl: asString(referral.source_url),
-    headline: asString(referral.headline),
-    body: asString(referral.body),
-    ctwaClid: asString(referral.ctwa_clid)
-  };
-}
-
-function crmMetaSource(normalized: MetaNormalizedMessage) {
-  const raw = asRecord(normalized.raw);
-  const referral = asRecord(raw?.referral);
-  const referralSourceType = asString(referral?.sourceType);
-  if (normalized.channel === "whatsapp" && referralSourceType === "ad") {
-    return {
-      leadSource: "Meta CTWA Ads",
-      campaignId: asString(referral?.sourceId) || asString(referral?.ctwaClid)
-    };
-  }
-  if (normalized.channel === "whatsapp") return { leadSource: "WhatsApp" };
-  if (normalized.channel === "instagram") return { leadSource: "Instagram" };
-  if (normalized.channel === "facebook") return { leadSource: "Facebook" };
-  return {};
-}
-
-function contactForWhatsApp(contacts: unknown[], from?: string) {
-  return (
-    contacts.map(asRecord).find((contact) => {
-      const waId = asString(contact?.wa_id);
-      return waId && from && waId === from;
-    }) ?? asRecord(contacts[0])
-  );
-}
-
-function extractWhatsAppMessages(payload: unknown, receivedAt: string): MetaNormalizedMessage[] {
-  const records: MetaNormalizedMessage[] = [];
-  const root = asRecord(payload);
-  const messageFields = new Set(["messages", "message_echoes", "smb_message_echoes"]);
-  for (const entryValue of asArray(root?.entry)) {
-    const entry = asRecord(entryValue);
-    const whatsappBusinessAccountId = asString(entry?.id);
-    for (const changeValue of asArray(entry?.changes)) {
-      const change = asRecord(changeValue);
-      const field = asString(change?.field);
-      if (!field || !messageFields.has(field)) continue;
-      const value = asRecord(change?.value);
-      if (!value) continue;
-      const metadata = asRecord(value.metadata);
-      const contacts = asArray(value.contacts);
-      for (const messageValue of asArray(value.messages)) {
-        const message = asRecord(messageValue);
-        const from = asString(message?.from);
-        const recipientId = asString(message?.recipient_id) || asString(message?.to);
-        const direction = field === "messages" ? "inbound" : "outbound";
-        const contactId = direction === "outbound" ? recipientId || from : from;
-        const externalId = asString(message?.id);
-        if (!message || !contactId || !externalId) continue;
-        const contact = contactForWhatsApp(contacts, contactId);
-        const profile = asRecord(contact?.profile);
-        const waId = asString(contact?.wa_id) || contactId;
-        const body = textForWhatsAppMessage(message) || `${asString(message.type) ?? "unknown"} message`;
-        const normalizedContact = cleanContact({
-          displayName: asString(profile?.name),
-          phone: contactId,
-          waId
-        });
-        records.push({
-          channel: "whatsapp",
-          externalConversationKey: `meta:whatsapp:${contactId}`,
-          sourceUrl: referralForWhatsApp(message)?.sourceUrl,
-          contact: normalizedContact,
-          identityKeys: uniqueStrings([phoneKey(contactId), phoneKey(waId)]),
-          externalId,
-          direction,
-          body,
-          messageType: asString(message.type) ?? "unknown",
-          sentAt: timestampToIso(message.timestamp, receivedAt),
-          receivedAt,
-          raw: {
-            whatsappBusinessAccountId,
-            phoneNumberId: asString(metadata?.phone_number_id),
-            displayPhoneNumber: asString(metadata?.display_phone_number),
-            referral: referralForWhatsApp(message),
-            message
-          }
-        });
-      }
-    }
-  }
-  return records;
-}
-
-function extractMessagingMessages(payload: unknown, receivedAt: string): MetaNormalizedMessage[] {
-  const records: MetaNormalizedMessage[] = [];
-  const root = asRecord(payload);
-  const channel: Extract<LeadKnowledgeChannel, "instagram" | "facebook"> = asString(root?.object) === "instagram" ? "instagram" : "facebook";
-  for (const entryValue of asArray(root?.entry)) {
-    const entry = asRecord(entryValue);
-    const pageOrAccountId = asString(entry?.id);
-    for (const eventValue of asArray(entry?.messaging)) {
-      const event = asRecord(eventValue);
-      const message = asRecord(event?.message);
-      const externalId = asString(message?.mid);
-      if (!message || !externalId) continue;
-      const sender = asRecord(event?.sender);
-      const recipient = asRecord(event?.recipient);
-      const isEcho = Boolean(message.is_echo);
-      const contactId = isEcho ? asString(recipient?.id) : asString(sender?.id);
-      if (!contactId) continue;
-      const body =
-        asString(message.text) ||
-        asArray(message.attachments)
-          .map(asRecord)
-          .map((attachment) => asString(attachment?.type))
-          .filter(Boolean)
-          .join(", ") ||
-        "Media message";
-      records.push({
-        channel,
-        externalConversationKey: `meta:${channel}:${contactId}`,
-        contact: {
-          handle: contactId,
-          profileUrl:
-            channel === "instagram"
-              ? `https://www.instagram.com/${contactId}`
-              : `https://www.facebook.com/${contactId}`
-        },
-        identityKeys: uniqueStrings([handleKey(channel, contactId), profileKey(channel, contactId)]),
-        externalId,
-        direction: isEcho ? "outbound" : "inbound",
-        body,
-        messageType: "text",
-        sentAt: timestampToIso(event?.timestamp, receivedAt),
-        receivedAt,
-        raw: {
-          pageOrAccountId,
-          event
-        }
-      });
-    }
-  }
-  return records;
-}
-
-export function extractUnifiedMetaWebhookMessages(payload: unknown, receivedAt = nowIso()) {
-  return [...extractWhatsAppMessages(payload, receivedAt), ...extractMessagingMessages(payload, receivedAt)];
-}
-
-export async function saveUnifiedMetaWebhookMessages(input: Scope & { payload: unknown; receivedAt?: string }) {
-  const receivedAt = input.receivedAt ?? nowIso();
-  const normalizedMessages = extractUnifiedMetaWebhookMessages(input.payload, receivedAt);
-  if (!normalizedMessages.length) return { saved: [] as LeadKnowledgeMessage[], ignored: 0 };
-
-  const state = await readState();
-  const saved: LeadKnowledgeMessage[] = [];
-  for (const normalized of normalizedMessages) {
-    const crmSource = crmMetaSource(normalized);
-    const lead = upsertLead(state, input, {
-      identityKeys: normalized.identityKeys,
-      contact: normalized.contact,
-      facts: [normalized.body],
-      nextAction: normalized.direction === "inbound" ? "Reply in Leadsy-approved channel and qualify intent." : undefined,
-      ...crmSource
-    });
-    const conversation = upsertConversation(state, input, {
-      leadId: lead.id,
-      channel: normalized.channel,
-      source: "meta-webhook",
-      externalKey: normalized.externalConversationKey,
-      sourceUrl: normalized.sourceUrl,
-      contact: normalized.contact
-    });
-    const result = addMessage(state, input, {
-      leadId: lead.id,
-      conversationId: conversation.id,
-      source: "meta-webhook",
-      channel: normalized.channel,
-      externalId: normalized.externalId,
-      direction: normalized.direction,
-      body: normalized.body,
-      messageType: normalized.messageType,
-      sentAt: normalized.sentAt,
-      receivedAt: normalized.receivedAt,
-      raw: normalized.raw
-    });
-    if (result.saved) saved.push(result.message);
-    recalculateConversation(state, conversation.id);
-    updateLeadFromConversation(state, lead.id);
-  }
-  if (saved.length) await writeState(state);
-  return { saved, ignored: normalizedMessages.length - saved.length };
-}
-
-function channelForExtensionPlatform(platform: ExtensionPlatform): LeadKnowledgeChannel {
-  return platform;
-}
-
-function channelLabelForSource(channel: LeadKnowledgeChannel) {
-  if (channel === "whatsapp" || channel === "whatsapp-web") return "WhatsApp";
-  if (channel === "instagram" || channel === "instagram-web") return "Instagram";
-  if (channel === "facebook" || channel === "facebook-web") return "Facebook";
-  if (channel === "generic-web-chat") return "Browser Chat";
-  if (channel === "email") return "Email";
-  if (channel === "call") return "Call Notes";
-  return "Manual";
-}
-
-function extensionDirection(direction: ExtensionMessageDirection): LeadKnowledgeDirection {
-  if (direction === "inbound") return "inbound";
-  if (direction === "outbound") return "outbound";
-  return "system";
-}
-
-function phoneFromTaskTargetUrl(value?: string) {
-  if (!value) return undefined;
-  try {
-    const url = new URL(value);
-    return url.searchParams.get("phone") ?? undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function profileUrlForExtensionTask(task: ExtensionTask, targetPhone?: string) {
-  if (task.contact.profileUrl) return task.contact.profileUrl;
-  if (task.platform === "whatsapp-web" && targetPhone) return undefined;
-  return task.targetUrl;
-}
-
-function profileIdentityForExtensionTaskTarget(task: ExtensionTask, targetPhone?: string) {
-  if (task.platform === "whatsapp-web" && targetPhone) return undefined;
-  return profileKey(task.platform, task.targetUrl);
-}
-
-function extensionConversationTargetKey(input: {
-  platform: ExtensionPlatform | string;
-  chatFingerprint: string;
-  sourceUrl?: string;
-  contact?: LeadKnowledgeContact;
-}) {
-  const contact = cleanContact(input.contact);
-  const phone = phoneKey(contact.phone) || phoneKey(phoneFromTaskTargetUrl(input.sourceUrl)) || phoneKey(phoneFromTaskTargetUrl(input.chatFingerprint));
-  if (input.platform === "whatsapp-web" && phone) return phone;
-  const email = emailKey(contact.email);
-  if (email) return email;
-  const handle = handleKey(input.platform, contact.handle);
-  if (handle) return handle;
-  const contactProfile = profileKey(input.platform, contact.profileUrl);
-  if (contactProfile) return contactProfile;
-  const displayName = displayNameKey(input.platform, contact.displayName);
-  if (displayName) return displayName;
-  const sourceProfile = profileKey(input.platform, input.sourceUrl);
-  if (sourceProfile) return sourceProfile;
-  return `fingerprint:${input.chatFingerprint}`;
-}
-
-function extensionConversationExternalKey(input: {
-  platform: ExtensionPlatform | string;
-  chatFingerprint: string;
-  sourceUrl?: string;
-  contact?: LeadKnowledgeContact;
-}) {
-  return `extension:${input.platform}:${extensionConversationTargetKey(input)}`;
-}
-
-function extensionConversationLegacyExternalKey(input: { platform: ExtensionPlatform | string; chatFingerprint: string }) {
-  return `extension:${input.platform}:${input.chatFingerprint}`;
-}
-
-function migrateLegacyExtensionConversationKey(
-  state: LeadKnowledgeState,
-  scope: Scope,
-  input: {
-    platform: ExtensionPlatform | string;
-    chatFingerprint: string;
-    sourceUrl?: string;
-    contact?: LeadKnowledgeContact;
-  },
-  externalKey: string
-) {
-  const legacyKey = extensionConversationLegacyExternalKey(input);
-  const existing = state.conversations.find(
-    (conversation) =>
-      scopeMatches(scope, conversation) &&
-      conversation.source === "extension" &&
-      (conversation.externalKey === externalKey || conversation.externalKey === legacyKey)
-  );
-  if (existing) {
-    existing.externalKey = externalKey;
-  }
-}
-
-function nextActionForExtensionTask(task: ExtensionTask) {
-  if (task.status === "sent" || task.status === "monitoring") return "Monitor for reply or log the next outcome.";
-  if (task.status === "postponed") return task.postponedReason || "Task postponed. Review when it becomes due.";
-  if (task.status === "blocked" || task.status === "failed") {
-    return task.blockedReason || task.resultSummary || "Review the blocked worker task.";
-  }
-  if (task.status === "cancelled") return "Task cancelled. Keep the history for context.";
-  return "Run or review the worker task from Leadsy.";
-}
-
-function bodyForExtensionTask(task: ExtensionTask) {
-  return [
-    `Worker task ${task.type.replace(/_/g, " ")} is ${task.status}.`,
-    task.contextSummary,
-    task.draftMessage ? `Draft: ${task.draftMessage}` : undefined,
-    task.resultSummary ? `Result: ${task.resultSummary}` : undefined,
-    task.blockedReason ? `Blocked: ${task.blockedReason}` : undefined,
-    task.postponedReason ? `Postponed: ${task.postponedReason}` : undefined,
-    task.targetUrl ? `Target: ${task.targetUrl}` : undefined
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
-export async function syncLeadKnowledgeFromExtensionTasks(scope: Scope, tasks: ExtensionTask[]) {
-  const state = await readState();
-  const saved: LeadKnowledgeMessage[] = [];
-  let changed = false;
-
-  for (const task of tasks) {
-    if (!scopeMatches(scope, task) || task.deletedAt) continue;
-
-    const externalId = `extension-task:${task.id}:knowledge`;
-    const targetPhone = phoneFromTaskTargetUrl(task.targetUrl);
-    const contact = cleanContact({
-      ...task.contact,
-      phone: task.contact.phone || targetPhone,
-      profileUrl: profileUrlForExtensionTask(task, targetPhone)
-    });
-    const channel = channelForExtensionPlatform(task.platform);
-    const identityKeys = uniqueStrings([
-      ...identityKeysForContact(task.platform, contact),
-      phoneKey(targetPhone),
-      profileIdentityForExtensionTaskTarget(task, targetPhone)
-    ]);
-    const lead = upsertLead(state, scope, {
-      leadId: task.leadId,
-      identityKeys,
-      contact,
-      summary: task.contextSummary || task.resultSummary,
-      nextAction: nextActionForExtensionTask(task),
-      facts: [task.contextSummary, task.resultSummary, task.blockedReason, task.postponedReason].filter(Boolean) as string[],
-      leadSource: task.platform === "whatsapp-web" ? "WhatsApp Web" : task.platform.replace(/-/g, " ")
-    });
-    const conversationKey =
-      task.conversationId ||
-      task.targetUrl ||
-      contact.phone ||
-      contact.email ||
-      contact.handle ||
-      contact.profileUrl ||
-      task.id;
-    const externalKey = `extension-task:${task.platform}:${conversationKey}`;
-    const previousConversation = state.conversations.find(
-      (conversation) => scopeMatches(scope, conversation) && conversation.source === "extension" && conversation.externalKey === externalKey
-    );
-    const previousConversationLeadId = previousConversation?.leadId;
-    const conversation = upsertConversation(state, scope, {
-      leadId: lead.id,
-      channel,
-      source: "extension",
-      externalKey,
-      sourceUrl: task.targetUrl,
-      contact,
-      summary: task.contextSummary || task.resultSummary,
-      nextAction: nextActionForExtensionTask(task)
-    });
-    if (previousConversationLeadId && previousConversationLeadId !== lead.id) {
-      changed = true;
-      updateLeadFromConversation(state, previousConversationLeadId);
-    }
-    const occurredAt = task.completedAt || task.updatedAt || task.createdAt || nowIso();
-    const body = bodyForExtensionTask(task);
-    const raw = {
-      taskId: task.id,
-      status: task.status,
-      type: task.type,
-      priority: task.priority
-    };
-    const existingMessage = state.messages.find((message) => scopeMatches(scope, message) && message.externalId === externalId);
-    if (existingMessage) {
-      const previousMessageLeadId = existingMessage.leadId;
-      const previousMessageConversationId = existingMessage.conversationId;
-      if (existingMessage.leadId !== lead.id) {
-        existingMessage.leadId = lead.id;
-        changed = true;
-      }
-      if (existingMessage.conversationId !== conversation.id) {
-        existingMessage.conversationId = conversation.id;
-        changed = true;
-      }
-      if (existingMessage.channel !== channel) {
-        existingMessage.channel = channel;
-        changed = true;
-      }
-      if (existingMessage.body !== body) {
-        existingMessage.body = body;
-        changed = true;
-      }
-      existingMessage.raw = raw;
-      recalculateConversation(state, conversation.id);
-      updateLeadFromConversation(state, lead.id);
-      if (previousMessageConversationId !== conversation.id) recalculateConversation(state, previousMessageConversationId);
-      if (previousMessageLeadId !== lead.id) updateLeadFromConversation(state, previousMessageLeadId);
-    } else {
-      const result = addMessage(state, scope, {
-        leadId: lead.id,
-        conversationId: conversation.id,
-        source: "extension",
-        channel,
-        externalId,
-        direction: "system",
-        body,
-        messageType: "worker-task",
-        sentAt: occurredAt,
-        receivedAt: occurredAt,
-        raw
-      });
-      if (result.saved) {
-        saved.push(result.message);
-        recalculateConversation(state, conversation.id);
-        updateLeadFromConversation(state, lead.id);
-      }
-    }
-  }
-
-  if (saved.length || changed) await writeState(state);
-  return { saved };
-}
-
-export async function syncLeadsyExtensionConversation(input: Scope & {
-  platform: ExtensionPlatform;
-  sourceUrl: string;
-  chatFingerprint: string;
-  captureSource?: ExtensionCaptureSource;
-  captureConfidence?: number;
-  tabUrl?: string;
-  observedAt?: string;
-  profileId?: string;
-  contact?: ExtensionConversationContact;
-  messages?: Array<{
-    externalId: string;
-    direction: ExtensionMessageDirection;
-    body: string;
-    sentAt: string;
-    generatedBy?: ExtensionMessageGeneratedBy;
-  }>;
-  events?: Array<{
-    type: ExtensionConversationEvent["type"];
-    summary: string;
-    occurredAt: string;
-  }>;
-  insight?: ExtensionConversationInsight;
-}) {
-  const state = await readState();
-  const contact = cleanContact(input.contact);
-  const channel = channelForExtensionPlatform(input.platform);
-  const identityKeys = extensionIdentityKeysForContact(input.platform, contact);
-  const lead = upsertLead(state, input, {
-    identityKeys,
-    contact,
-    summary: input.insight?.summary,
-    nextAction: input.insight?.nextAction,
-    facts: [input.insight?.qualification, input.insight?.summary].filter(Boolean) as string[],
-    leadSource: input.platform === "whatsapp-web" ? "WhatsApp Web" : input.platform.replace(/-/g, " ")
-  });
-  const externalKey = extensionConversationExternalKey({
-    platform: input.platform,
-    chatFingerprint: input.chatFingerprint,
-    sourceUrl: input.sourceUrl,
-    contact
-  });
-  migrateLegacyExtensionConversationKey(state, input, {
-    platform: input.platform,
-    chatFingerprint: input.chatFingerprint,
-    sourceUrl: input.sourceUrl,
-    contact
-  }, externalKey);
-  const conversation = upsertConversation(state, input, {
-    leadId: lead.id,
-    channel,
-    source: "extension",
-    externalKey,
-    sourceUrl: input.sourceUrl,
-    contact,
-    summary: input.insight?.summary,
-    nextAction: input.insight?.nextAction,
-    sentiment: input.insight?.sentiment
-  });
-  const saved: LeadKnowledgeMessage[] = [];
-  for (const message of input.messages ?? []) {
-    const result = addMessage(state, input, {
-      leadId: lead.id,
-      conversationId: conversation.id,
-      source: "extension",
-      channel,
-      externalId: message.externalId,
-      direction: extensionDirection(message.direction),
-      body: message.body,
-      messageType: "text",
-      sentAt: message.sentAt,
-      receivedAt: message.sentAt,
-      generatedBy: message.generatedBy,
-      raw: {
-        captureSource: input.captureSource,
-        captureConfidence: input.captureConfidence,
-        tabUrl: input.tabUrl,
-        observedAt: input.observedAt,
-        profileId: input.profileId
-      }
-    });
-    if (result.saved) saved.push(result.message);
-  }
-  lead.facts = uniqueStrings([
-    ...(input.events ?? []).map((event) => event.summary),
-    ...lead.facts
-  ]).slice(0, 30);
-  recalculateConversation(state, conversation.id);
-  updateLeadFromConversation(state, lead.id, input.insight);
-  await writeState(state);
-  return {
-    lead: recordForLead(state, input, lead.id),
-    conversation,
-    messages: state.messages.filter((message) => message.conversationId === conversation.id)
-  };
 }
 
 export async function appendManualLeadMessage(input: Scope & {
@@ -1657,8 +1041,7 @@ export async function summarizeLeadKnowledgeHealth() {
     assigneeWorkload,
     conversations: records.reduce((total, lead) => total + lead.conversations.length, 0),
     messages: records.reduce((total, lead) => total + lead.messages.length, 0),
-    metaSourced: records.filter((lead) => lead.channels.some((channel) => channel === "whatsapp" || channel === "instagram" || channel === "facebook")).length,
-    extensionSourced: records.filter((lead) => lead.channels.some((channel) => channel.endsWith("-web") || channel === "generic-web-chat")).length,
+    whatsappSourced: records.filter((lead) => lead.channels.includes("whatsapp")).length,
     manualSourced: records.filter((lead) => lead.channels.includes("manual") || lead.channels.includes("email") || lead.channels.includes("call")).length
   };
 }
@@ -1853,32 +1236,10 @@ export async function setLeadConversationKnowledgeStatus(input: Scope & {
 }
 
 function leadMatchForContext(state: LeadKnowledgeState, scope: Scope, input: {
-  platform?: string;
-  chatFingerprint?: string;
   contact?: LeadKnowledgeContact;
 }) {
-  if (input.platform && input.chatFingerprint) {
-    const externalKeys = new Set([
-      extensionConversationExternalKey({
-        platform: input.platform,
-        chatFingerprint: input.chatFingerprint,
-        contact: input.contact
-      }),
-      extensionConversationLegacyExternalKey({
-        platform: input.platform,
-        chatFingerprint: input.chatFingerprint
-      })
-    ]);
-    const conversation = state.conversations.find(
-      (candidate) =>
-        scopeMatches(scope, candidate) &&
-        candidate.source === "extension" &&
-        externalKeys.has(candidate.externalKey)
-    );
-    if (conversation) return findLeadById(state, scope, conversation.leadId);
-  }
   const contact = cleanContact(input.contact);
-  const keys = identityKeysForContact(input.platform ?? "generic", contact);
+  const keys = identityKeysForContact("generic", contact);
   return findLeadByIdentity(state, scope, keys);
 }
 
