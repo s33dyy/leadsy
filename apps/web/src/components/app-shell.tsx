@@ -30,6 +30,7 @@ import {
   type LucideIcon
 } from "lucide-react";
 import type { SessionUser } from "@leadsy/security";
+import { CostReceiptButton } from "@/components/cost-receipt-button";
 import { OnboardingWizard } from "@/components/onboarding-wizard";
 import { ToastProvider } from "@/components/toast-provider";
 
@@ -402,6 +403,7 @@ export function AppShell({
               <Link href="/app/leads?new=lead" className="flex h-7 items-center gap-1.5 rounded-[5px] bg-primary px-2 text-[12px] font-medium text-primary-foreground hover:bg-primary/90">
                 <Plus className="h-3 w-3" /> New
               </Link>
+              <CostReceiptButton />
               <button
                 type="button"
                 data-testid="notification-bell"
