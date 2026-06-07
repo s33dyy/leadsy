@@ -21,9 +21,27 @@ type RecentSimulatorEvent = {
   sentAt: string;
 };
 
+type SimulatedConversation = {
+  leadId: string;
+  lead: string;
+  phone?: string;
+  to?: string;
+  qualification: string;
+  lastMessage?: string;
+  lastActivity?: string;
+  messages: Array<{
+    id: string;
+    from: "lead" | "us";
+    body: string;
+    sentAt: string;
+    deliveryStatus?: string;
+  }>;
+};
+
 type TwilioSimulatorConsoleProps = {
   sender?: WorkspaceWhatsAppSender;
   recentEvents: RecentSimulatorEvent[];
+  simulatedConversations: SimulatedConversation[];
 };
 
 const defaultPricing: WhatsAppPricingEstimateInput = {
@@ -53,15 +71,28 @@ function numberValue(value: string) {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
 }
 
-export function TwilioSimulatorConsole({ sender, recentEvents }: TwilioSimulatorConsoleProps) {
+function shortTime(value?: string) {
+  if (!value) return "now";
+  return new Date(value).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
+}
+
+export function TwilioSimulatorConsole({ sender, recentEvents, simulatedConversations }: TwilioSimulatorConsoleProps) {
   const router = useRouter();
   const [leadName, setLeadName] = useState("Asha Buyer");
   const [phone, setPhone] = useState("+919000000001");
   const [body, setBody] = useState("Company: LensMart\nNeed: WhatsApp CRM follow-up\nTimeline: today");
   const [submitting, setSubmitting] = useState(false);
+  const [replying, setReplying] = useState(false);
   const [notice, setNotice] = useState("");
+  const [inboxNotice, setInboxNotice] = useState("");
+  const [replyBody, setReplyBody] = useState("Thanks, we can help with this. Can you share your preferred demo time?");
+  const [selectedConversationId, setSelectedConversationId] = useState(simulatedConversations[0]?.leadId ?? "");
   const [pricing, setPricing] = useState(defaultPricing);
   const estimate = useMemo(() => calculateTwilioPricingEstimate(pricing), [pricing]);
+  const selectedConversation = useMemo(
+    () => simulatedConversations.find((conversation) => conversation.leadId === selectedConversationId) ?? simulatedConversations[0],
+    [selectedConversationId, simulatedConversations]
+  );
 
   async function submitInbound() {
     if (submitting) return;
@@ -92,6 +123,34 @@ export function TwilioSimulatorConsole({ sender, recentEvents }: TwilioSimulator
 
   function updatePricing(key: keyof WhatsAppPricingEstimateInput, value: string) {
     setPricing((current) => ({ ...current, [key]: numberValue(value) }));
+  }
+
+  async function sendSimulatedInboxReply() {
+    if (!selectedConversation?.to || !replyBody.trim() || replying) return;
+    setReplying(true);
+    setInboxNotice("");
+    try {
+      const response = await fetch("/api/whatsapp/messages", {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          leadId: selectedConversation.leadId,
+          to: selectedConversation.to,
+          body: replyBody.trim()
+        })
+      });
+      const payload = (await response.json().catch(() => ({}))) as { error?: string; deliveryStatus?: string };
+      if (!response.ok) {
+        setInboxNotice(payload.error || "Could not save the simulated reply.");
+        return;
+      }
+      setReplyBody("");
+      setInboxNotice(`Simulated reply saved with status ${payload.deliveryStatus || "simulated_delivered"}.`);
+      router.refresh();
+    } finally {
+      setReplying(false);
+    }
   }
 
   return (
@@ -193,6 +252,100 @@ export function TwilioSimulatorConsole({ sender, recentEvents }: TwilioSimulator
             </div>
           </section>
         </div>
+
+        <section className="rounded-[8px] border border-border bg-surface p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <Inbox className="h-4 w-4 text-primary" />
+                <h2 className="text-lg font-semibold">Simulation Inbox</h2>
+              </div>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">Read and reply to simulated WhatsApp conversations without leaving this page.</p>
+            </div>
+            <Link href="/app/communications" className="inline-flex h-8 items-center gap-2 rounded-[6px] border border-border bg-surface-2 px-3 text-sm hover:bg-surface-3">
+              Open full Inbox
+            </Link>
+          </div>
+
+          <div className="mt-4 grid min-h-[360px] overflow-hidden rounded-[8px] border border-border lg:grid-cols-[320px_1fr]">
+            <div className="border-b border-border bg-background lg:border-b-0 lg:border-r">
+              {simulatedConversations.length ? (
+                <div className="divide-y divide-border">
+                  {simulatedConversations.map((conversation) => (
+                    <button
+                      key={conversation.leadId}
+                      type="button"
+                      onClick={() => setSelectedConversationId(conversation.leadId)}
+                      className={`block w-full px-3 py-3 text-left hover:bg-surface-2 ${selectedConversation?.leadId === conversation.leadId ? "bg-surface-2" : ""}`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="truncate text-sm font-medium">{conversation.lead}</span>
+                        <span className="font-mono text-[10px] text-muted-foreground">{conversation.messages.length} msg</span>
+                      </div>
+                      <div className="mt-1 truncate text-xs text-muted-foreground">{conversation.lastMessage || "No messages yet"}</div>
+                      <div className="mt-2 flex flex-wrap gap-2 font-mono text-[10px] text-muted-foreground">
+                        <span>{conversation.qualification}</span>
+                        {conversation.phone ? <span>{conversation.phone}</span> : null}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-5 text-sm leading-6 text-muted-foreground">Create an inbound lead message to open a simulated Inbox thread.</div>
+              )}
+            </div>
+
+            <div className="flex min-h-0 flex-col bg-background">
+              {selectedConversation ? (
+                <>
+                  <div className="border-b border-border p-4">
+                    <div className="text-sm font-semibold">{selectedConversation.lead}</div>
+                    <div className="mt-1 font-mono text-xs text-muted-foreground">{selectedConversation.phone || "No phone"} · {selectedConversation.qualification}</div>
+                  </div>
+                  <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+                    {selectedConversation.messages.map((message) => (
+                      <div
+                        key={message.id}
+                        className={`max-w-[82%] rounded-[7px] border border-border p-3 text-sm ${message.from === "us" ? "ml-auto border-primary/40 bg-primary/15" : "bg-surface"}`}
+                      >
+                        <div className="mb-1 flex items-center gap-2 font-mono text-[10px] text-muted-foreground">
+                          <span>{message.from === "us" ? "Leadsy" : selectedConversation.lead}</span>
+                          <span>{shortTime(message.sentAt)}</span>
+                        </div>
+                        <div className="whitespace-pre-wrap leading-6">{message.body}</div>
+                        {message.from === "us" ? <div className="mt-2 font-mono text-[10px] text-muted-foreground">{message.deliveryStatus || "simulated_delivered"}</div> : null}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="border-t border-border p-3">
+                    <textarea
+                      value={replyBody}
+                      onChange={(event) => setReplyBody(event.target.value)}
+                      disabled={!selectedConversation.to || replying}
+                      placeholder={selectedConversation.to ? "Reply in simulation..." : "This simulated lead needs a WhatsApp phone before replying."}
+                      className="h-20 w-full resize-none rounded-[6px] border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary disabled:cursor-not-allowed disabled:opacity-60"
+                    />
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-mono text-[10.5px] text-muted-foreground">Simulation mode: no external WhatsApp delivery</span>
+                      <button
+                        type="button"
+                        disabled={!selectedConversation.to || !replyBody.trim() || replying}
+                        onClick={sendSimulatedInboxReply}
+                        className="inline-flex h-8 items-center gap-2 rounded-[6px] bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {replying ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizonal className="h-4 w-4" />}
+                        Send simulated reply
+                      </button>
+                    </div>
+                    {inboxNotice ? <div className="mt-2 text-sm text-muted-foreground">{inboxNotice}</div> : null}
+                  </div>
+                </>
+              ) : (
+                <div className="grid flex-1 place-items-center p-8 text-center text-sm text-muted-foreground">No simulated conversation selected.</div>
+              )}
+            </div>
+          </div>
+        </section>
 
         <section className="rounded-[8px] border border-border bg-surface p-4">
           <div className="flex items-center gap-2">
