@@ -1,236 +1,135 @@
-import { Activity, Bot, ExternalLink, RefreshCw, Settings2, ShieldCheck } from "lucide-react";
-import { ExtensionTaskBoard } from "@/components/extension-task-board";
-import { ExtensionPairing } from "@/components/extension-pairing";
+import Link from "next/link";
+import { Activity, Bot, CalendarClock, ListChecks, ShieldCheck, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui";
 import { getCurrentSession } from "@/lib/auth";
-import {
-  listExtensionChannelMonitorHealth,
-  listExtensionConversations,
-  listExtensionTaskEvents,
-  listExtensionTasks,
-  listExtensionTokens,
-  type ExtensionChannelMonitorHealth
-} from "@/lib/extension-store";
-import { listMetaOAuthConnections } from "@/lib/meta-oauth-store";
+import { listCalendarEvents } from "@/lib/calendar-store";
+import { listCrmFollowUpTasks } from "@/lib/crm-store";
+import { listLeadKnowledgeRecords } from "@/lib/lead-knowledge-store";
+import { listTeamMembers } from "@/lib/teamspace-store";
 
 export const dynamic = "force-dynamic";
 
-const legacyCaptureLayer = "Legacy Capture Layer";
+const nativeRoutes = [
+  {
+    name: "follow-up scheduler",
+    icon: CalendarClock,
+    purpose: "Schedules follow-up tasks against Leadsy-owned lead and calendar data.",
+    status: "Leadsy scheduler"
+  },
+  {
+    name: "reminder generator",
+    icon: Activity,
+    purpose: "Creates operator reminders from due dates, handoffs, and stale conversations.",
+    status: "Leadsy event"
+  },
+  {
+    name: "task creator",
+    icon: ListChecks,
+    purpose: "Creates call, WhatsApp follow-up, meeting, site visit, review lead, and custom tasks.",
+    status: "Leadsy task"
+  },
+  {
+    name: "escalation rules",
+    icon: ShieldCheck,
+    purpose: "Stops AI auto-replies and routes sensitive leads to a human owner.",
+    status: "Guarded"
+  }
+];
 
-type WorkerPageProps = {
-  searchParams?: Promise<Record<string, string | string[] | undefined>>;
-};
-
-function paramValue(params: Record<string, string | string[] | undefined>, key: string) {
-  const value = params[key];
-  return Array.isArray(value) ? value[0] ?? "" : value ?? "";
-}
-
-function focusColumnFromTab(value: string) {
-  return value === "pending" || value === "approval" || value === "approvals" ? "approval" : undefined;
-}
-
-function workerRows({
-  tasks,
-  monitorHealth,
-  conversations
-}: {
-  tasks: Awaited<ReturnType<typeof listExtensionTasks>>;
-  monitorHealth: ExtensionChannelMonitorHealth[];
-  conversations: Awaited<ReturnType<typeof listExtensionConversations>>;
-}) {
-  const platformCount = (platform: string) => tasks.filter((task) => task.platform === platform).length;
-  const lastSyncedAt = monitorHealth.find((item) => item.lastSyncedAt)?.lastSyncedAt;
-  const timeLabel = (value?: string) => value ? new Date(value).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "No Data Available";
-  return [
-    {
-      name: "meta-research",
-      kind: "Research",
-      dataState: monitorHealth.some((item) => item.platform.includes("instagram") || item.platform.includes("facebook")) ? "Real Data" : "No Data Available",
-      evidence: `${platformCount("instagram-web") + platformCount("facebook-web")} stored browser tasks, ${conversations.length} stored conversations`,
-      lastSync: timeLabel(lastSyncedAt),
-      approval: "Required"
-    },
-    {
-      name: "qualifier-v3",
-      kind: "Qualifier",
-      dataState: tasks.length ? "Real Data" : "No Data Available",
-      evidence: `${tasks.length} stored task records`,
-      lastSync: timeLabel(tasks[0]?.updatedAt),
-      approval: "Human review"
-    },
-    {
-      name: "whatsapp-outreach",
-      kind: "Outreach",
-      dataState: platformCount("whatsapp-web") ? "Real Data" : "No Data Available",
-      evidence: `${platformCount("whatsapp-web")} stored WhatsApp task records`,
-      lastSync: timeLabel(tasks.find((task) => task.platform === "whatsapp-web")?.updatedAt),
-      approval: "Required"
-    },
-    {
-      name: "extension-capture",
-      kind: legacyCaptureLayer,
-      dataState: monitorHealth.length ? "Real Data" : "Not Configured",
-      evidence: `${monitorHealth.length} stored monitor records, ${conversations.length} stored conversations`,
-      lastSync: timeLabel(lastSyncedAt),
-      approval: "Manual"
-    }
-  ];
-}
-
-export default async function WorkerPage({ searchParams }: WorkerPageProps) {
-  const params = searchParams ? await searchParams : {};
-  const focusColumn = focusColumnFromTab(paramValue(params, "tab"));
+export default async function WorkerPage() {
   const session = await getCurrentSession();
-  const tokens = session ? await listExtensionTokens(session.tenantId, session.id) : [];
-  const conversations = session ? await listExtensionConversations(session.tenantId, session.id) : [];
-  const monitorHealth = session ? await listExtensionChannelMonitorHealth(session.tenantId, session.id) : [];
-  const metaConnections = session ? await listMetaOAuthConnections(session.tenantId, session.id) : [];
-  const tasks = session ? await listExtensionTasks(session.tenantId, session.id) : [];
-  const taskEvents = session ? await listExtensionTaskEvents(session.tenantId, session.id) : [];
-  const officialChannels = metaConnections[0]?.channels;
-
-  const rows = workerRows({ tasks, monitorHealth, conversations });
-  const active = rows[0];
+  const scope = session ? { tenantId: session.tenantId, ownerId: session.id } : undefined;
+  const [members, tasks, events, leads] = scope
+    ? await Promise.all([
+        listTeamMembers(scope),
+        listCrmFollowUpTasks(scope, { includeClosed: true }),
+        listCalendarEvents(scope),
+        listLeadKnowledgeRecords(scope)
+      ])
+    : [[], [], [], []];
+  const aiAgents = members.filter((member) => member.type.startsWith("ai_agent"));
+  const autoReplyAgents = aiAgents.filter((member) => member.autoReplyEnabled);
+  const humanReviewLeads = leads.filter((lead) => lead.crmStatus === "human_review");
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-12 gap-px bg-border">
-      <section className="col-span-12 flex min-h-0 flex-col bg-background xl:col-span-8">
-        <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border px-3">
-          {["All", "Real Data", "No Data Available", "Not Configured"].map((tab) => (
-            <span key={tab} className={`h-7 rounded-[5px] px-2.5 py-1.5 text-[12px] ${tab === "All" ? "bg-surface-3 text-foreground" : "text-muted-foreground"}`}>
-              {tab}
-            </span>
-          ))}
-          <div className="ml-auto flex items-center gap-1.5">
-            <span className="inline-flex h-7 items-center gap-1.5 rounded-[5px] border border-border bg-surface-2 px-2 text-[12px]">
-              <RefreshCw className="h-3 w-3" /> live
-            </span>
-            <Badge tone="teal">{tasks.length} tasks</Badge>
+    <div className="h-full min-h-0 overflow-y-auto bg-background p-6">
+      <div className="mx-auto max-w-6xl space-y-5">
+        <header className="flex flex-col gap-4 border-b border-border pb-5 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div className="caption">Leadsy / Automations</div>
+            <h1 className="mt-2 text-2xl font-semibold">Leadsy-native automations</h1>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+              Follow-ups, reminders, task creation, escalation rules, and AI qualification run inside Leadsy using the app database as source of truth.
+            </p>
           </div>
-        </div>
+          <Link href="/app/team" className="inline-flex h-9 items-center gap-2 rounded-[6px] bg-primary px-3 text-sm font-medium text-primary-foreground">
+            <Bot className="h-4 w-4" /> Manage agents
+          </Link>
+        </header>
 
-        <div className="min-h-0 flex-1 overflow-auto">
-          <table className="w-full text-[12.5px]">
-            <thead className="sticky top-0 z-10 bg-background">
-              <tr className="border-b border-border text-left text-muted-foreground">
-                {["Worker", "Kind", "Data state", "Evidence", "Last sync", "Approval"].map((heading) => (
-                  <th key={heading} className="h-9 px-3 font-mono text-[10.5px] font-normal uppercase tracking-[0.12em]">
-                    {heading}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((worker) => (
-                <tr key={worker.name} className="border-b border-border/70 hover:bg-surface-2">
-                  <td className="h-10 px-3 align-middle">
-                    <div className="flex items-center gap-2">
-                      <Bot className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span className="font-mono">{worker.name}</span>
-                    </div>
-                  </td>
-                  <td className="h-10 px-3 text-muted-foreground">{worker.kind}</td>
-                  <td className="h-10 px-3">
-                    <span className="inline-flex items-center gap-1.5 rounded-[3px] bg-primary/10 px-1.5 py-0.5 font-mono text-[10.5px] text-primary">
-                      {worker.dataState}
-                    </span>
-                  </td>
-                  <td className="h-10 px-3 text-muted-foreground">{worker.evidence}</td>
-                  <td className="h-10 px-3 font-mono text-muted-foreground">{worker.lastSync}</td>
-                  <td className="h-10 px-3">
-                    <span className="rounded-[3px] bg-surface-3 px-1.5 py-0.5 font-mono text-[10.5px] text-muted-foreground">{worker.approval}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+        <section className="grid gap-px overflow-hidden rounded-[8px] border border-border bg-border md:grid-cols-4">
+          <Metric label="AI agents" value={aiAgents.length} />
+          <Metric label="Auto-reply on" value={autoReplyAgents.length} />
+          <Metric label="Open tasks" value={tasks.filter((task) => task.status !== "done").length} />
+          <Metric label="Human review" value={humanReviewLeads.length} />
+        </section>
 
-      <aside className="col-span-12 min-h-0 overflow-y-auto bg-background xl:col-span-4">
-        <div className="border-b border-border px-4 py-3">
-          <div className="caption">Worker</div>
-          <h2 className="mt-1 font-mono text-[15px]">{active.name}</h2>
-          <p className="mt-0.5 text-[12px] text-muted-foreground">{active.kind} · approval: {active.approval}</p>
-          <div className="mt-3 flex items-center gap-1.5">
-            <span className="inline-flex h-7 items-center gap-1.5 rounded-[5px] bg-primary px-2.5 text-[12px] font-medium text-primary-foreground">
-              <Activity className="h-3 w-3" /> {active.dataState}
-            </span>
-            <a href="/app/connect" className="inline-flex h-7 items-center gap-1.5 rounded-[5px] border border-border bg-surface-2 px-2.5 text-[12px] hover:bg-surface-3">
-              <Settings2 className="h-3 w-3" /> Configure
-            </a>
-            <a href="/app/connect?panel=settings" className="inline-flex h-7 items-center gap-1.5 rounded-[5px] border border-border bg-surface-2 px-2.5 text-[12px] hover:bg-surface-3">
-              <ExternalLink className="h-3 w-3" /> Logs
-            </a>
+        <section className="grid gap-4 lg:grid-cols-2">
+          {nativeRoutes.map((route) => {
+            const Icon = route.icon;
+            return (
+              <article key={route.name} className="rounded-[8px] border border-border bg-surface p-4">
+                <div className="flex items-center gap-2">
+                  <Icon className="h-4 w-4 text-primary" />
+                  <h2 className="text-sm font-semibold">{route.name}</h2>
+                  <Badge tone="teal">{route.status}</Badge>
+                </div>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">{route.purpose}</p>
+              </article>
+            );
+          })}
+        </section>
+
+        <section className="rounded-[8px] border border-border bg-surface">
+          <div className="flex items-center justify-between border-b border-border p-4">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <Sparkles className="h-4 w-4 text-primary" />
+              AI guardrails
+            </div>
+            <Badge tone="neutral">No infinite loops</Badge>
           </div>
-        </div>
+          <div className="grid gap-px bg-border md:grid-cols-3">
+            <Guardrail title="External message boundary" detail="Only inbound and outbound WhatsApp messages are stored in conversations." />
+            <Guardrail title="Internal team thread" detail="AI handoffs, notes, task assignments, and calendar proposals stay internal." />
+            <Guardrail title="Loop controls" detail="One agent turn per trigger, duplicate trigger dedupe, cooldowns, and escalation keywords." />
+          </div>
+        </section>
 
-        <div className="border-b border-border p-4">
-          <div className="caption">Hybrid channel monitor</div>
-          <p className="mt-2 text-[12.5px] leading-6 text-muted-foreground">
-            Official webhook capture is preferred for WhatsApp, Instagram, and Facebook. Browser extension fallback remains available for unsupported or blocked browser surfaces.
+        <section className="rounded-[8px] border border-border bg-surface p-4">
+          <div className="caption">Calendar-backed scheduling</div>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            Agents can offer meeting times only from the native calendar. Current calendar records: {events.length}.
           </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {[
-              { label: "WhatsApp", status: officialChannels?.whatsapp.status },
-              { label: "Instagram", status: officialChannels?.instagram.status },
-              { label: "Facebook", status: officialChannels?.facebook.status }
-            ].map((channel) => (
-              <Badge key={channel.label} tone={channel.status === "connected" ? "lime" : "neutral"}>
-                {channel.label}: {channel.status === "connected" ? "connected" : "pending"}
-              </Badge>
-            ))}
-          </div>
-        </div>
-
-        <div className="border-b border-border p-4">
-          <div className="caption">Extension pairing · {legacyCaptureLayer}</div>
-          <div className="mt-3">
-            <ExtensionPairing initialTokens={tokens} />
-          </div>
-        </div>
-
-        <div className="border-b border-border p-4">
-          <div className="caption">Browser extension fallback · {legacyCaptureLayer}</div>
-          <p className="mt-2 text-[12.5px] leading-6 text-muted-foreground">
-            Existing extension users can keep pairing and monitoring browser surfaces here. New conversation transport should use official channel integrations first.
-          </p>
-          <div className="mt-3 grid gap-2">
-            {monitorHealth.map((item) => (
-              <MonitorHealthCard key={item.platform} item={item} />
-            ))}
-          </div>
-        </div>
-
-        <div className="p-4">
-          <div className="mb-3 flex items-center gap-2 text-[12.5px]">
-            <ShieldCheck className="h-3.5 w-3.5 text-primary" />
-            <span>Leadsy stores worker decisions, approvals, and message history.</span>
-          </div>
-          <ExtensionTaskBoard initialTasks={tasks} initialEvents={taskEvents} focusColumn={focusColumn} />
-        </div>
-      </aside>
+        </section>
+      </div>
     </div>
   );
 }
 
-function MonitorHealthCard({ item }: { item: ExtensionChannelMonitorHealth }) {
+function Metric({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-3">
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-sm font-semibold text-white">{item.platform.replace(/-/g, " ")}</div>
-        <Badge tone={item.status === "error" || item.status === "blocked" ? "amber" : item.status === "active" ? "lime" : "neutral"}>
-          {item.status}
-        </Badge>
-      </div>
-      <p className="mt-2 text-xs leading-5 text-[var(--muted-2)]">
-        {item.lastSyncedAt ? `Last sync ${new Date(item.lastSyncedAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}` : "No browser sync yet"}
-      </p>
-      <div className="mt-2 flex flex-wrap gap-1">
-        <Badge tone="sky">{item.captureSource ?? "browser-extension"}</Badge>
-        {typeof item.captureConfidence === "number" ? <Badge tone="neutral">{Math.round(item.captureConfidence * 100)}% confidence</Badge> : null}
-      </div>
+    <div className="bg-surface p-4">
+      <div className="caption">{label}</div>
+      <div className="mt-2 text-2xl font-semibold">{value}</div>
+    </div>
+  );
+}
+
+function Guardrail({ title, detail }: { title: string; detail: string }) {
+  return (
+    <div className="bg-surface p-4">
+      <div className="text-sm font-medium">{title}</div>
+      <p className="mt-2 text-sm leading-6 text-muted-foreground">{detail}</p>
     </div>
   );
 }

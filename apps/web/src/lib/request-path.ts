@@ -1,6 +1,6 @@
 export const currentPathHeaderName = "x-leadsy-current-path";
 
-const allowedNextPrefixes = ["/app", "/crm", "/dashboard", "/workers", "/settings", "/extension"];
+const allowedNextPrefixes = ["/app", "/crm", "/dashboard", "/workers", "/settings"];
 
 export function safeInternalNextPath(value: string | null | undefined, fallback = "/app/leads") {
   const clean = value?.trim();

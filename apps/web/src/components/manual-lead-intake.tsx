@@ -20,11 +20,8 @@ type ManualLeadIntakeProps = {
 const channelOptions = [
   ["manual", "Manual"],
   ["whatsapp", "WhatsApp"],
-  ["instagram", "Instagram"],
-  ["facebook", "Facebook"],
   ["email", "Email"],
-  ["call", "Call Notes"],
-  ["generic-web-chat", "Browser chat"]
+  ["call", "Call Notes"]
 ];
 
 function FieldLabel({ children }: { children: string }) {

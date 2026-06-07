@@ -2,7 +2,6 @@ import Link from "next/link";
 import { ArrowUpRight, Check, Filter, Inbox, Pencil, Search, Sparkles, X } from "lucide-react";
 import { Badge } from "@/components/ui";
 import { getCurrentSession } from "@/lib/auth";
-import { awaitingApprovalTaskStatuses, listExtensionTasks, type ExtensionTask } from "@/lib/extension-store";
 import { listLeadKnowledgeRecords, type LeadKnowledgeRecord } from "@/lib/lead-knowledge-store";
 
 export const dynamic = "force-dynamic";
@@ -34,44 +33,6 @@ function leadName(lead: LeadKnowledgeRecord) {
   return lead.contact.displayName || lead.contact.handle || lead.contact.phone || lead.contact.email || "Unknown lead";
 }
 
-function taskLeadName(task: ExtensionTask) {
-  return task.contact.displayName || task.contact.handle || task.contact.phone || task.contact.email || "Lead";
-}
-
-function priorityForTask(task: ExtensionTask): ApprovalItem["priority"] {
-  if (task.priority === "urgent") return "P0";
-  if (task.priority === "high") return "P1";
-  return "P2";
-}
-
-function taskKind(task: ExtensionTask): ApprovalItem["kind"] {
-  if (task.type === "reply_to_inbound") return "Draft";
-  if (task.type === "follow_up") return "Outreach";
-  return "Task";
-}
-
-function taskWorker(task: ExtensionTask) {
-  if (task.platform === "whatsapp-web") return "whatsapp-outreach";
-  if (task.platform === "instagram-web") return "instagram-dm";
-  if (task.platform === "facebook-web") return "messenger-router";
-  return "extension-capture";
-}
-
-function taskApproval(task: ExtensionTask): ApprovalItem {
-  const name = taskLeadName(task);
-  return {
-    id: task.id,
-    kind: taskKind(task),
-    priority: priorityForTask(task),
-    subject: `${name} - ${task.type.replace(/_/g, " ")}`,
-    preview: task.draftMessage || task.contextSummary || "Worker action is awaiting operator review.",
-    worker: taskWorker(task),
-    leadName: name,
-    createdAt: relativeTime(task.updatedAt),
-    href: `/app/worker?tab=pending`
-  };
-}
-
 function leadApproval(lead: LeadKnowledgeRecord): ApprovalItem {
   const name = leadName(lead);
   return {
@@ -89,16 +50,10 @@ function leadApproval(lead: LeadKnowledgeRecord): ApprovalItem {
 
 export default async function ApprovalsPage() {
   const session = await getCurrentSession();
-  const [tasks, leads] = session
-    ? await Promise.all([
-        listExtensionTasks(session.tenantId, session.id),
-        listLeadKnowledgeRecords({ tenantId: session.tenantId, ownerId: session.id })
-      ])
-    : [[], []];
+  const leads = session ? await listLeadKnowledgeRecords({ tenantId: session.tenantId, ownerId: session.id }) : [];
 
-  const pendingTasks = tasks.filter((task) => (awaitingApprovalTaskStatuses as readonly string[]).includes(task.status));
   const reviewLeads = leads.filter((lead) => lead.crmStatus === "human_review").slice(0, 6);
-  const approvals = [...pendingTasks.map(taskApproval), ...reviewLeads.map(leadApproval)];
+  const approvals = reviewLeads.map(leadApproval);
   const active = approvals[0];
 
   return (

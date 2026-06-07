@@ -69,8 +69,8 @@ async function main() {
 
     await upsertCrmAssignmentRule({
       ...scope,
-      title: "Meta Leads to Sales Team",
-      sourceIncludes: "Meta Leads",
+      title: "WhatsApp Leads to Sales Team",
+      sourceIncludes: "WhatsApp Leads",
       assigneeId: "sales_team",
       assigneeName: "Sales Team"
     });

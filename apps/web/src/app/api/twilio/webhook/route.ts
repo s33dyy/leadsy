@@ -7,6 +7,7 @@ import {
   twilioParamsFromBody,
   verifyTwilioSignature
 } from "@/lib/twilio-transport";
+import { runAgentForInboundLead } from "@/lib/agent-runtime";
 
 export const runtime = "nodejs";
 
@@ -26,7 +27,17 @@ export async function POST(request: NextRequest) {
 
   try {
     const scope = await resolveTwilioInboundScopeFromForm(form);
-    await saveTwilioInboundFromForm({ tenantId: scope.tenantId, ownerId: scope.ownerId, form });
+    const result = await saveTwilioInboundFromForm({ tenantId: scope.tenantId, ownerId: scope.ownerId, form });
+    const message = result.saved[0];
+    if (message && "lead" in result && "conversation" in result) {
+      await runAgentForInboundLead({
+        tenantId: scope.tenantId,
+        ownerId: scope.ownerId,
+        leadId: result.lead.id,
+        conversationId: result.conversation.id,
+        triggerMessageId: message.id
+      });
+    }
   } catch (error) {
     if (error instanceof TwilioWorkspaceSenderError) {
       return NextResponse.json({ error: error.code }, { status: error.code === "unknown_whatsapp_sender" ? 400 : 409 });

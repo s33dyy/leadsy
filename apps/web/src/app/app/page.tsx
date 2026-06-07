@@ -1,29 +1,18 @@
 import Link from "next/link";
-import {
-  ArrowRight,
-  Bot,
-  CheckSquare,
-  Inbox,
-  ListChecks,
-  MessageCircle,
-  Sparkles,
-  UsersRound,
-  type LucideIcon
-} from "lucide-react";
+import { ArrowRight, Bot, CalendarDays, Inbox, ListChecks, MessageCircle, Sparkles, UsersRound, type LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui";
 import { getCurrentSession } from "@/lib/auth";
+import { listCalendarEvents } from "@/lib/calendar-store";
 import { listCrmFollowUpTasks } from "@/lib/crm-store";
-import { awaitingApprovalTaskStatuses, listExtensionTasks, type ExtensionTask } from "@/lib/extension-store";
 import {
   leadProductPipelineStatuses,
   listLeadKnowledgeRecords,
   productPipelineStatusForLead,
   productPipelineStatusLabel,
-  syncLeadKnowledgeFromExtensionTasks,
-  type LeadProductPipelineStatus,
-  type LeadKnowledgeRecord
+  type LeadKnowledgeRecord,
+  type LeadProductPipelineStatus
 } from "@/lib/lead-knowledge-store";
-import { listMetaOAuthConnections } from "@/lib/meta-oauth-store";
+import { listTeamMembers } from "@/lib/teamspace-store";
 
 export const dynamic = "force-dynamic";
 
@@ -45,7 +34,7 @@ type ActionItem = {
 };
 
 function contactLabel(lead: LeadKnowledgeRecord) {
-  return lead.contact.displayName || lead.contact.handle || lead.contact.phone || lead.contact.email || lead.contact.waId || "Unknown lead";
+  return lead.contact.displayName || lead.contact.phone || lead.contact.email || lead.contact.waId || "Unknown lead";
 }
 
 function latestDirection(lead: LeadKnowledgeRecord) {
@@ -56,30 +45,12 @@ function needsReply(lead: LeadKnowledgeRecord) {
   return lead.leadStatus === "lead" && (lead.crmStatus === "needs_reply" || latestDirection(lead) === "inbound");
 }
 
-function isMetaLead(lead: LeadKnowledgeRecord) {
-  return lead.channels.some((channel) => channel === "whatsapp" || channel === "instagram" || channel === "facebook");
-}
-
-function isExtensionLead(lead: LeadKnowledgeRecord) {
-  return lead.channels.some((channel) => channel.endsWith("-web") || channel === "generic-web-chat");
-}
-
 function sourceLabelForLead(lead: LeadKnowledgeRecord) {
   if (lead.leadSource) return lead.leadSource;
-  if (lead.channels.includes("instagram")) return "Instagram";
   if (lead.channels.includes("whatsapp")) return "WhatsApp";
-  if (lead.channels.includes("facebook")) return "Meta Ads";
-  if (isExtensionLead(lead)) return "Extension";
-  if (isMetaLead(lead)) return "Meta";
-  return "Referral";
-}
-
-function activeTask(task: ExtensionTask) {
-  return !["sent", "cancelled", "blocked", "failed"].includes(task.status);
-}
-
-function awaitingApprovalTask(task: ExtensionTask) {
-  return (awaitingApprovalTaskStatuses as readonly string[]).includes(task.status);
+  if (lead.channels.includes("email")) return "Email";
+  if (lead.channels.includes("call")) return "Call";
+  return "Manual";
 }
 
 function isToday(value?: string) {
@@ -127,81 +98,33 @@ function sourceRows(leads: LeadKnowledgeRecord[]) {
     }));
 }
 
-function automationRows(tasks: ExtensionTask[], followUpCount: number) {
-  const approvalCount = tasks.filter(awaitingApprovalTask).length;
-  const activeCount = tasks.filter(activeTask).length;
-  const sentCount = tasks.filter((task) => task.status === "sent").length;
-  return [
-    { name: "Awaiting approval", value: approvalCount },
-    { name: "Active extension tasks", value: activeCount },
-    { name: "WhatsApp tasks", value: tasks.filter((task) => task.platform === "whatsapp-web").length },
-    { name: "Completed sends", value: sentCount },
-    { name: "CRM follow-ups", value: followUpCount }
-  ].filter((row) => row.value > 0);
-}
-
-function buildActionItems({
-  leads,
-  tasks,
-  hasMetaConnection
-}: {
-  leads: LeadKnowledgeRecord[];
-  tasks: ExtensionTask[];
-  hasMetaConnection: boolean;
-}) {
-  const taskItems = tasks
-    .filter(awaitingApprovalTask)
-    .slice(0, 3)
-    .map<ActionItem>((task) => ({
-      priority: "P0",
-      kind: task.platform === "whatsapp-web" ? "Draft" : "Outreach",
-      title: `${task.contact.displayName || task.contact.handle || "Lead"} needs approval`,
-      detail: task.contextSummary || task.draftMessage || "Automation generated an outreach action awaiting human review.",
-      time: relativeTime(task.updatedAt),
-      href: "/app/approvals"
-    }));
-
+function buildActionItems({ leads }: { leads: LeadKnowledgeRecord[] }) {
   const leadItems = leads
     .filter((lead) => lead.crmStatus === "human_review" || needsReply(lead))
-    .slice(0, 3)
+    .slice(0, 5)
     .map<ActionItem>((lead) => ({
       priority: lead.crmStatus === "human_review" ? "P1" : "P2",
       kind: lead.crmStatus === "human_review" ? "Review" : "Reply",
-      title: `${contactLabel(lead)} needs operator review`,
+      title: `${contactLabel(lead)} needs attention`,
       detail: lead.lastMessagePreview || lead.summary || "Lead context is ready for review.",
       time: relativeTime(lead.lastMessageAt ?? lead.updatedAt),
-      href: `/app/leads?contact=${lead.id}`
+      href: lead.conversations[0] ? `/app/communications?conversation=${lead.conversations[0].id}` : `/app/leads?contact=${lead.id}`
     }));
 
-  const setupItems: ActionItem[] = hasMetaConnection
-    ? []
-    : [
-        {
-          priority: "P0",
-          kind: "Integration",
-          title: "Connect Meta and WhatsApp ingestion",
-          detail: "Meta OAuth, Lead Ads, Instagram, Messenger, and WhatsApp stay in Leadsy; workflows consume the events.",
-          time: "now",
-          href: "/app/connect"
-        }
-      ];
-
-  return [...taskItems, ...leadItems, ...setupItems].slice(0, 5);
+  return leadItems;
 }
 
 export default async function WorkspaceIndexPage() {
   const session = await getCurrentSession();
-  const [tasks, crmFollowUps, metaConnections] = session
+  const scope = session ? { tenantId: session.tenantId, ownerId: session.id } : undefined;
+  const [crmFollowUps, leads, members, calendarEvents] = scope
     ? await Promise.all([
-        listExtensionTasks(session.tenantId, session.id),
-        listCrmFollowUpTasks({ tenantId: session.tenantId, ownerId: session.id }),
-        listMetaOAuthConnections(session.tenantId, session.id)
+        listCrmFollowUpTasks(scope),
+        listLeadKnowledgeRecords(scope),
+        listTeamMembers(scope),
+        listCalendarEvents(scope)
       ])
-    : [[], [], []];
-  if (session) {
-    await syncLeadKnowledgeFromExtensionTasks({ tenantId: session.tenantId, ownerId: session.id }, tasks);
-  }
-  const leads = session ? await listLeadKnowledgeRecords({ tenantId: session.tenantId, ownerId: session.id }) : [];
+    : [[], [], [], []];
 
   const activeLeads = leads.filter((lead) => lead.leadStatus === "lead");
   const statusCounts = Object.fromEntries(
@@ -212,17 +135,17 @@ export default async function WorkspaceIndexPage() {
   ) as Record<LeadProductPipelineStatus, number>;
   const dailyLeadVolume = activeLeads.filter((lead) => isToday(lead.lastMessageAt ?? lead.updatedAt)).length;
   const sourceBreakdown = sourceRows(activeLeads);
-  const automationActivity = automationRows(tasks, crmFollowUps.length);
-  const automationMax = Math.max(1, ...automationActivity.map((row) => row.value));
-  const actionItems = buildActionItems({ leads, tasks, hasMetaConnection: metaConnections.length > 0 });
+  const actionItems = buildActionItems({ leads });
+  const aiAgents = members.filter((member) => member.type.startsWith("ai_agent"));
+  const openTasks = crmFollowUps.filter((task) => task.status !== "done").length;
 
   const metrics: OperatorMetric[] = [
     { label: "New leads · 24h", value: dailyLeadVolume, context: `${statusCounts.new} in New`, href: "/app/leads?q=new", icon: UsersRound },
     { label: "Qualified", value: statusCounts.qualified, context: "AI-qualified pipeline", href: "/app/leads?q=qualified", icon: Sparkles },
     { label: "Interested", value: statusCounts.interested, context: "Ready for follow-up", href: "/app/leads?q=interested", icon: MessageCircle },
     { label: "Contacted", value: statusCounts.contacted, context: "Outbound or review state", href: "/app/leads?q=contacted", icon: ArrowRight },
-    { label: "Won", value: statusCounts.won, context: "Closed conversions", href: "/app/leads?q=won", icon: CheckSquare },
-    { label: "Lost", value: statusCounts.lost, context: "Closed lost leads", href: "/app/leads?q=lost", icon: ListChecks }
+    { label: "Open tasks", value: openTasks, context: "Native CRM tasks", href: "/app/tasks", icon: ListChecks },
+    { label: "AI agents", value: aiAgents.length, context: "Teamspace members", href: "/app/team", icon: Bot }
   ];
 
   const funnelRows = leadProductPipelineStatuses.map((status) => ({
@@ -230,216 +153,146 @@ export default async function WorkspaceIndexPage() {
     value: statusCounts[status.id]
   }));
   const funnelMax = Math.max(1, ...funnelRows.map((row) => row.value));
-  const recentActivity = [
-    ...leads.slice(0, 4).map((lead) => ({
-      time: relativeTime(lead.lastMessageAt ?? lead.updatedAt),
-      text: `${contactLabel(lead)} is ${productPipelineStatusLabel(productPipelineStatusForLead(lead))} from ${sourceLabelForLead(lead)}`
-    })),
-    ...tasks.slice(0, 3).map((task) => ({
-      time: relativeTime(task.updatedAt),
-      text: `${task.contact.displayName || task.contact.handle || "Automation"} task is ${task.status.replace(/_/g, " ")}`
-    }))
-  ].slice(0, 7);
 
   return (
     <div className="grid h-full min-h-0 grid-cols-12 gap-px bg-border">
       <section className="col-span-12 overflow-y-auto bg-background xl:col-span-9">
         <div className="p-5">
-        <span className="sr-only">Operations dashboard</span>
-        <div className="flex items-end justify-between gap-4">
-          <div>
-            <div className="caption">Operator overview</div>
-            <h1 className="mt-1 text-[22px] tracking-tight">Good morning, {session?.name?.split(" ")[0] || "operator"}.</h1>
-            <p className="mt-0.5 text-[12.5px] text-muted-foreground">
-              {actionItems.length} items need your eyes · {automationActivity.length} automation signals · {activeLeads.length} active leads.
-            </p>
-          </div>
-          <Badge tone="teal">Live records</Badge>
-        </div>
-
-        <div className="mt-5 grid grid-cols-2 gap-px overflow-hidden rounded-[8px] border border-border bg-border md:grid-cols-3 lg:grid-cols-6">
-          {metrics.map((metric) => {
-            const Icon = metric.icon;
-            return (
-              <Link
-                key={metric.label}
-                href={metric.href}
-                className="group bg-background p-3.5 transition-colors hover:bg-surface-2"
-              >
-                <div className="flex items-center justify-between">
-                  <Icon className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground" />
-                  <span className="ml-2 truncate text-right font-mono text-[10.5px] text-muted-foreground">{metric.context}</span>
-                </div>
-                <div className="mt-2 font-mono text-[24px] tracking-tight">{metric.value}</div>
-                <div className="mt-0.5 text-[11.5px] text-muted-foreground">{metric.label}</div>
-              </Link>
-            );
-          })}
-        </div>
-
-        <div className="mt-5 grid grid-cols-1 gap-px overflow-hidden rounded-[8px] border border-border bg-border lg:grid-cols-5">
-          <div className="bg-background p-4 lg:col-span-3">
-            <div className="flex items-center justify-between gap-3">
-              <SectionKicker label="Qualification funnel" />
-              <Link href="/app/leads" className="text-[11.5px] text-muted-foreground hover:text-foreground">
-                Open Leads →
-              </Link>
+          <span className="sr-only">Operations dashboard</span>
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <div className="caption">Operator overview</div>
+              <h1 className="mt-1 text-[22px] tracking-tight">Good morning, {session?.name?.split(" ")[0] || "operator"}.</h1>
+              <p className="mt-0.5 text-[12.5px] text-muted-foreground">
+                {actionItems.length} items need attention · {activeLeads.length} active leads · {calendarEvents.length} calendar records.
+              </p>
             </div>
-            <div className="mt-4 space-y-2.5">
-              {funnelRows.map((row) => (
-                <div key={row.label} className="grid grid-cols-12 items-center gap-3">
-                  <div className="col-span-2 text-[12px] text-muted-foreground">{row.label}</div>
-                  <div className="relative col-span-8 h-5 overflow-hidden rounded-[4px] bg-surface-2">
-                    <div className="absolute inset-y-0 left-0 bg-primary/80" style={{ width: `${row.value ? Math.max(7, percent(row.value, funnelMax)) : 0}%` }} />
-                    <div className="relative flex h-full items-center justify-end pr-2 font-mono text-[10.5px] text-foreground/80">
-                      {row.value}
-                    </div>
+            <Badge tone="teal">Live records</Badge>
+          </div>
+
+          <div className="mt-5 grid grid-cols-2 gap-px overflow-hidden rounded-[8px] border border-border bg-border md:grid-cols-3 lg:grid-cols-6">
+            {metrics.map((metric) => {
+              const Icon = metric.icon;
+              return (
+                <Link key={metric.label} href={metric.href} className="bg-background p-4 hover:bg-surface-2">
+                  <div className="flex items-center gap-2">
+                    <Icon className="h-4 w-4 text-primary" />
+                    <span className="caption">{metric.label}</span>
                   </div>
-                  <div className="col-span-2 text-right font-mono text-[10.5px] text-muted-foreground">{percent(row.value, activeLeads.length)}%</div>
-                </div>
-              ))}
-            </div>
+                  <div className="mt-3 text-2xl font-semibold">{metric.value}</div>
+                  <div className="mt-1 text-[11.5px] text-muted-foreground">{metric.context}</div>
+                </Link>
+              );
+            })}
           </div>
-          <div className="bg-background p-4 lg:col-span-2">
-            <SectionKicker label="Lead sources" />
-            {sourceBreakdown.length ? (
-              <div className="mt-4 space-y-2.5">
-                {sourceBreakdown.map((source) => (
-                  <div key={source.label} className="flex items-center gap-3">
-                    <div className="flex flex-1 items-center gap-3 text-[12.5px]">
-                      <span className={`dot ${source.color}`} />
-                      <span className="truncate">{source.label}</span>
+
+          <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_0.8fr]">
+            <section className="rounded-[8px] border border-border bg-surface p-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-[14px] font-medium">Pipeline</h2>
+                <Link href="/app/leads" className="font-mono text-[10.5px] text-primary">open leads</Link>
+              </div>
+              <div className="mt-4 space-y-3">
+                {funnelRows.map((row) => (
+                  <div key={row.label}>
+                    <div className="mb-1 flex items-center justify-between text-[12px]">
+                      <span>{row.label}</span>
+                      <span className="font-mono text-muted-foreground">{row.value}</span>
                     </div>
-                    <div className="h-1.5 w-24 overflow-hidden rounded-full bg-surface-2">
-                      <div className={`h-full rounded-full ${source.color}`} style={{ width: `${Math.max(4, source.percent)}%` }} />
+                    <div className="h-2 overflow-hidden rounded-full bg-surface-3">
+                      <div className="h-full rounded-full bg-primary" style={{ width: `${Math.max(5, percent(row.value, funnelMax))}%` }} />
                     </div>
-                    <div className="w-8 text-right font-mono text-[10.5px] text-muted-foreground">{source.percent}%</div>
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="mt-6 flex min-h-[160px] flex-col items-center justify-center rounded-[8px] border border-dashed border-border text-center">
-                <Inbox size={24} className="text-muted-foreground" />
-                <div className="mt-3 text-sm font-medium text-foreground">No lead sources yet</div>
-                <p className="mt-1 max-w-sm text-sm text-muted-foreground">Meta, WhatsApp, extension, and manual leads will populate this split from real records.</p>
-              </div>
-            )}
-          </div>
-        </div>
+            </section>
 
-        <div className="mt-5 grid grid-cols-1 gap-px overflow-hidden rounded-[8px] border border-border bg-border lg:grid-cols-2">
-          <div className="bg-background p-4">
-            <div className="flex items-center justify-between gap-3">
-              <SectionKicker label="Follow-up and automation activity" />
-              <Link href="/app/worker" className="text-[11.5px] text-muted-foreground hover:text-foreground">
-                Open Automations →
-              </Link>
-            </div>
-            {automationActivity.length ? (
-              <div className="mt-4 space-y-2">
-                {automationActivity.map((row) => (
-                  <div key={row.name} className="flex items-center gap-3">
-                    <div className="flex w-44 items-center gap-3">
-                      <Bot className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span className="truncate font-mono text-[12px]">{row.name}</span>
+            <section className="rounded-[8px] border border-border bg-surface p-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-[14px] font-medium">Lead sources</h2>
+                <span className="caption">real records</span>
+              </div>
+              <div className="mt-4 space-y-3">
+                {sourceBreakdown.length ? (
+                  sourceBreakdown.map((row) => (
+                    <div key={row.label} className="flex items-center gap-3">
+                      <span className={`h-2.5 w-2.5 rounded-full ${row.color}`} />
+                      <span className="min-w-0 flex-1 truncate text-[12.5px]">{row.label}</span>
+                      <span className="font-mono text-[10.5px] text-muted-foreground">{row.value} · {row.percent}%</span>
                     </div>
-                    <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-surface-2">
-                      <div className="absolute inset-y-0 left-0 bg-primary/80" style={{ width: `${Math.max(4, percent(row.value, automationMax))}%` }} />
-                    </div>
-                    <div className="w-10 text-right font-mono text-[10.5px] text-muted-foreground">{row.value}</div>
-                  </div>
-                ))}
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">No source data yet.</p>
+                )}
               </div>
-            ) : (
-              <div className="mt-6 flex min-h-[180px] flex-col items-center justify-center rounded-[8px] border border-dashed border-border text-center">
-                <ListChecks size={24} className="text-muted-foreground" />
-                <div className="mt-3 text-sm font-medium text-foreground">No automation activity yet</div>
-                <p className="mt-1 max-w-sm text-sm text-muted-foreground">Approval tasks, extension sends, and CRM follow-ups will appear here from real records.</p>
-              </div>
-            )}
+            </section>
           </div>
-          <div className="bg-background p-4">
-            <div className="flex items-center justify-between gap-3">
-              <SectionKicker label="Recent activity" />
-              <Badge tone="teal">streaming</Badge>
-            </div>
-            {recentActivity.length ? (
-              <div className="mt-3 space-y-2">
-                {recentActivity.map((item, index) => (
-                  <div key={`${item.time}-${index}`} className="grid grid-cols-[52px_minmax(0,1fr)] gap-4 text-[12.5px]">
-                    <div className="font-mono text-[10.5px] text-muted-foreground">{item.time}</div>
-                    <div className="leading-6 text-muted-foreground">{item.text}</div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="mt-6 flex min-h-[220px] flex-col items-center justify-center rounded-[8px] border border-dashed border-border text-center">
-                <Inbox size={24} className="text-muted-foreground" />
-                <div className="mt-3 text-sm font-medium text-foreground">No live activity yet</div>
-                <p className="mt-1 max-w-sm text-sm text-muted-foreground">Lead, automation, and messaging events will stream here as they arrive.</p>
-              </div>
-            )}
-          </div>
-        </div>
         </div>
       </section>
 
       <aside className="col-span-12 overflow-y-auto bg-background xl:col-span-3">
-        <div>
-          <div className="border-b border-border p-4">
-            <div className="flex items-center justify-between gap-3">
-              <SectionKicker label="Needs you" />
-              <Link href="/app/worker?tab=pending" className="text-[11.5px] text-muted-foreground hover:text-foreground">
-                All →
-              </Link>
-            </div>
-            <p className="mt-1 text-[12.5px] text-muted-foreground">{actionItems.length} items pending across leads and automations.</p>
+        <section className="border-b border-border p-4">
+          <div className="flex items-center gap-2">
+            <Inbox className="h-4 w-4 text-primary" />
+            <h2 className="text-sm font-medium">Action queue</h2>
           </div>
-          {actionItems.length ? (
-            <div className="divide-y divide-border">
-              {actionItems.map((item) => (
-                <div key={`${item.priority}-${item.title}`} className="p-4 hover:bg-surface-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="caption">
-                      <span className={item.priority === "P0" ? "text-destructive" : item.priority === "P1" ? "text-warning" : "text-muted-foreground"}>{item.priority}</span>{" "}
-                      {item.kind}
-                    </div>
-                    <div className="font-mono text-[10.5px] text-muted-foreground">{item.time}</div>
+          <div className="mt-3 space-y-2">
+            {actionItems.length ? (
+              actionItems.map((item) => (
+                <Link key={`${item.kind}-${item.title}`} href={item.href} className="block rounded-[7px] border border-border bg-surface p-3 hover:bg-surface-2">
+                  <div className="flex items-center gap-2">
+                    <Badge tone={item.priority === "P0" ? "rose" : item.priority === "P1" ? "amber" : "neutral"}>{item.priority}</Badge>
+                    <span className="caption">{item.kind}</span>
+                    <span className="ml-auto font-mono text-[10.5px] text-muted-foreground">{item.time}</span>
                   </div>
-                  <div className="mt-1.5 text-[12.5px] font-medium">{item.title}</div>
+                  <div className="mt-2 text-[12.5px] font-medium">{item.title}</div>
                   <p className="mt-1 line-clamp-2 text-[11.5px] text-muted-foreground">{item.detail}</p>
-                  <div className="mt-2 flex items-center gap-1.5">
-                    <Link href={item.href} className="inline-flex h-6 items-center rounded-[4px] bg-primary px-2 text-[11px] font-medium text-primary-foreground hover:bg-primary/90">
-                      Approve
-                    </Link>
-                    <Link href={item.href} className="inline-flex h-6 items-center rounded-[4px] border border-border px-2 text-[11px] hover:bg-surface-3">
-                      Edit
-                    </Link>
-                    <Link href={item.href} className="h-6 rounded-[4px] px-2 text-[11px] text-muted-foreground hover:bg-surface-3">
-                      Reject
-                    </Link>
-                    <Link href={item.href} className="ml-auto text-muted-foreground hover:text-foreground" aria-label={`Open ${item.title}`}>
-                      <ArrowRight className="h-3.5 w-3.5" />
-                    </Link>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="p-4">
-              <div className="flex min-h-[360px] flex-col items-center justify-center rounded-[8px] border border-dashed border-border text-center">
-                <MessageCircle size={24} className="text-muted-foreground" />
-                <div className="mt-3 text-sm font-medium text-foreground">No approvals waiting</div>
-                <p className="mt-1 max-w-xs text-sm text-muted-foreground">Drafts, qualification reviews, and follow-ups will appear here before action.</p>
-              </div>
-            </div>
-          )}
-        </div>
+                </Link>
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">No pending actions.</p>
+            )}
+          </div>
+        </section>
+
+        <section className="border-b border-border p-4">
+          <div className="flex items-center gap-2">
+            <CalendarDays className="h-4 w-4 text-primary" />
+            <h2 className="text-sm font-medium">Calendar</h2>
+          </div>
+          <div className="mt-3 space-y-2">
+            {calendarEvents.slice(0, 4).map((event) => (
+              <Link key={event.id} href="/app/calendar" className="block rounded-[7px] border border-border bg-surface p-3 hover:bg-surface-2">
+                <div className="text-[12.5px] font-medium">{event.title}</div>
+                <div className="mt-1 font-mono text-[10.5px] text-muted-foreground">{event.status} · {relativeTime(event.startAt)}</div>
+              </Link>
+            ))}
+            {!calendarEvents.length ? <p className="text-sm text-muted-foreground">No calendar records yet.</p> : null}
+          </div>
+        </section>
+
+        <section className="p-4">
+          <div className="flex items-center gap-2">
+            <Bot className="h-4 w-4 text-primary" />
+            <h2 className="text-sm font-medium">Teamspace</h2>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <MiniStat label="Humans" value={members.filter((member) => member.type === "human").length} />
+            <MiniStat label="AI agents" value={aiAgents.length} />
+            <MiniStat label="Auto-reply" value={members.filter((member) => member.autoReplyEnabled).length} />
+            <MiniStat label="Tasks" value={crmFollowUps.length} />
+          </div>
+        </section>
       </aside>
     </div>
   );
 }
 
-function SectionKicker({ label }: { label: string }) {
-  return <div className="caption">{label}</div>;
+function MiniStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-[7px] border border-border bg-surface p-3">
+      <div className="caption">{label}</div>
+      <div className="mt-1 text-lg font-semibold">{value}</div>
+    </div>
+  );
 }

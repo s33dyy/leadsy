@@ -9,6 +9,7 @@ import {
   Bell,
   BookOpen,
   Bot,
+  CalendarDays,
   CheckSquare,
   ChevronDown,
   ChevronsUpDown,
@@ -20,7 +21,6 @@ import {
   MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
-  Plug,
   Plus,
   Search,
   Settings as SettingsIcon,
@@ -55,6 +55,7 @@ const workflowNav: ShellLink[] = [
   { href: "/app", label: "Dashboard", icon: LayoutDashboard, end: true },
   { href: "/app/leads", label: "Leads", icon: Users2 },
   { href: "/app/communications", label: "Inbox", icon: MessageSquare },
+  { href: "/app/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/app/worker", label: "Automations", icon: Bot },
   { href: "/app/team", label: "Team", icon: Users2 },
   { href: "/app?view=analytics", label: "Analytics", icon: Activity },
@@ -64,8 +65,6 @@ const workflowNav: ShellLink[] = [
 const supportingNav: ShellLink[] = [
   { href: "/app/approvals", label: "Approval queue", icon: CheckSquare, accent: true },
   { href: "/app/tasks", label: "Follow-up tasks", icon: ListChecks },
-  { href: "/app/integrations", label: "Integrations", icon: Plug },
-  { href: "/app/connect", label: "Connect channels", icon: Plug },
   { href: "/app/leads?panel=knowledge", label: "Lead context", icon: BookOpen }
 ];
 
@@ -126,6 +125,7 @@ function pageTitle(pathname: string, searchParams: SearchParamsLike) {
   if (pathname.startsWith("/app/worker")) return "Automations";
   if (pathname.startsWith("/app/approvals")) return "Approvals";
   if (pathname.startsWith("/app/communications")) return "Inbox";
+  if (pathname.startsWith("/app/calendar")) return "Calendar";
   if (pathname.startsWith("/app/tasks")) return "Follow-up tasks";
   if (pathname.startsWith("/app/integrations")) return "Integrations";
   if (pathname.startsWith("/app/team")) return "Team";

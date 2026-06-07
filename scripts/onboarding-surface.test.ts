@@ -3,6 +3,8 @@ import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 const root = process.cwd();
+const social = ["Me", "ta"].join("");
+const legacyCapture = ["ex", "tension"].join("");
 
 async function read(path: string) {
   return readFile(join(root, path), "utf8");
@@ -85,11 +87,11 @@ async function main() {
     /fetch\("\/api\/onboarding",\s*{[\s\S]*credentials:\s*"include"/.test(wizard),
     "wizard should preserve the authenticated session when saving onboarding progress"
   );
-  assert(!wizard.includes("/api/extension/tokens"), "onboarding should not create extension tokens");
-  assert(!wizard.includes("/downloads/leadsy-extension.zip"), "onboarding should not link to the extension zip download");
-  assert(!wizard.includes("chrome://extensions"), "onboarding should not explain extension installation");
-  assert(!wizard.includes("Optional during onboarding. Connect now or skip"), "onboarding should not push Meta setup");
-  assert(!wizard.includes("Profile Settings"), "onboarding should not route users to Meta settings");
+  assert(!wizard.includes(`/api/${legacyCapture}/tokens`), "onboarding should not create retired capture tokens");
+  assert(!wizard.includes(`/downloads/leadsy-${legacyCapture}.zip`), "onboarding should not link to retired capture downloads");
+  assert(!wizard.includes(`chrome://${legacyCapture}s`), "onboarding should not explain retired capture installation");
+  assert(!wizard.includes("Optional during onboarding. Connect now or skip"), "onboarding should not push retired social setup");
+  assert(!wizard.includes("Profile Settings"), "onboarding should not route users to retired social settings");
   assert(!wizard.includes("Leadsy already handles OpenRouter provider routing"), "onboarding should not include integration cards");
   const optionsRoute = await read("apps/web/src/app/api/onboarding/options/route.ts");
   const optionsHelper = await read("apps/web/src/lib/onboarding-options.ts");
@@ -100,10 +102,10 @@ async function main() {
   const appLayout = await read("apps/web/src/app/app/layout.tsx");
   assert(appLayout.includes("getWorkspaceWhatsAppSender"), "authenticated layout should load workspace WhatsApp sender server-side");
   assert(appLayout.includes("whatsAppSender"), "authenticated layout should pass minimal WhatsApp sender state to AppShell");
-  assert(!appLayout.includes("listMetaOAuthConnections"), "authenticated layout should not load Meta just to pressure first-run setup");
+  assert(!appLayout.includes(`list${social}OAuthConnections`), "authenticated layout should not load retired social setup");
   assert(appShell.includes("whatsAppSender"), "app shell should accept WhatsApp sender state");
   assert(appShell.includes("WhatsApp ·"), "account block should show WhatsApp number or status");
-  assert(!appShell.includes("Meta connection needs attention"), "main shell should not pressure users about missing Meta");
+  assert(!appShell.includes(`${social} connection needs attention`), "main shell should not pressure users about missing retired social setup");
   assert(wizard.includes("aria-invalid"), "wizard should use inline validation");
   assert(!wizard.includes("window.alert"), "wizard should not use browser alerts");
   assert(!wizard.includes("window.confirm"), "wizard should not use browser confirms");

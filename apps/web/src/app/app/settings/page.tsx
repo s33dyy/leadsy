@@ -1,24 +1,9 @@
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
-import {
-  Bell,
-  BadgeCheck,
-  Bot,
-  Brain,
-  Building2,
-  Check,
-  ChevronRight,
-  MessageSquare,
-  Monitor,
-  Plug,
-  Search,
-  Server,
-  User
-} from "lucide-react";
+import { Bell, Bot, Brain, Building2, MessageSquare, Search, Server, User } from "lucide-react";
 import { Badge } from "@/components/ui";
 import { getCurrentSession } from "@/lib/auth";
-import { automationWorkflowDefinitions } from "@/lib/automation-workflows";
-import { getAiCostDashboard, getInfrastructureStatus, type HealthTone } from "@/lib/infrastructure-status";
+import { getInfrastructureStatus, type HealthTone } from "@/lib/infrastructure-status";
 import { getTwilioIntegrationStatus, type TwilioIntegrationStatus } from "@/lib/twilio-transport";
 import { getWorkspaceWhatsAppSender, type WorkspaceWhatsAppSender } from "@/lib/workspace-whatsapp-sender-store";
 
@@ -31,27 +16,19 @@ type SettingsPageProps = {
 type SettingsSection =
   | "profile"
   | "workspace"
-  | "integrations"
   | "twilio"
   | "ai"
-  | "workers"
+  | "agents"
   | "notifications"
-  | "meta"
-  | "whatsapp"
-  | "extension"
   | "infrastructure";
 
 const groups: Array<{ id: SettingsSection; label: string; icon: LucideIcon }> = [
   { id: "profile", label: "Profile", icon: User },
   { id: "workspace", label: "Workspace", icon: Building2 },
-  { id: "integrations", label: "Integrations", icon: Plug },
   { id: "twilio", label: "Twilio", icon: MessageSquare },
   { id: "ai", label: "AI", icon: Brain },
-  { id: "workers", label: "Workers", icon: Bot },
+  { id: "agents", label: "Agents", icon: Bot },
   { id: "notifications", label: "Notifications", icon: Bell },
-  { id: "meta", label: "Meta", icon: BadgeCheck },
-  { id: "whatsapp", label: "WhatsApp", icon: MessageSquare },
-  { id: "extension", label: "Extension", icon: Monitor },
   { id: "infrastructure", label: "Infrastructure", icon: Server }
 ];
 
@@ -67,36 +44,20 @@ const sectionSummaries: Record<SettingsSection, {
     eyebrow: "Settings / Profile",
     title: "Operator profile",
     detail: "Identity, role, and account context for the person running Leadsy.",
-    primaryHref: "/app/connect?panel=profile",
-    primaryLabel: "Open profile setup",
     rows: [
       { label: "Account", value: "Managed by Leadsy auth" },
       { label: "Access", value: "Workspace session and role based" },
-      { label: "Personalization", value: "Used by workers for operator context" }
+      { label: "Personalization", value: "Used by AI agents for operator context" }
     ]
   },
   workspace: {
     eyebrow: "Settings / Workspace",
     title: "Workspace",
     detail: "Business context, team defaults, and tenant-level operating rules.",
-    primaryHref: "/app/connect?panel=settings",
-    primaryLabel: "Open workspace setup",
     rows: [
-      { label: "Tenant isolation", value: "Next.js gateway + Postgres" },
+      { label: "Tenant isolation", value: "Next.js gateway + app database" },
       { label: "Business state", value: "Stored in Leadsy" },
       { label: "Automation", value: "Leadsy-native scheduler and task engine" }
-    ]
-  },
-  integrations: {
-    eyebrow: "Settings / Integrations",
-    title: "Integration surfaces",
-    detail: "Meta, WhatsApp, email, extension, and provider connections in one place.",
-    primaryHref: "/app/integrations",
-    primaryLabel: "Open integrations",
-    rows: [
-      { label: "Meta", value: "OAuth and webhook intake stay in Leadsy" },
-      { label: "Twilio", value: "Leadsy-managed platform transport" },
-      { label: "Extension", value: "Browser capture is the Legacy Capture Layer" }
     ]
   },
   twilio: {
@@ -105,86 +66,44 @@ const sectionSummaries: Record<SettingsSection, {
     detail: "Workspace sender assignment, inbound routing, outbound replies, and delivery callbacks through Leadsy-managed Twilio infrastructure.",
     primaryHref: "/app/integrations",
     primaryLabel: "Open integrations",
-    rows: [
-      { label: "Inbound", value: "Twilio routes the assigned number into Leadsy" },
-      { label: "Outbound", value: "Inbox replies use the workspace assigned sender" },
-      { label: "Delivery", value: "Twilio status callback updates message records" }
-    ]
+    rows: []
   },
   ai: {
     eyebrow: "Settings / AI",
     title: "AI configuration",
-    detail: "OpenRouter usage and model cost visibility for automation decisions.",
-    primaryHref: "/app/settings?section=infrastructure",
-    primaryLabel: "Open cost dashboard",
+    detail: "Model routing and cost visibility for qualification, drafting, and CRM decisions.",
     rows: [
       { label: "Provider", value: "OpenRouter" },
-      { label: "Secrets", value: "Configured in Railway environment variables" },
-      { label: "Cost tracking", value: "Recorded through Leadsy automation metadata" }
+      { label: "Secrets", value: "Configured in deployment environment variables" },
+      { label: "Cost tracking", value: "Recorded through Leadsy automation events" }
     ]
   },
-  workers: {
-    eyebrow: "Settings / Workers",
-    title: "Workers",
-    detail: "Operator task queues, approval routing, and retry behavior.",
-    primaryHref: "/app/worker",
-    primaryLabel: "Open workers",
+  agents: {
+    eyebrow: "Settings / Agents",
+    title: "Teamspace agents",
+    detail: "Human members, full AI agents, assisted AI agents, pipeline ownership, and auto-reply toggles.",
+    primaryHref: "/app/team",
+    primaryLabel: "Open teamspace",
     rows: [
-      { label: "Queue ownership", value: "Leadsy stores task state" },
-      { label: "Execution", value: "Leadsy schedules reminders, task creation, and escalations" },
-      { label: "Approval", value: "Operators approve before send actions" }
+      { label: "Qualification", value: "Initial inbound WhatsApp handled by configured AI agents" },
+      { label: "Assignment", value: "Qualified leads route to the next human or AI owner" },
+      { label: "Guardrails", value: "Dedupe, cooldown, escalation keywords, and internal thread boundaries" }
     ]
   },
   notifications: {
     eyebrow: "Settings / Notifications",
     title: "Notifications",
-    detail: "Operator alerts for approvals, failed executions, and follow-up reminders.",
+    detail: "Operator alerts for approvals, failed executions, follow-ups, and escalations.",
     rows: [
       { label: "Approvals", value: "Visible in the top bar and approval center" },
       { label: "Failures", value: "Escalation rules can create manager-visible tasks" },
       { label: "Follow-ups", value: "Driven and stored in Leadsy" }
     ]
   },
-  meta: {
-    eyebrow: "Settings / Meta",
-    title: "Meta",
-    detail: "Meta OAuth, webhook intake, Lead Ads, Instagram, and Messenger stay preserved.",
-    primaryHref: "/app/connect",
-    primaryLabel: "Connect Meta",
-    rows: [
-      { label: "OAuth", value: "Leadsy-owned" },
-      { label: "Webhook intake", value: "Leadsy-owned" },
-      { label: "Provider actions", value: "Leadsy-owned" }
-    ]
-  },
-  whatsapp: {
-    eyebrow: "Settings / WhatsApp",
-    title: "WhatsApp",
-    detail: "WhatsApp message storage stays in Leadsy. Clients advertise their Leadsy-assigned lead number after approval.",
-    primaryHref: "/app/settings?section=twilio",
-    primaryLabel: "Review sender assignment",
-    rows: [
-      { label: "Inbound storage", value: "Leadsy" },
-      { label: "Assigned sender", value: "Leadsy-managed WhatsApp number" },
-      { label: "Browser handoff", value: "Extension remains Legacy Capture Layer fallback" }
-    ]
-  },
-  extension: {
-    eyebrow: "Settings / Extension",
-    title: "Browser extension",
-    detail: "The extension captures and prepares browser-channel work. It is not the workflow engine.",
-    primaryHref: "/app/worker",
-    primaryLabel: "Open extension workers",
-    rows: [
-      { label: "Role", value: "Capture layer" },
-      { label: "Task source", value: "Leadsy task queue" },
-      { label: "WhatsApp timing", value: "Composer and send button readiness checks enabled" }
-    ]
-  },
   infrastructure: {
     eyebrow: "Settings / Infrastructure",
-    title: "Automation",
-    detail: "Leadsy owns follow-up scheduling, reminder generation, task creation, escalation rules, auth, CRM, conversations, assignments, leads, APIs, and Postgres.",
+    title: "Infrastructure",
+    detail: "Leadsy owns follow-up scheduling, reminders, task creation, escalation rules, auth, CRM, conversations, assignments, leads, APIs, and database state.",
     rows: []
   }
 };
@@ -210,14 +129,6 @@ function compactDate(value?: string) {
   return new Date(value).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
 }
 
-function formatInr(value: number) {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 4
-  }).format(value);
-}
-
 function maskTwilioAccountSid(value?: string) {
   if (!value) return "Not configured";
   if (value.length <= 8) return "Configured";
@@ -234,15 +145,11 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   const activeSection = sectionFromValue(paramValue(params, "section"));
   const section = sectionSummaries[activeSection];
   const session = await getCurrentSession();
-  const [infrastructure, aiCosts, twilio, sender] = await Promise.all([
+  const [infrastructure, twilio, sender] = await Promise.all([
     getInfrastructureStatus(),
-    getAiCostDashboard(),
     getTwilioIntegrationStatus(),
     session ? getWorkspaceWhatsAppSender({ tenantId: session.tenantId, ownerId: session.id }) : undefined
   ]);
-  const automation = infrastructure.automation;
-  const backendLogic = infrastructure.backendLogic;
-  const providerConfigs = infrastructure.providerConfigs;
 
   return (
     <div className="grid h-full min-h-0 min-w-0 grid-cols-12 gap-px overflow-hidden bg-border">
@@ -273,180 +180,46 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
               <h1 className="mt-1 text-[22px] tracking-tight">{section.title}</h1>
-              <p className="mt-0.5 text-[12.5px] text-muted-foreground">
-                {section.detail}
-              </p>
+              <p className="mt-0.5 text-[12.5px] text-muted-foreground">{section.detail}</p>
             </div>
-            {activeSection === "infrastructure" ? <Badge tone={toneForHealth(automation.health)}>Automation: {automation.health}</Badge> : null}
+            {activeSection === "infrastructure" ? <Badge tone={toneForHealth(infrastructure.automation.health)}>Automation: {infrastructure.automation.health}</Badge> : null}
           </div>
 
-          {activeSection !== "infrastructure" && activeSection !== "twilio" ? <SettingsSectionPanel section={section} /> : null}
-          {activeSection === "twilio" ? <TwilioSettingsPanel twilio={twilio} sender={sender} /> : null}
-
-          {activeSection === "infrastructure" ? (
-          <>
-          <div className="mt-6 grid min-w-0 grid-cols-2 gap-px overflow-hidden rounded-[8px] border border-border bg-border md:grid-cols-3">
-            {[
-              {
-                k: "Automation engine",
-                v: <span className="font-mono">Leadsy native</span>
-              },
-              { k: "Health", v: <span className="inline-flex items-center gap-1.5 text-primary"><span className="dot bg-primary pulse-dot" /> {automation.health}</span> },
-              { k: "Workflow count", v: <span className="font-mono">{automation.workflowCount}</span> },
-              { k: "Event types", v: <span className="font-mono">{automationWorkflowDefinitions.length}</span> },
-              { k: "Last execution", v: <span className="font-mono">{compactDate(automation.lastExecution)}</span> },
-              { k: "Failed executions", v: <span className="font-mono text-destructive">{automation.failedExecutions}</span> },
-              { k: "Queue", v: <span className="font-mono">{automation.queueStatus.replace(/_/g, " ")}</span> },
-              { k: "Owner", v: <span className="font-mono">Leadsy app</span> },
-              { k: "Checked", v: <span className="font-mono">{compactDate(automation.checkedAt)}</span> }
-            ].map((stat) => (
-              <div key={stat.k} className="min-w-0 overflow-hidden bg-background p-4">
-                <div className="caption">{stat.k}</div>
-                <div className="mt-1.5 min-w-0 text-[13px]">{stat.v}</div>
-              </div>
-            ))}
-          </div>
-
-          <section className="mt-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-[14px] font-medium">Backend logic modules</h2>
-              <span className="caption">owned by Leadsy</span>
-            </div>
-            <div className="mt-3 min-w-0 divide-y divide-border overflow-hidden rounded-[8px] border border-border">
-              {backendLogic.map((module) => (
-                <div key={module.key} className="grid min-w-0 grid-cols-12 items-center gap-3 px-3 py-2.5 text-[12px] hover:bg-surface-2">
-                  <div className="col-span-12 min-w-0 overflow-hidden md:col-span-3">
-                    <div className="truncate font-medium">{module.label}</div>
-                    <div className="mt-0.5 truncate font-mono text-[10.5px] text-muted-foreground">{module.key}</div>
-                  </div>
-                  <div className="col-span-12 min-w-0 truncate text-muted-foreground md:col-span-5">{module.detail}</div>
-                  <div className="col-span-4 min-w-0 whitespace-nowrap font-mono text-[11px] text-muted-foreground md:col-span-1">{module.actionCount} actions</div>
-                  <div className="col-span-4 min-w-0 whitespace-nowrap font-mono text-[11px] text-muted-foreground md:col-span-1">{module.guardrailCount} rails</div>
-                  <div className="col-span-4 min-w-0 truncate whitespace-nowrap text-right font-mono text-[10.5px] text-primary md:col-span-2">
-                    {module.editableFrom.join(" / ")}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="mt-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-[14px] font-medium">Provider config hub</h2>
-              <span className="caption">web service config</span>
-            </div>
-            <div className="mt-3 grid min-w-0 grid-cols-1 gap-px overflow-hidden rounded-[8px] border border-border bg-border md:grid-cols-2">
-              {providerConfigs.map((provider) => (
-                <div key={provider.key} className="min-w-0 overflow-hidden bg-background p-4">
-                  <div className="flex min-w-0 items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="truncate text-[13px] font-medium">{provider.label}</div>
-                      <p className="mt-1 text-[11.5px] leading-5 text-muted-foreground">{provider.detail}</p>
-                    </div>
-                    <Badge className="shrink-0" tone={toneForHealth(provider.status)}>
-                      {provider.managedByLeadsy ? "Leadsy owned" : "Needs config"}
-                    </Badge>
-                  </div>
-                  <div className="mt-3 grid min-w-0 grid-cols-3 gap-px overflow-hidden rounded-[6px] border border-border bg-border text-[11px]">
-                    <div className="min-w-0 overflow-hidden bg-surface-2 p-2">
-                      <div className="caption">Fields</div>
-                      <div className="mt-1 truncate font-mono">{provider.fieldCount}</div>
-                    </div>
-                    <div className="min-w-0 overflow-hidden bg-surface-2 p-2">
-                      <div className="caption">Protected</div>
-                      <div className="mt-1 truncate font-mono">{provider.secretFieldCount}</div>
-                    </div>
-                    <div className="min-w-0 overflow-hidden bg-surface-2 p-2">
-                      <div className="caption">Workflows</div>
-                      <div className="mt-1 truncate font-mono">{provider.workflowCount}</div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="mt-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-[14px] font-medium">Automation event map</h2>
-              <span className="caption">Leadsy native routes</span>
-            </div>
-            <ul className="mt-3 min-w-0 divide-y divide-border overflow-hidden rounded-[6px] border border-border">
-              {automationWorkflowDefinitions.map((workflow) => (
-                <li key={workflow.key} className="grid min-w-0 grid-cols-12 items-center gap-2 px-3 py-2.5 text-[12px] hover:bg-surface-2">
-                  <span className="col-span-12 min-w-0 truncate font-mono md:col-span-3">{workflow.key}</span>
-                  <span className="col-span-12 min-w-0 truncate md:col-span-3">{workflow.name}</span>
-                  <span className="col-span-10 truncate text-muted-foreground md:col-span-5">{workflow.purpose}</span>
-                  <ChevronRight className="col-span-2 h-3.5 w-3.5 justify-self-end text-muted-foreground md:col-span-1" />
-                </li>
-              ))}
-            </ul>
-          </section>
-
-          <section className="mt-6 grid min-w-0 gap-px overflow-hidden rounded-[8px] border border-border bg-border md:grid-cols-3">
-            {[
-              { label: "AI requests", value: String(aiCosts.totals.requests) },
-              { label: "Tokens", value: String(aiCosts.totals.totalTokens) },
-              { label: "Estimated cost", value: formatInr(aiCosts.totals.estimatedCostInr) }
-            ].map((item) => (
-              <div key={item.label} className="min-w-0 overflow-hidden bg-background p-4">
-                <div className="caption">{item.label}</div>
-                <div className="mt-1.5 truncate font-mono text-[16px]">{item.value}</div>
-              </div>
-            ))}
-          </section>
-
-          <section className="mt-6">
-            <div className="flex items-center gap-2 text-[12.5px]">
-              <Check className="h-3.5 w-3.5 text-primary" />
-              <span>{automation.detail}</span>
-            </div>
-            <p className="mt-1 text-[11.5px] text-muted-foreground">
-              Leadsy handles operational schedules, escalation rules, payload storage, CRM decisions, conversations, assignments, and lead state in the app.
-            </p>
-          </section>
-          </>
-          ) : null}
+          {activeSection === "twilio" ? (
+            <TwilioSettingsPanel twilio={twilio} sender={sender} />
+          ) : activeSection === "infrastructure" ? (
+            <InfrastructurePanel infrastructure={infrastructure} />
+          ) : (
+            <SettingsSectionPanel section={section} />
+          )}
         </div>
       </section>
     </div>
   );
 }
 
-function SettingsSectionPanel({
-  section
-}: {
-  section: (typeof sectionSummaries)[SettingsSection];
-}) {
+function SettingsSectionPanel({ section }: { section: (typeof sectionSummaries)[SettingsSection] }) {
   return (
-    <div className="mt-6 grid gap-5">
-      <div className="grid min-w-0 gap-px overflow-hidden rounded-[8px] border border-border bg-border md:grid-cols-3">
+    <section className="mt-6 min-w-0 overflow-hidden rounded-[8px] border border-border bg-background">
+      <div className="border-b border-border p-4">
+        <div className="text-[14px] font-medium">{section.title}</div>
+        <p className="mt-1 text-[12.5px] leading-6 text-muted-foreground">{section.detail}</p>
+        {section.primaryHref ? (
+          <Link href={section.primaryHref} className="mt-3 inline-flex h-8 items-center rounded-[5px] bg-primary px-3 text-[12px] font-medium text-primary-foreground hover:bg-primary/90">
+            {section.primaryLabel}
+          </Link>
+        ) : null}
+      </div>
+      <div className="grid min-w-0 gap-px bg-border md:grid-cols-3">
         {section.rows.map((row) => (
-          <div key={row.label} className="min-w-0 overflow-hidden bg-background p-4">
+          <div key={row.label} className="min-w-0 bg-background p-4">
             <div className="caption">{row.label}</div>
-            <div className="mt-2 text-[13px] leading-5 text-foreground">{row.value}</div>
+            <div className="mt-1.5 text-[13px] leading-5">{row.value}</div>
           </div>
         ))}
       </div>
-      {section.primaryHref && section.primaryLabel ? (
-        <Link href={section.primaryHref} className="inline-flex h-8 w-fit items-center gap-1.5 rounded-[5px] border border-border bg-surface-2 px-3 text-[12px] font-medium hover:bg-surface-3">
-          {section.primaryLabel} <ChevronRight className="h-3 w-3" />
-        </Link>
-      ) : null}
-      <div className="rounded-[8px] border border-border bg-black/20 p-4">
-        <div className="flex items-center gap-2 text-[12.5px]">
-          <Check className="h-3.5 w-3.5 text-primary" />
-          <span>Configuration here preserves Leadsy as the secure app boundary for operational automation.</span>
-        </div>
-      </div>
-    </div>
+    </section>
   );
-}
-
-function senderStatusLabel(sender?: WorkspaceWhatsAppSender) {
-  if (!sender) return "Assignment not started";
-  if (sender.transportMode === "simulator") return "simulator approved";
-  return sender.status.replace(/_/g, " ");
 }
 
 function TwilioSettingsPanel({
@@ -456,61 +229,106 @@ function TwilioSettingsPanel({
   twilio: TwilioIntegrationStatus;
   sender?: WorkspaceWhatsAppSender;
 }) {
-  const simulatorMode = sender?.transportMode === "simulator";
-  const rows = [
-    { label: "Workspace Sender Status", value: senderStatusLabel(sender) },
-    { label: "Assigned Lead Number", value: simulatorMode ? "Simulator only" : sender?.assignedPhoneNumber ?? "Not assigned yet" },
-    { label: "Provisioning Detail", value: sender?.statusReason ?? "Leadsy operations will assign and approve a sender before replies are enabled." },
-    { label: "Platform Connection Status", value: twilio.connected ? "Configured" : "Platform config pending" },
-    { label: "Platform Account SID", value: maskTwilioAccountSid(twilio.accountSid) },
-    { label: "Platform Default Sender", value: twilio.whatsappNumber ? "Configured" : "Not configured" },
-    {
-      label: "Last Webhook",
-      value: twilio.lastWebhook?.at
-        ? `${twilioDate(twilio.lastWebhook.at)} · ${twilio.lastWebhook.messageSid ?? "unknown SID"}`
-        : "No webhook yet"
-    },
-    {
-      label: "Last Delivery Callback",
-      value: twilio.lastDeliveryCallback?.at
-        ? `${twilioDate(twilio.lastDeliveryCallback.at)} · ${twilio.lastDeliveryCallback.status ?? "unknown status"}`
-        : "No callback yet"
-    }
-  ];
-
+  const status = sender?.status ?? "not_started";
+  const assigned = sender?.assignedPhoneNumber ?? (sender?.transportMode === "simulator" ? sender.simulatorHandle : undefined);
   return (
-    <div className="mt-6 overflow-hidden rounded-[8px] border border-border bg-border">
-      <div className="bg-background p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="text-sm font-semibold text-foreground">Leadsy-assigned WhatsApp sender</div>
-            <p className="mt-1 max-w-2xl text-[12.5px] leading-6 text-muted-foreground">
-              {simulatorMode
-                ? "Leadsy is using the internal WhatsApp simulator for this workspace. Messages are stored in the CRM and Inbox without external WhatsApp delivery."
-                : "Leadsy assigns the workspace a dedicated WhatsApp lead number and uses Twilio as hidden platform infrastructure. Clients advertise the assigned number after approval; secrets and platform account details stay in environment variables."}
-            </p>
-          </div>
-          <Badge tone={sender?.status === "approved" ? "lime" : sender?.status === "failed" || sender?.status === "disabled" ? "rose" : "amber"}>
-            {senderStatusLabel(sender)}
-          </Badge>
+    <section className="mt-6 min-w-0 overflow-hidden rounded-[8px] border border-border bg-background">
+      <div className="border-b border-border p-4">
+        <div className="text-[14px] font-medium">Leadsy-assigned WhatsApp sender</div>
+        <p className="mt-2 max-w-3xl text-[12.5px] leading-6 text-muted-foreground">
+          Leadsy assigns each workspace a dedicated WhatsApp lead number when real transport is available, or a simulator sender while testing.
+        </p>
+        <div className="mt-3">
+          <Badge tone={status === "approved" ? "lime" : status === "failed" ? "rose" : "amber"}>{status.replace(/_/g, " ")}</Badge>
         </div>
       </div>
-      <div className="grid min-w-0 grid-cols-1 gap-px md:grid-cols-2">
-        {rows.map((row) => (
-          <div key={row.label} className="min-w-0 bg-background p-4">
-            <div className="caption">{row.label}</div>
-            <div className="mt-1.5 min-w-0 truncate font-mono text-[12px] text-foreground">{row.value}</div>
-          </div>
-        ))}
-        <div className="min-w-0 bg-background p-4">
-          <div className="caption">Inbound Webhook URL</div>
-          <div className="mt-1.5 min-w-0 truncate font-mono text-[12px] text-foreground">/api/twilio/webhook</div>
-        </div>
-        <div className="min-w-0 bg-background p-4">
-          <div className="caption">Status Callback URL</div>
-          <div className="mt-1.5 min-w-0 truncate font-mono text-[12px] text-foreground">/api/twilio/status</div>
-        </div>
+      <div className="grid min-w-0 grid-cols-1 gap-px bg-border md:grid-cols-2">
+        <TwilioCell label="Workspace sender status" value={status.replace(/_/g, " ")} />
+        <TwilioCell label="Assigned lead number" value={assigned ?? "Not assigned yet"} />
+        <TwilioCell label="Platform connection status" value={twilio.connected ? "Configured" : "Not configured"} />
+        <TwilioCell label="Platform account SID" value={maskTwilioAccountSid(twilio.accountSid)} />
+        <TwilioCell label="Platform default sender" value={twilio.whatsappNumber ? "Configured" : "Not configured"} />
+        <TwilioCell label="Provisioning detail" value={sender?.statusReason ?? "No provisioning event yet"} />
+        <TwilioCell label="Last webhook" value={twilioDate(twilio.lastWebhook?.at)} />
+        <TwilioCell label="Last delivery callback" value={twilioDate(twilio.lastDeliveryCallback?.at)} />
+        <TwilioCell label="Inbound webhook URL" value="/api/twilio/webhook" />
+        <TwilioCell label="Status callback URL" value="/api/twilio/status" />
+      </div>
+    </section>
+  );
+}
+
+function TwilioCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 overflow-hidden bg-background p-4">
+      <div className="caption">{label}</div>
+      <div className="mt-1.5 min-w-0 truncate font-mono text-[13px]" title={value}>
+        {value}
       </div>
     </div>
+  );
+}
+
+function InfrastructurePanel({ infrastructure }: { infrastructure: Awaited<ReturnType<typeof getInfrastructureStatus>> }) {
+  return (
+    <>
+      <div className="mt-6 grid min-w-0 grid-cols-2 gap-px overflow-hidden rounded-[8px] border border-border bg-border md:grid-cols-3">
+        {[
+          { k: "Automation engine", v: "Leadsy native" },
+          { k: "Health", v: infrastructure.automation.health },
+          { k: "Workflow count", v: String(infrastructure.automation.workflowCount) },
+          { k: "Queue", v: infrastructure.automation.queueStatus.replace(/_/g, " ") },
+          { k: "Failed executions", v: String(infrastructure.automation.failedExecutions) },
+          { k: "Checked", v: compactDate(infrastructure.automation.checkedAt) }
+        ].map((stat) => (
+          <div key={stat.k} className="min-w-0 overflow-hidden bg-background p-4">
+            <div className="caption">{stat.k}</div>
+            <div className="mt-1.5 min-w-0 text-[13px]">{stat.v}</div>
+          </div>
+        ))}
+      </div>
+
+      <section className="mt-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-[14px] font-medium">Backend logic modules</h2>
+          <span className="caption">owned by Leadsy</span>
+        </div>
+        <div className="mt-3 min-w-0 divide-y divide-border overflow-hidden rounded-[8px] border border-border">
+          {infrastructure.backendLogic.map((module) => (
+            <div key={module.key} className="grid min-w-0 grid-cols-12 items-center gap-3 px-3 py-2.5 text-[12px] hover:bg-surface-2">
+              <div className="col-span-12 min-w-0 overflow-hidden md:col-span-3">
+                <div className="truncate font-medium">{module.label}</div>
+                <div className="mt-0.5 truncate font-mono text-[10.5px] text-muted-foreground">{module.key}</div>
+              </div>
+              <div className="col-span-12 min-w-0 truncate text-muted-foreground md:col-span-5">{module.detail}</div>
+              <div className="col-span-4 min-w-0 whitespace-nowrap font-mono text-[11px] text-muted-foreground md:col-span-1">{module.actionCount} actions</div>
+              <div className="col-span-4 min-w-0 whitespace-nowrap font-mono text-[11px] text-muted-foreground md:col-span-1">{module.guardrailCount} rails</div>
+              <div className="col-span-4 min-w-0 truncate whitespace-nowrap text-right font-mono text-[10.5px] text-primary md:col-span-2">
+                {module.editableFrom.join(" / ")}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="mt-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-[14px] font-medium">Service health</h2>
+          <span className="caption">runtime</span>
+        </div>
+        <div className="mt-3 grid min-w-0 grid-cols-1 gap-px overflow-hidden rounded-[8px] border border-border bg-border md:grid-cols-2">
+          {infrastructure.services.map((service) => (
+            <div key={service.key} className="min-w-0 overflow-hidden bg-background p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[13px] font-medium">{service.label}</div>
+                <Badge tone={toneForHealth(service.status)}>{service.status}</Badge>
+              </div>
+              <p className="mt-2 text-[12px] leading-5 text-muted-foreground">{service.detail}</p>
+              <div className="mt-3 font-mono text-[10.5px] text-muted-foreground">errors {service.errors}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+    </>
   );
 }

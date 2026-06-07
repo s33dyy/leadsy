@@ -1,51 +1,16 @@
-import {
-  Ban,
-  CheckCircle2,
-  Clock,
-  EyeOff,
-  ExternalLink,
-  Filter,
-  Inbox,
-  ListChecks,
-  Mail,
-  MessageCircle,
-  NotebookPen,
-  PhoneCall,
-  RadioTower,
-  Search,
-  Archive,
-  CalendarDays,
-  Pencil,
-  Sparkles,
-  UserRound,
-  Workflow
-} from "lucide-react";
 import Link from "next/link";
-import { Badge, EmptyState, PrimaryLink } from "@/components/ui";
-import { LeadScrollKeeper } from "@/components/lead-scroll-keeper";
-import { ManualLeadIntake } from "@/components/manual-lead-intake";
-import { SelectedLeadTasks } from "@/components/selected-lead-tasks";
+import { Mail, MessageSquare, Phone, Search, Users2 } from "lucide-react";
+import { Badge } from "@/components/ui";
 import { getCurrentSession } from "@/lib/auth";
-import { listCrmFollowUpTasks, type CrmFollowUpTask } from "@/lib/crm-store";
-import { conversationMessages } from "@/lib/conversation-contract";
-import { listExtensionTaskEvents, listExtensionTasks, type ExtensionTask, type ExtensionTaskEvent } from "@/lib/extension-store";
 import {
-  leadProductPipelineStatuses,
+  buildQualificationInputAudit,
+  conversationMessages,
   listLeadKnowledgeRecords,
   productPipelineStatusForLead,
   productPipelineStatusLabel,
-  syncLeadKnowledgeFromExtensionTasks,
-  type LeadKnowledgeChannel,
-  type LeadKnowledgeConversation,
-  type LeadKnowledgeMessage,
   type LeadKnowledgeRecord
 } from "@/lib/lead-knowledge-store";
-import {
-  buildQualificationHistory,
-  buildQualificationSummary,
-  notYetCollectedLabel,
-  qualificationFieldLabels
-} from "@/lib/qualification-engine";
+import { listTeamMembers } from "@/lib/teamspace-store";
 
 export const dynamic = "force-dynamic";
 
@@ -53,1787 +18,215 @@ type LeadsPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
-type ViewFilter = "all" | "needs-reply" | "active" | "meta" | "extension" | "excluded";
-type LeadWorkspaceTab = "overview" | "conversation" | "qualification" | "tasks" | "notes" | "timeline";
-type CommChannelFilter = "all" | "whatsapp" | "instagram" | "facebook" | "email" | "call" | "browser" | "manual";
-type LeadPanel = "crm" | "knowledge";
-
-const viewFilters: Array<{ id: ViewFilter; label: string }> = [
-  { id: "all", label: "All" },
-  { id: "needs-reply", label: "Needs reply" },
-  { id: "active", label: "Active leads" },
-  { id: "meta", label: "Meta" },
-  { id: "extension", label: "Extension" },
-  { id: "excluded", label: "Excluded" }
-];
-
-const workspaceTabs: Array<{ id: LeadWorkspaceTab; label: string }> = [
-  { id: "overview", label: "Overview" },
-  { id: "conversation", label: "Conversation" },
-  { id: "qualification", label: "Qualification" },
-  { id: "tasks", label: "Tasks" },
-  { id: "notes", label: "Notes" },
-  { id: "timeline", label: "Timeline" }
-];
-
-const commFilters: Array<{ id: CommChannelFilter; label: string; channels?: LeadKnowledgeChannel[] }> = [
-  { id: "all", label: "All" },
-  { id: "whatsapp", label: "WhatsApp", channels: ["whatsapp", "whatsapp-web"] },
-  { id: "instagram", label: "Instagram", channels: ["instagram", "instagram-web"] },
-  { id: "facebook", label: "Facebook", channels: ["facebook", "facebook-web"] },
-  { id: "email", label: "Email", channels: ["email"] },
-  { id: "call", label: "Call Notes", channels: ["call"] },
-  { id: "browser", label: "Browser Chat", channels: ["generic-web-chat"] },
-  { id: "manual", label: "Manual", channels: ["manual"] }
-];
-
 function paramValue(params: Record<string, string | string[] | undefined>, key: string) {
   const value = params[key];
   return Array.isArray(value) ? value[0] ?? "" : value ?? "";
 }
 
-function shortDate(value?: string) {
-  if (!value) return "No touch";
-  return new Date(value).toLocaleString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit"
-  });
+function leadName(lead: LeadKnowledgeRecord) {
+  return lead.contact.displayName || lead.contact.phone || lead.contact.waId || lead.contact.email || "Unknown lead";
 }
 
-function contactLabel(lead: LeadKnowledgeRecord) {
-  return lead.contact.displayName || lead.contact.handle || lead.contact.phone || lead.contact.email || lead.contact.waId || "Unknown lead";
+function relativeTime(value?: string) {
+  if (!value) return "now";
+  const diffMs = Date.now() - Date.parse(value);
+  if (!Number.isFinite(diffMs) || diffMs < 0) return "now";
+  const minutes = Math.max(1, Math.round(diffMs / 60000));
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.round(hours / 24)}d`;
 }
 
-function latestMessage(lead: LeadKnowledgeRecord) {
-  return lead.lastMessagePreview || lead.summary || "No communication logged yet";
+function channelIcon(channel?: string) {
+  if (channel === "email") return Mail;
+  if (channel === "call") return Phone;
+  return MessageSquare;
 }
 
-function latestDirection(lead: LeadKnowledgeRecord) {
-  return lead.messages.at(-1)?.direction ?? "note";
-}
-
-function needsReply(lead: LeadKnowledgeRecord) {
-  return lead.leadStatus === "lead" && (lead.crmStatus === "needs_reply" || latestDirection(lead) === "inbound");
-}
-
-function crmStage(lead: LeadKnowledgeRecord) {
-  if (lead.leadStatus === "excluded") return "Not a lead";
-  return productPipelineStatusLabel(productPipelineStatusForLead(lead));
-}
-
-function stageTone(stage: string): "teal" | "amber" | "lime" | "sky" | "neutral" {
-  if (stage === "Contacted") return "amber";
-  if (stage === "Interested") return "lime";
-  if (stage === "Qualified") return "sky";
-  if (stage === "Won") return "lime";
-  if (stage === "Lost") return "neutral";
-  if (stage === "Not a lead") return "neutral";
-  return "teal";
-}
-
-function nextAction(lead: LeadKnowledgeRecord) {
-  if (lead.leadStatus === "excluded") return "Track only. No sales follow-up.";
-  if (lead.nextAction) return lead.nextAction;
-  if (needsReply(lead)) return "Reply in the right Meta channel and qualify intent.";
-  if (!lead.outboundCount) return "Open conversation and start qualification.";
-  return "Wait for reply or log the next outcome.";
-}
-
-function noticeCopy(params: Record<string, string | string[] | undefined>) {
-  const notice = paramValue(params, "notice");
-  if (notice === "lead-excluded") return "Lead excluded. Conversation history stays recorded.";
-  if (notice === "lead-restored") return "Lead restored.";
-  if (notice === "conversation-excluded") return "Conversation excluded from AI knowledge.";
-  if (notice === "conversation-restored") return "Conversation restored to AI knowledge.";
-  if (notice === "manual-lead-added") return "Manual lead added. Intake answers updated the knowledge base.";
-  if (notice === "manual-message-added") return "Manual communication logged.";
-  if (notice === "lead-edited") return "Lead details updated.";
-  if (notice === "crm-follow-up-added") return "Follow-up task added to this lead.";
-  if (notice === "lead-archived") return "Lead archived. History is preserved.";
-  if (notice === "message-hidden") return "Communication hidden from the chat.";
-  if (notice === "message-restored") return "Communication restored.";
-  if (notice === "lead-magnet-archived") return "Lead Magnet is archived. Leads is the active workspace.";
-  return "";
-}
-
-function crmHref(input: {
-  panel?: LeadPanel;
-  view?: ViewFilter;
-  q?: string;
-  contact?: string;
-  tab?: LeadWorkspaceTab;
-  commChannel?: CommChannelFilter;
-}) {
-  const params = new URLSearchParams();
-  if (input.panel && input.panel !== "crm") params.set("panel", input.panel);
-  if (input.view && input.view !== "all") params.set("view", input.view);
-  if (input.q?.trim()) params.set("q", input.q.trim());
-  if (input.contact) params.set("contact", input.contact);
-  if (input.tab && input.tab !== "conversation") params.set("tab", input.tab);
-  if (input.commChannel && input.commChannel !== "all") params.set("commChannel", input.commChannel);
-  const query = params.toString();
-  return query ? `/app/leads?${query}` : "/app/leads";
-}
-
-function matchesQuery(lead: LeadKnowledgeRecord, query: string) {
-  const needle = query.trim().toLowerCase();
-  if (!needle) return true;
-  return [
-    contactLabel(lead),
+function matchesSearch(lead: LeadKnowledgeRecord, query: string) {
+  if (!query) return true;
+  const haystack = [
+    leadName(lead),
     lead.contact.phone,
     lead.contact.email,
-    lead.contact.handle,
-    lead.contact.profileUrl,
     lead.leadSource,
-    lead.campaignId,
-    lead.assigneeName,
-    lead.crmStatus,
-    productPipelineStatusForLead(lead),
-    lead.qualificationStage,
-    ...Object.values(lead.qualificationFields ?? {}),
-    latestMessage(lead),
-    crmStage(lead),
-    nextAction(lead),
-    ...lead.channels
+    lead.summary,
+    lead.nextAction,
+    ...Object.values(lead.qualificationFields),
+    ...lead.facts
   ]
     .filter(Boolean)
-    .some((value) => String(value).toLowerCase().includes(needle));
-}
-
-function matchesView(lead: LeadKnowledgeRecord, view: ViewFilter) {
-  if (view === "needs-reply") return needsReply(lead);
-  if (view === "active") return lead.leadStatus === "lead";
-  if (view === "meta") return lead.channels.some((channel) => channel === "whatsapp" || channel === "instagram" || channel === "facebook");
-  if (view === "extension") return lead.channels.some((channel) => channel.endsWith("-web") || channel === "generic-web-chat");
-  if (view === "excluded") return lead.leadStatus === "excluded";
-  return true;
-}
-
-function filterLeads(leads: LeadKnowledgeRecord[], view: ViewFilter, query: string) {
-  return leads.filter((lead) => matchesView(lead, view) && matchesQuery(lead, query));
-}
-
-function channelLabel(channel: LeadKnowledgeChannel) {
-  if (channel === "email") return "Email";
-  if (channel === "call") return "Call Notes";
-  if (channel === "generic-web-chat") return "Browser Chat";
-  return channel.replace(/-/g, " ");
-}
-
-function openHref(lead: LeadKnowledgeRecord) {
-  const conversationUrl = lead.conversations.find((conversation) => conversation.sourceUrl)?.sourceUrl;
-  if (conversationUrl) return conversationUrl;
-  const phone = (lead.contact.phone || lead.contact.waId || "").replace(/\D/g, "");
-  if (phone) return `https://web.whatsapp.com/send?phone=${phone}`;
-  if (lead.contact.profileUrl) return lead.contact.profileUrl;
-  return "";
-}
-
-function activeTabFromValue(value: string): LeadWorkspaceTab {
-  if (value === "comms") return "conversation";
-  if (value === "details") return "overview";
-  return workspaceTabs.some((tab) => tab.id === value) ? (value as LeadWorkspaceTab) : "conversation";
-}
-
-function commChannelFromValue(value: string): CommChannelFilter {
-  return commFilters.some((filter) => filter.id === value) ? (value as CommChannelFilter) : "all";
-}
-
-function panelFromValue(value: string): LeadPanel {
-  return value === "knowledge" ? "knowledge" : "crm";
-}
-
-function messagesForCommChannel(lead: LeadKnowledgeRecord, commChannel: CommChannelFilter) {
-  const visibleConversationMessages = conversationMessages(lead.messages);
-  const filter = commFilters.find((candidate) => candidate.id === commChannel);
-  if (!filter?.channels) return visibleConversationMessages;
-  const allowed = new Set(filter.channels);
-  return visibleConversationMessages.filter((message) => allowed.has(message.channel));
-}
-
-function conversationsForCommChannel(lead: LeadKnowledgeRecord, commChannel: CommChannelFilter) {
-  const filter = commFilters.find((candidate) => candidate.id === commChannel);
-  if (!filter?.channels) return lead.conversations;
-  const allowed = new Set(filter.channels);
-  return lead.conversations.filter((conversation) => allowed.has(conversation.channel));
-}
-
-function tasksForLead(tasks: ExtensionTask[], lead: LeadKnowledgeRecord) {
-  return tasks.filter((task) => taskMatchesLead(task, lead));
-}
-
-function backfillLeadIdsForTasks(tasks: ExtensionTask[], leads: LeadKnowledgeRecord[]) {
-  return tasks.map((task) => {
-    if (task.leadId) return task;
-    const match = leads.find((lead) => taskMatchesLead(task, lead));
-    return match ? { ...task, leadId: match.id } : task;
-  });
-}
-
-function taskMatchesLead(task: ExtensionTask, lead: LeadKnowledgeRecord) {
-  if (task.leadId) return task.leadId === lead.id;
-  const conversationIds = new Set(lead.conversations.map((conversation) => conversation.id));
-  if (task.conversationId && conversationIds.has(task.conversationId)) return true;
-  const leadValues = identityValuesForLead(lead);
-  return identityValuesForTask(task).some((value) => leadValues.has(value));
-}
-
-function identityValuesForLead(lead: LeadKnowledgeRecord) {
-  return new Set(
-    [
-      lead.contact.phone,
-      lead.contact.waId,
-      lead.contact.email,
-      lead.contact.handle,
-      lead.contact.profileUrl,
-      ...lead.identityKeys,
-      ...lead.conversations.flatMap((conversation) => [conversation.sourceUrl, conversation.contact.phone, conversation.contact.email, conversation.contact.handle, conversation.contact.profileUrl])
-    ]
-      .flatMap((value) => normalizeIdentityValues(value))
-      .filter(Boolean)
-  );
-}
-
-function identityValuesForTask(task: ExtensionTask) {
-  return [
-    task.targetUrl,
-    whatsappPhoneFromUrl(task.targetUrl),
-    task.contact.phone,
-    task.contact.email,
-    task.contact.handle,
-    task.contact.profileUrl
-  ]
-    .flatMap((value) => normalizeIdentityValues(value))
-    .filter(Boolean);
-}
-
-function normalizeIdentityValues(value?: string) {
-  const clean = value?.trim();
-  if (!clean) return [];
-  const lower = clean.toLowerCase();
-  const digits = clean.replace(/\D/g, "");
-  return [lower, digits.length >= 7 ? digits : undefined].filter(Boolean) as string[];
-}
-
-function whatsappPhoneFromUrl(value?: string) {
-  if (!value) return undefined;
-  try {
-    const url = new URL(value);
-    return url.searchParams.get("phone") ?? undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function eventsForTasks(events: ExtensionTaskEvent[], tasks: ExtensionTask[]) {
-  const taskIds = new Set(tasks.map((task) => task.id));
-  return events.filter((event) => taskIds.has(event.taskId));
-}
-
-function toneForChannel(channel: LeadKnowledgeChannel): "teal" | "amber" | "lime" | "sky" | "neutral" {
-  if (channel === "whatsapp" || channel === "instagram" || channel === "facebook") return "lime";
-  if (channel === "email" || channel === "call" || channel === "manual") return "amber";
-  if (channel.endsWith("-web") || channel === "generic-web-chat") return "sky";
-  return "teal";
-}
-
-function sourceLabel(message: LeadKnowledgeMessage) {
-  if (message.source === "meta-webhook") return "Official webhook";
-  if (message.source === "extension") return "Browser capture";
-  return "Manual log";
-}
-
-function sourceTone(message: LeadKnowledgeMessage): "teal" | "amber" | "lime" | "sky" | "neutral" {
-  if (message.source === "meta-webhook") return "lime";
-  if (message.source === "extension") return "sky";
-  return "amber";
-}
-
-function messageTime(message: LeadKnowledgeMessage) {
-  const parsed = Date.parse(message.sentAt);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function messageTimeLabel(message: LeadKnowledgeMessage) {
-  return shortDate(message.sentAt);
-}
-
-function chatSenderLabel(message: LeadKnowledgeMessage) {
-  if (message.direction === "outbound") return "You";
-  if (message.direction === "note") return "Internal note";
-  if (message.direction === "system") return "Leadsy";
-  return "Lead";
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(query.toLowerCase());
 }
 
 export default async function LeadsPage({ searchParams }: LeadsPageProps) {
   const params = searchParams ? await searchParams : {};
-  const session = await getCurrentSession();
-  const tasks = session ? await listExtensionTasks(session.tenantId, session.id) : [];
-  const crmFollowUps = session ? await listCrmFollowUpTasks({ tenantId: session.tenantId, ownerId: session.id }) : [];
-  if (session) {
-    await syncLeadKnowledgeFromExtensionTasks({ tenantId: session.tenantId, ownerId: session.id }, tasks);
-  }
-  const leads = session ? await listLeadKnowledgeRecords({ tenantId: session.tenantId, ownerId: session.id }) : [];
-  const leadTasks = backfillLeadIdsForTasks(tasks, leads);
-  const taskEvents = session ? await listExtensionTaskEvents(session.tenantId, session.id) : [];
-  const requestedView = paramValue(params, "view") as ViewFilter;
-  const activeView = viewFilters.some((filter) => filter.id === requestedView) ? requestedView : "all";
-  const activeTab = activeTabFromValue(paramValue(params, "tab"));
-  const activeCommChannel = commChannelFromValue(paramValue(params, "commChannel"));
-  const activePanel = panelFromValue(paramValue(params, "panel"));
-  const query = paramValue(params, "q");
-  const filteredLeads = filterLeads(leads, activeView, query);
   const selectedLeadId = paramValue(params, "contact");
-  const selectedLead = filteredLeads.find((lead) => lead.id === selectedLeadId) ?? filteredLeads[0] ?? null;
-  const activeLeads = leads.filter((lead) => lead.leadStatus === "lead");
-  const replyQueue = leads.filter(needsReply);
-  const excludedLeads = leads.filter((lead) => lead.leadStatus === "excluded");
-  const metaLeads = leads.filter((lead) => matchesView(lead, "meta"));
-  const notice = noticeCopy(params);
-  const relatedLeadOptions = leads.map((lead) => ({
-    id: lead.id,
-    label: contactLabel(lead),
-    detail: lead.contact.email || lead.contact.phone || lead.contact.handle || lead.id
-  }));
+  const query = paramValue(params, "q");
+  const session = await getCurrentSession();
+  const scope = session ? { tenantId: session.tenantId, ownerId: session.id } : undefined;
+  const [allLeads, members] = scope
+    ? await Promise.all([listLeadKnowledgeRecords(scope), listTeamMembers(scope)])
+    : [[], []];
+  const leads = allLeads.filter((lead) => matchesSearch(lead, query));
+  const active = leads.find((lead) => lead.id === selectedLeadId) ?? leads[0];
+  const activeMessages = active ? conversationMessages(active.messages) : [];
+  const activeConversation = active?.conversations.find((conversation) => conversation.id === activeMessages.at(-1)?.conversationId) ?? active?.conversations[0];
+  const activeOwner = active?.assigneeId ? members.find((member) => member.id === active.assigneeId) : undefined;
+  const audit = active ? buildQualificationInputAudit(active) : undefined;
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-12 gap-px overflow-hidden bg-border">
-      <LeadScrollKeeper />
-      <div className="sr-only">Lead capture, qualification, and conversion {activePanel === "knowledge" ? "Lead context workspace" : "Leads workspace"}</div>
-      <div className="sr-only">
-        All Meta and browser conversations. Total records {leads.length}. Active leads {activeLeads.length}. Needs reply {replyQueue.length}. Meta-sourced {metaLeads.length}. Excluded {excludedLeads.length}.
-      </div>
-      {notice ? (
-        <div className="fixed bottom-4 right-4 z-50 rounded-[8px] border border-teal-300/25 bg-teal-300/[0.12] px-3 py-2 text-sm leading-6 text-teal-50">
-          {notice}
-        </div>
-      ) : null}
-
-        <section className="col-span-12 flex min-h-0 flex-col overflow-hidden bg-background md:col-span-4 xl:col-span-4 2xl:col-span-3" data-testid="lead-list-pane">
-          <LeadListPane
-            leads={filteredLeads}
-            selectedLead={selectedLead}
-            relatedLeads={relatedLeadOptions}
-            activeView={activeView}
-            activePanel={activePanel}
-            query={query}
-            activeTab={activeTab}
-            commChannel={activeCommChannel}
-          />
-        </section>
-
-        <section className="col-span-12 flex min-h-0 flex-col overflow-y-auto overflow-x-hidden bg-background md:col-span-8 xl:col-span-8 2xl:col-span-6" data-testid="lead-workspace-pane">
-          {selectedLead ? (
-            <LeadRecordWorkspace
-              lead={selectedLead}
-              activeView={activeView}
-              activePanel={activePanel}
-              query={query}
-              activeTab={activeTab}
-              commChannel={activeCommChannel}
-              tasks={tasksForLead(leadTasks, selectedLead)}
-              crmFollowUps={crmFollowUps.filter((task) => task.leadId === selectedLead.id)}
-              taskEvents={taskEvents}
-            />
-          ) : (
-            <EmptyState
-              icon={Inbox}
-              title="No lead selected"
-              detail="When conversations arrive, select one from the lead list to inspect details, comms, tasks, and AI knowledge."
-              action={<PrimaryLink href="/app/connect">Open connection config</PrimaryLink>}
-            />
-          )}
-        </section>
-
-        <aside className="hidden min-h-0 flex-col overflow-y-auto bg-background 2xl:col-span-3 2xl:flex">
-          <div className="flex items-center justify-between border-b border-border px-4 py-3">
-            <div className="flex items-center gap-2">
-              <NotebookPen className="h-3.5 w-3.5 text-primary" />
-              <span className="text-[12.5px] font-medium">Knowledge</span>
-              <span className="font-mono text-[10.5px] text-muted-foreground">{selectedLead ? contactLabel(selectedLead) : "No lead"}</span>
-            </div>
-            <Badge tone="teal">{activeLeads.length} active</Badge>
+    <div className="grid h-full min-h-0 grid-cols-12 gap-px bg-border">
+      <section className="col-span-12 flex min-h-0 flex-col bg-background md:col-span-4 xl:col-span-3">
+        <div className="border-b border-border p-3">
+          <form className="flex h-7 items-center gap-2 rounded-[5px] border border-border bg-surface-2 px-2">
+            <Search className="h-3 w-3 text-muted-foreground" />
+            <input name="q" defaultValue={query} placeholder="Search leads..." className="min-w-0 flex-1 bg-transparent text-[12px] outline-none placeholder:text-muted-foreground" />
+          </form>
+          <div className="mt-3 grid grid-cols-3 gap-1 text-center">
+            <Metric label="Leads" value={allLeads.length} />
+            <Metric label="Needs reply" value={allLeads.filter((lead) => lead.crmStatus === "needs_reply").length} />
+            <Metric label="Review" value={allLeads.filter((lead) => lead.crmStatus === "human_review").length} />
           </div>
-          {selectedLead ? <LeadKnowledgeRail lead={selectedLead} /> : null}
-        </aside>
-    </div>
-  );
-}
-
-function LeadListPane({
-  leads,
-  selectedLead,
-  relatedLeads,
-  activeView,
-  activePanel,
-  query,
-  activeTab,
-  commChannel
-}: {
-  leads: LeadKnowledgeRecord[];
-  selectedLead: LeadKnowledgeRecord | null;
-  relatedLeads: Array<{ id: string; label: string; detail?: string }>;
-  activeView: ViewFilter;
-  activePanel: LeadPanel;
-  query: string;
-  activeTab: LeadWorkspaceTab;
-  commChannel: CommChannelFilter;
-}) {
-  return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-sm font-semibold text-white">
-          <ListChecks size={17} className="text-[var(--teal)]" />
-          Leads list, filters
         </div>
-        <p className="basis-full text-[11.5px] text-muted-foreground">All Meta and browser conversations route into this lead list.</p>
-        <div className="flex items-center gap-2">
-          <ManualLeadIntake relatedLeads={relatedLeads} endpoint="/api/leads/manual" />
-          <Badge tone="neutral">{leads.length} shown</Badge>
-        </div>
-      </div>
-
-      <form method="get" action="/app/leads" className="mt-4 flex min-w-0 items-center gap-2 rounded-[8px] border border-[var(--line)] bg-black/20 px-3">
-        {activeView !== "all" ? <input type="hidden" name="view" value={activeView} /> : null}
-        {activePanel !== "crm" ? <input type="hidden" name="panel" value={activePanel} /> : null}
-        {activeTab !== "conversation" ? <input type="hidden" name="tab" value={activeTab} /> : null}
-        {commChannel !== "all" ? <input type="hidden" name="commChannel" value={commChannel} /> : null}
-        <Search size={15} className="shrink-0 text-[var(--muted)]" />
-        <input
-          name="q"
-          defaultValue={query}
-          placeholder="Search name, handle, phone, status, message"
-          className="h-10 min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-[var(--muted)]"
-        />
-      </form>
-
-      <div className="mt-3 flex max-w-full items-center gap-2 overflow-x-auto pb-1">
-        <Filter size={15} className="shrink-0 text-[var(--muted)]" />
-        {viewFilters.map((filter) => (
-          <Link
-            key={filter.id}
-            href={crmHref({ panel: activePanel, view: filter.id, q: query, tab: activeTab, commChannel })}
-            scroll={false}
-            className={`inline-flex h-9 shrink-0 items-center rounded-[6px] border px-3 text-xs font-medium ${
-              activeView === filter.id
-                ? "border-teal-300/40 bg-teal-300/[0.12] text-teal-100"
-                : "border-[var(--line)] bg-white/[0.03] text-[var(--muted-2)] hover:text-white"
-            }`}
-          >
-            {filter.label}
-          </Link>
-        ))}
-      </div>
-
-      {leads.length ? (
-        <div className="mt-4 grid min-h-0 flex-1 auto-rows-min gap-2 overflow-y-auto overflow-x-hidden pr-1">
-          {leads.map((lead) => {
-            const selected = selectedLead?.id === lead.id;
-            const stage = crmStage(lead);
-            return (
-              <Link
-                key={lead.id}
-                href={crmHref({ panel: activePanel, view: activeView, q: query, contact: lead.id, tab: activeTab, commChannel })}
-                scroll={false}
-                className={`block rounded-[8px] border p-3 ${
-                  selected
-                    ? "border-teal-300/35 bg-teal-300/[0.1]"
-                    : "border-[var(--line)] bg-black/20 hover:border-[var(--line-strong)] hover:bg-white/[0.03]"
-                }`}
-              >
-                <div className="flex min-w-0 items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex min-w-0 items-center gap-2 text-sm font-semibold text-white">
-                      <UserRound size={15} className="shrink-0 text-[var(--teal)]" />
-                      <span className="truncate">{contactLabel(lead)}</span>
+        <ul className="min-h-0 flex-1 overflow-y-auto">
+          {leads.length ? (
+            leads.map((lead) => {
+              const latestConversation = lead.conversations[0];
+              const Icon = channelIcon(latestConversation?.channel);
+              const selected = active?.id === lead.id;
+              const pipeline = productPipelineStatusForLead(lead);
+              return (
+                <li key={lead.id} className={`border-b border-border/70 px-3 py-2.5 hover:bg-surface-2 ${selected ? "bg-surface-2" : ""}`}>
+                  <Link href={`/app/leads?contact=${lead.id}`} className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2">
+                      <Icon className="h-3 w-3 text-muted-foreground" />
+                      <span className="flex-1 truncate text-[12.5px] font-medium">{leadName(lead)}</span>
+                      <span className="font-mono text-[10.5px] text-muted-foreground">{relativeTime(lead.lastMessageAt)}</span>
                     </div>
-                    <p className="mt-2 line-clamp-2 text-xs leading-5 text-[var(--muted-2)]">{latestMessage(lead)}</p>
-                  </div>
-                  <Badge tone={stageTone(stage)}>{stage}</Badge>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {lead.leadSource ? <Badge tone="sky">{lead.leadSource}</Badge> : null}
-                  {lead.assigneeName ? <Badge tone="teal">{lead.assigneeName}</Badge> : null}
-                  {lead.channels.slice(0, 4).map((channel) => (
-                    <Badge key={channel} tone={toneForChannel(channel)}>
-                      {channelLabel(channel)}
-                    </Badge>
-                  ))}
-                  {lead.channels.length > 4 ? <Badge tone="neutral">+{lead.channels.length - 4}</Badge> : null}
-                </div>
-                <div className="mt-3 flex items-center gap-2 text-xs text-[var(--muted)]">
-                  <Clock size={13} />
-                  {shortDate(lead.lastMessageAt)}
-                </div>
-              </Link>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="mt-4">
-          <EmptyState
-            icon={Inbox}
-            title="No records in this view"
-            detail="Change the filter, wait for Meta webhooks or extension sync, or add a manual lead now."
-            action={<ManualLeadIntake relatedLeads={relatedLeads} endpoint="/api/leads/manual" buttonLabel="Add Lead" />}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function LeadKnowledgeRail({ lead }: { lead: LeadKnowledgeRecord }) {
-  const recentFacts = lead.facts.slice(0, 5);
-  const recentMessages = lead.messages.slice(-3).reverse();
-  return (
-    <>
-      <ul className="divide-y divide-border">
-        <li className="p-4">
-          <div className="flex items-center justify-between">
-            <span className="caption">summary</span>
-            <span className="font-mono text-[10.5px] text-muted-foreground">{shortDate(lead.updatedAt)}</span>
-          </div>
-          <div className="mt-1 text-[12.5px] font-medium">AI qualification</div>
-          <p className="mt-1 text-[11.5px] leading-relaxed text-muted-foreground">
-            {lead.summary || latestMessage(lead) || "No summary has been generated yet."}
-          </p>
-        </li>
-        <li className="p-4">
-          <div className="flex items-center justify-between">
-            <span className="caption">next action</span>
-            <Badge tone={stageTone(crmStage(lead))}>{crmStage(lead)}</Badge>
-          </div>
-          <p className="mt-2 text-[12.5px] leading-relaxed text-foreground/90">{nextAction(lead)}</p>
-        </li>
-        <li className="p-4">
-          <div className="flex items-center justify-between">
-            <span className="caption">findings</span>
-            <span className="font-mono text-[10.5px] text-muted-foreground">{lead.facts.length}</span>
-          </div>
-          <div className="mt-2 space-y-2">
-            {recentFacts.length ? (
-              recentFacts.map((fact) => (
-                <p key={fact} className="text-[11.5px] leading-relaxed text-muted-foreground">
-                  {fact}
-                </p>
-              ))
-            ) : (
-              <p className="text-[11.5px] text-muted-foreground">Research findings will appear here after qualification or enrichment runs.</p>
-            )}
-          </div>
-        </li>
-        <li className="p-4">
-          <div className="flex items-center justify-between">
-            <span className="caption">recent comms</span>
-            <span className="font-mono text-[10.5px] text-muted-foreground">{lead.messageCount}</span>
-          </div>
-          <div className="mt-2 space-y-2">
-            {recentMessages.length ? (
-              recentMessages.map((message) => (
-                <div key={message.id} className="rounded-[6px] border border-border bg-surface-2 p-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-mono text-[10.5px] text-muted-foreground">{channelLabel(message.channel)}</span>
-                    <span className="font-mono text-[10.5px] text-muted-foreground">{messageTimeLabel(message)}</span>
-                  </div>
-                  <p className="mt-1 line-clamp-2 text-[11.5px] leading-relaxed text-foreground/90">{message.body}</p>
-                </div>
-              ))
-            ) : (
-              <p className="text-[11.5px] text-muted-foreground">No communications logged yet.</p>
-            )}
-          </div>
-        </li>
-      </ul>
-      <div className="mt-auto border-t border-border p-3">
-        <Link href={crmHref({ contact: lead.id, tab: "overview" })} className="flex h-7 w-full items-center justify-center gap-2 rounded-[5px] border border-border bg-surface-2 text-[12px] hover:bg-surface-3">
-          <Sparkles className="h-3 w-3 text-primary" /> Run research worker
-        </Link>
-      </div>
-    </>
-  );
-}
-
-function LeadRecordWorkspace({
-  lead,
-  activeView,
-  activePanel,
-  query,
-  activeTab,
-  commChannel,
-  tasks,
-  crmFollowUps,
-  taskEvents
-}: {
-  lead: LeadKnowledgeRecord;
-  activeView: ViewFilter;
-  activePanel: LeadPanel;
-  query: string;
-  activeTab: LeadWorkspaceTab;
-  commChannel: CommChannelFilter;
-  tasks: ExtensionTask[];
-  crmFollowUps: CrmFollowUpTask[];
-  taskEvents: ExtensionTaskEvent[];
-}) {
-  const href = openHref(lead);
-  const scopedTaskEvents = eventsForTasks(taskEvents, tasks);
-  return (
-    <div className="min-h-full p-4">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="mono text-[11px] uppercase text-[var(--teal)]">Phase 3B · Lead Detail Workspace</div>
-          <h3 className="mt-1 truncate text-2xl font-semibold text-white md:text-3xl">{contactLabel(lead)}</h3>
-          <div className="mono mt-2 break-all text-xs text-[var(--muted)]">{lead.id}</div>
-        </div>
-        <div className="flex flex-wrap items-start justify-end gap-2">
-          <Badge tone={stageTone(crmStage(lead))}>{crmStage(lead)}</Badge>
-          <Badge tone="neutral">{lead.messageCount} messages</Badge>
-        </div>
-      </div>
-
-      <div className="grid min-h-0 min-w-0 gap-4 min-[2200px]:grid-cols-[280px_minmax(0,1fr)_320px]">
-        <aside data-testid="lead-detail-left-column" className="min-h-0 min-w-0 min-[2200px]:sticky min-[2200px]:top-4 min-[2200px]:self-start">
-          <LeadContextColumn lead={lead} crmFollowUps={crmFollowUps} />
-        </aside>
-
-        <main data-testid="lead-detail-conversation-column" className="min-w-0 space-y-4">
-          <div className="flex max-w-full gap-2 overflow-x-auto border-b border-[var(--line)] pb-3">
-            {workspaceTabs.map((tab) => (
-              <Link
-                key={tab.id}
-                href={crmHref({ panel: activePanel, view: activeView, q: query, contact: lead.id, tab: tab.id, commChannel })}
-                scroll={false}
-                className={`inline-flex h-10 min-w-[118px] shrink-0 items-center justify-center rounded-[6px] border px-3 text-sm font-medium ${
-                  activeTab === tab.id
-                    ? "border-teal-300/40 bg-teal-300/[0.12] text-teal-100"
-                    : "border-[var(--line)] bg-white/[0.03] text-[var(--muted-2)] hover:text-white"
-                }`}
-              >
-                {tab.label}
-              </Link>
-            ))}
-          </div>
-
-          {activeTab === "overview" ? <LeadDetailsTab lead={lead} href={href} /> : null}
-          {activeTab === "conversation" ? <LeadCommsTab lead={lead} activeView={activeView} query={query} commChannel={commChannel} /> : null}
-          {activeTab === "qualification" ? <LeadQualificationTab lead={lead} /> : null}
-          {activeTab === "tasks" ? <LeadTasksTab lead={lead} tasks={tasks} crmFollowUps={crmFollowUps} taskEvents={scopedTaskEvents} /> : null}
-          {activeTab === "notes" ? <LeadNotesTab lead={lead} /> : null}
-          {activeTab === "timeline" ? <LeadTimelineTab lead={lead} tasks={tasks} crmFollowUps={crmFollowUps} taskEvents={scopedTaskEvents} /> : null}
-        </main>
-
-        <aside data-testid="lead-detail-action-column" className="min-h-0 min-w-0 min-[2200px]:sticky min-[2200px]:top-4 min-[2200px]:self-start">
-          <LeadActionPanel lead={lead} href={href} tasks={tasks} crmFollowUps={crmFollowUps} taskEvents={scopedTaskEvents} />
-        </aside>
-      </div>
-    </div>
-  );
-}
-
-function notYetCollected(value?: string) {
-  return value?.trim() || notYetCollectedLabel;
-}
-
-function qualificationScore(lead: LeadKnowledgeRecord) {
-  const score = buildQualificationSummary(lead).score;
-  return `${score.value} · ${score.label}`;
-}
-
-function qualificationScoreReasons(lead: LeadKnowledgeRecord) {
-  return buildQualificationSummary(lead).score.explanation;
-}
-
-function leadRisk(lead: LeadKnowledgeRecord) {
-  return buildQualificationSummary(lead).fields.risk.displayValue;
-}
-
-function leadIntent(lead: LeadKnowledgeRecord) {
-  return buildQualificationSummary(lead).fields.intent.displayValue;
-}
-
-function recommendedQualificationAction(lead: LeadKnowledgeRecord) {
-  return buildQualificationSummary(lead).recommendedAction;
-}
-
-function participantForMessage(message: LeadKnowledgeMessage) {
-  return chatSenderLabel(message);
-}
-
-function messageDateKey(message: LeadKnowledgeMessage) {
-  return new Date(message.sentAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-}
-
-function groupMessagesForTimeline(messages: LeadKnowledgeMessage[]) {
-  const ordered = [...messages].sort((a, b) => messageTime(a) - messageTime(b));
-  return ordered.reduce<Array<{ key: string; channel: LeadKnowledgeChannel; date: string; participant: string; messages: LeadKnowledgeMessage[] }>>((groups, message) => {
-    const date = messageDateKey(message);
-    const participant = participantForMessage(message);
-    const previous = groups.at(-1);
-    if (previous && previous.channel === message.channel && previous.date === date && previous.participant === participant) {
-      previous.messages.push(message);
-      return groups;
-    }
-    groups.push({ key: `${message.channel}:${date}:${participant}:${message.id}`, channel: message.channel, date, participant, messages: [message] });
-    return groups;
-  }, []);
-}
-
-function lastMeaningfulReply(lead: LeadKnowledgeRecord) {
-  return [...lead.messages].reverse().find((message) => !message.hiddenAt && message.direction !== "system")?.body;
-}
-
-function conversationSentiment(lead: LeadKnowledgeRecord) {
-  const sentiment = [...lead.conversations].reverse().find((conversation) => conversation.sentiment)?.sentiment;
-  return sentiment ? sentiment.replace(/_/g, " ") : "Not Yet Collected";
-}
-
-function suggestedReplyDraft(lead: LeadKnowledgeRecord) {
-  if (lead.qualificationFields.budget) return `Thanks ${contactLabel(lead)}. The next best step is ${nextAction(lead).toLowerCase()}`;
-  return `Thanks ${contactLabel(lead)}. To recommend the right next step, could you share your budget range and timeline?`;
-}
-
-function LeadContextColumn({ lead, crmFollowUps }: { lead: LeadKnowledgeRecord; crmFollowUps: CrmFollowUpTask[] }) {
-  return (
-    <div className="min-w-0 space-y-4">
-      <section className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="text-sm font-semibold text-white">Lead Context</div>
-          <Badge tone={stageTone(crmStage(lead))}>{crmStage(lead)}</Badge>
-        </div>
-        <div className="mt-3 grid gap-2">
-          <DetailLine label="Lead Name" value={contactLabel(lead)} />
-          <DetailLine label="Company" value={notYetCollected(lead.qualificationFields.company)} />
-          <DetailLine label="Source" value={notYetCollected(lead.leadSource)} />
-          <DetailLine label="Owner" value={lead.assigneeName || "Unassigned"} />
-          <DetailLine label="Pipeline Status" value={crmStage(lead)} />
-          <DetailLine label="Qualification Status" value={lead.qualificationStage.replace(/_/g, " ")} />
-          <DetailLine label="Created Date" value={shortDate(lead.createdAt)} />
-          <DetailLine label="Last Activity" value={shortDate(lead.lastMessageAt || lead.updatedAt)} />
-        </div>
-      </section>
-      <FifteenSecondLeadBrief lead={lead} crmFollowUps={crmFollowUps} />
-      <QualificationSnapshot lead={lead} />
-      <KnowledgeSupportCard lead={lead} />
-    </div>
-  );
-}
-
-function QualificationSnapshot({ lead }: { lead: LeadKnowledgeRecord }) {
-  const summary = buildQualificationSummary(lead);
-  return (
-    <section className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
-      <div className="text-sm font-semibold text-white">Qualification Snapshot</div>
-      <div className="mt-3 grid gap-2">
-        <DetailLine label="Budget" value={summary.fields.budget.displayValue} />
-        <DetailLine label="Timeline" value={summary.fields.timeline.displayValue} />
-        <DetailLine label="Decision Maker" value={summary.fields.authority.displayValue} />
-        <DetailLine label="Team Size" value={notYetCollected(lead.qualificationFields.teamOrQueryVolume)} />
-        <DetailLine label="Location" value={summary.fields.location.displayValue} />
-        <DetailLine label="Service Interest" value={summary.fields.serviceInterest.displayValue} />
-        <DetailLine label="Qualification Score" value={qualificationScore(lead)} />
-      </div>
-    </section>
-  );
-}
-
-function KnowledgeSupportCard({ lead }: { lead: LeadKnowledgeRecord }) {
-  const recentFacts = lead.facts.slice(0, 4);
-  return (
-    <section className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-4">
-      <div className="text-sm font-semibold text-white">Knowledge supports conversion</div>
-      <div className="mt-3 grid gap-2">
-        <DetailLine label="Relevant Notes" value={recentFacts[0] || "Not Yet Collected"} />
-        <DetailLine label="Recent Insights" value={recentFacts[1] || lead.summary || "Not Yet Collected"} />
-        <DetailLine label="Qualification Findings" value={lead.qualificationFields.need || recentFacts[2] || "Not Yet Collected"} />
-      </div>
-    </section>
-  );
-}
-
-function FifteenSecondLeadBrief({ lead, crmFollowUps }: { lead: LeadKnowledgeRecord; crmFollowUps: CrmFollowUpTask[] }) {
-  const qualificationSummary = lead.summary || lead.qualificationFields.need || "Qualification not captured yet.";
-  const score = buildQualificationSummary(lead).score;
-  const recommendation = recommendedQualificationAction(lead);
-  return (
-    <section className="rounded-[8px] border border-teal-300/25 bg-teal-300/[0.08] p-4" aria-label="15-second lead brief">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="mono text-[11px] uppercase tracking-[0.18em] text-[var(--teal)]">AI summary card · 15-second lead brief</div>
-          <h4 className="mt-1 text-lg font-semibold text-white">Lead → Conversation → Qualification → Action</h4>
-          <p className="mt-1 text-xs leading-5 text-[var(--muted-2)]">Always visible: who this is, what they need, and what should happen next.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Badge tone={stageTone(crmStage(lead))}>{crmStage(lead)}</Badge>
-          {crmFollowUps.length ? <Badge tone="amber">{crmFollowUps.length} follow-up</Badge> : null}
-        </div>
-      </div>
-      <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-        <DetailLine label="Need" value={notYetCollected(lead.qualificationFields.need || qualificationSummary)} />
-        <DetailLine label="Budget" value={notYetCollected(lead.qualificationFields.budget)} />
-        <DetailLine label="Timeline" value={notYetCollected(lead.qualificationFields.timeline)} />
-        <DetailLine label="Intent" value={leadIntent(lead)} />
-        <DetailLine label="Risk" value={leadRisk(lead)} />
-        <DetailLine label="Qualification Score" value={`${score.value} · ${score.label}`} />
-        <DetailLine label="Recommended Action" value={`${recommendation.action} — ${recommendation.why}`} />
-      </div>
-    </section>
-  );
-}
-
-function LeadQualificationTab({ lead }: { lead: LeadKnowledgeRecord }) {
-  const summary = buildQualificationSummary(lead);
-  const scoreReasons = qualificationScoreReasons(lead);
-  const history = buildQualificationHistory(lead);
-  return (
-    <div className="space-y-4">
-      <section className="rounded-[8px] border border-teal-300/25 bg-teal-300/[0.08] p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="text-sm font-semibold text-white">Qualification Summary Card</div>
-            <p className="mt-2 text-sm leading-6 text-[var(--muted-2)]">Decision-support only. AI assists; humans decide.</p>
-          </div>
-          <Badge tone="teal">{summary.score.value} · {summary.score.label}</Badge>
-        </div>
-        <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-          <DetailLine label="Need" value={summary.fields.need.displayValue} />
-          <DetailLine label="Budget" value={summary.fields.budget.displayValue} />
-          <DetailLine label="Timeline" value={summary.fields.timeline.displayValue} />
-          <DetailLine label="Intent" value={summary.fields.intent.displayValue} />
-          <DetailLine label="Risk" value={summary.fields.risk.displayValue} />
-          <DetailLine label="Qualification Score" value={`${summary.score.value} · ${summary.score.label}`} />
-          <DetailLine label="Recommended Action" value={summary.recommendedAction.action} />
-        </div>
-        <div className="mt-4 rounded-[8px] border border-[var(--line)] bg-black/20 p-3">
-          <div className="mono text-[10px] uppercase text-[var(--muted)]">Why this action</div>
-          <p className="mt-2 text-sm leading-6 text-white">{summary.recommendedAction.why}</p>
-        </div>
-      </section>
-
-      <section className="grid gap-4 xl:grid-cols-2">
-        <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
-          <div className="text-sm font-semibold text-white">Score Explanation</div>
-          <div className="mt-3 grid gap-3">
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Reasons</div>
-              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-6 text-[var(--muted-2)]">
-                {scoreReasons.reasons.map((reason) => <li key={reason}>{reason}</li>)}
-              </ul>
-            </div>
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Missing</div>
-              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-6 text-[var(--muted-2)]">
-                {scoreReasons.missing.map((item) => <li key={item}>{item}</li>)}
-              </ul>
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
-          <div className="text-sm font-semibold text-white">Missing Information Panel</div>
-          <p className="mt-2 text-xs leading-5 text-[var(--muted)]">Still Needed:</p>
-          <div className="mt-3 grid gap-2">
-            {summary.missingFields.length ? summary.missingFields.map((field) => (
-              <div key={field.key} className="flex items-center gap-2 rounded-[6px] border border-[var(--line)] bg-white/[0.03] px-3 py-2 text-sm text-white">
-                <span aria-hidden="true">□</span>
-                <span>{field.label}</span>
-              </div>
-            )) : <p className="text-sm leading-6 text-[var(--muted-2)]">No required qualification fields are missing.</p>}
-          </div>
-        </div>
-      </section>
-
-      <section className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
-        <div className="text-sm font-semibold text-white">Qualification History</div>
-        <div className="mt-3 grid gap-2">
-          {history.map((event) => (
-            <div key={`${event.when}:${event.whatChanged}`} className="rounded-[6px] border border-[var(--line)] bg-white/[0.03] p-3">
-              <div className="font-mono text-[10.5px] text-[var(--muted)]">When: {shortDate(event.when)}</div>
-              <div className="mt-2 text-sm text-white">What changed: {event.whatChanged}</div>
-              <div className="mt-1 text-xs leading-5 text-[var(--muted-2)]">Why score changed: {event.whyScoreChanged}</div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
-        <div className="text-sm font-semibold text-white">All Qualification Fields</div>
-        <div className="mt-3 grid gap-2 md:grid-cols-2">
-          {qualificationFieldLabels.map((field) => {
-            const item = summary.fields[field.key];
-            return <DetailLine key={field.key} label={`${field.label} (${item.state})`} value={item.displayValue} />;
-          })}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function LeadDetailsTab({ lead, href }: { lead: LeadKnowledgeRecord; href: string }) {
-  const included = lead.conversations.filter((conversation) => conversation.knowledgeStatus === "included");
-  const excluded = lead.conversations.filter((conversation) => conversation.knowledgeStatus === "excluded");
-  return (
-    <div className="grid gap-4 xl:grid-cols-[0.64fr_0.36fr]">
-      <div className="space-y-4">
-        <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
-          <div className="flex items-center gap-2 text-sm font-semibold text-white">
-            <ListChecks size={16} className="text-[var(--teal)]" />
-            All Details + knowledge base
-          </div>
-          <p className="mt-3 text-sm leading-6 text-[var(--muted-2)]">{lead.summary || "No summary has been generated yet."}</p>
-          <div className="mt-4 grid gap-2 md:grid-cols-2">
-            <DetailLine label="Phone" value={lead.contact.phone || lead.contact.waId} />
-            <DetailLine label="Email" value={lead.contact.email} />
-            <DetailLine label="Handle" value={lead.contact.handle} />
-            <DetailLine label="Profile" value={lead.contact.profileUrl} />
-          </div>
-        </div>
-
-        <details className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-4">
-          <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-semibold text-white">
-            <Pencil size={16} className="text-[var(--teal)]" />
-            Edit lead
-          </summary>
-          <form action="/api/leads/edit" method="post" className="mt-4 grid gap-3">
-            <input type="hidden" name="leadId" value={lead.id} />
-            <div className="grid gap-2 md:grid-cols-2">
-              <LeadInput name="displayName" label="Name" value={lead.contact.displayName} />
-              <LeadInput name="phone" label="Phone" value={lead.contact.phone || lead.contact.waId} />
-              <LeadInput name="email" label="Email" value={lead.contact.email} />
-              <LeadInput name="handle" label="Handle" value={lead.contact.handle} />
-            </div>
-            <LeadInput name="profileUrl" label="Profile URL" value={lead.contact.profileUrl} />
-            <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-3">
-              <div className="flex items-center gap-2 text-sm font-semibold text-white">
-                <Sparkles size={15} className="text-[var(--teal)]" />
-                AI qualification
-              </div>
-              <div className="mt-3 grid gap-3 md:grid-cols-2">
-                <LeadInput name="leadSource" label="Lead source" value={lead.leadSource} />
-                <LeadInput name="campaignId" label="Campaign ID" value={lead.campaignId} />
-                <LeadInput name="assigneeName" label="Assignee" value={lead.assigneeName} />
-                <LeadInput name="assigneeId" label="Assignee ID" value={lead.assigneeId} />
-                <input type="hidden" name="crmStatus" value={lead.crmStatus} />
-                <input type="hidden" name="qualificationStage" value={lead.qualificationStage} />
-                <label className="grid gap-2 text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
-                  Pipeline status
-                  <select
-                    name="productPipelineStatus"
-                    defaultValue={productPipelineStatusForLead(lead)}
-                    className="h-10 rounded-[6px] border border-[var(--line)] bg-black/30 px-3 text-sm normal-case tracking-normal text-white outline-none"
-                  >
-                    {leadProductPipelineStatuses.map((status) => (
-                      <option key={status.id} value={status.id}>
-                        {status.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <DetailLine label="Operational CRM flag" value={lead.crmStatus.replace(/_/g, " ")} />
-                <DetailLine label="Qualification stage" value={lead.qualificationStage.replace(/_/g, " ")} />
-              </div>
-            </div>
-            <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-3">
-              <div className="text-sm font-semibold text-white">Qualification fields</div>
-              <div className="mt-3 grid gap-3 md:grid-cols-2">
-                <LeadInput name="qualificationName" label="Qualified name" value={lead.qualificationFields.name} />
-                <LeadInput name="qualificationPhone" label="Qualified phone" value={lead.qualificationFields.phone} />
-                <LeadInput name="qualificationCompany" label="Company" value={lead.qualificationFields.company} />
-                <LeadInput name="qualificationNeed" label="Need / reason" value={lead.qualificationFields.need} />
-                <LeadInput name="qualificationVolume" label="Team / query volume" value={lead.qualificationFields.teamOrQueryVolume} />
-                <LeadInput name="qualificationBudget" label="Budget" value={lead.qualificationFields.budget} />
-                <LeadInput name="qualificationTimeline" label="Timeline" value={lead.qualificationFields.timeline} />
-                <LeadInput name="qualificationAuthority" label="Authority" value={lead.qualificationFields.authority} />
-                <LeadInput name="qualificationLocation" label="Location" value={lead.qualificationFields.location} />
-                <LeadInput name="qualificationServiceInterest" label="Service Interest" value={lead.qualificationFields.serviceInterest} />
-                <LeadInput name="qualificationIntent" label="Intent" value={lead.qualificationFields.intent} />
-                <LeadInput name="qualificationRisk" label="Risk" value={lead.qualificationFields.risk} />
-                <LeadInput name="qualificationRecommendedAction" label="Recommended Action" value={lead.qualificationFields.recommendedAction} />
-              </div>
-            </div>
-            <label className="grid gap-2 text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
-              Summary
-              <textarea name="summary" defaultValue={lead.summary || ""} rows={3} className="rounded-[6px] border border-[var(--line)] bg-black/30 px-3 py-2 text-sm normal-case leading-6 tracking-normal text-white outline-none" />
-            </label>
-            <label className="grid gap-2 text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
-              Next action
-              <textarea name="nextAction" defaultValue={lead.nextAction || ""} rows={2} className="rounded-[6px] border border-[var(--line)] bg-black/30 px-3 py-2 text-sm normal-case leading-6 tracking-normal text-white outline-none" />
-            </label>
-            <label className="grid gap-2 text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
-              Facts
-              <textarea name="facts" defaultValue={lead.facts.join("\n")} rows={5} className="rounded-[6px] border border-[var(--line)] bg-black/30 px-3 py-2 text-sm normal-case leading-6 tracking-normal text-white outline-none" />
-            </label>
-            <button type="submit" className="inline-flex h-10 items-center justify-center gap-2 rounded-[6px] border border-teal-300/30 bg-teal-300/[0.12] px-3 text-sm font-medium text-teal-100 hover:bg-teal-300/[0.18]">
-              <Pencil size={15} />
-              Save lead
-            </button>
-          </form>
-        </details>
-
-        <div className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-4">
-          <div className="flex items-center gap-2 text-sm font-semibold text-white">
-            <Workflow size={16} className="text-[var(--teal)]" />
-            Next action
-          </div>
-          <p className="mt-2 text-sm leading-6 text-[var(--muted-2)]">{nextAction(lead)}</p>
-        </div>
-
-        <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-sm font-semibold text-white">Knowledge facts</div>
-            <Badge tone="neutral">{lead.facts.length}</Badge>
-          </div>
-          {lead.facts.length ? (
-            <div className="mt-3 grid gap-2">
-              {lead.facts.slice(0, 8).map((fact) => (
-                <div key={fact} className="rounded-[6px] border border-[var(--line)] bg-white/[0.03] px-3 py-2 text-sm leading-6 text-[var(--muted-2)]">
-                  {fact}
-                </div>
-              ))}
-            </div>
+                    <div className="pl-5 text-[11.5px] text-muted-foreground">{lead.lastMessagePreview || lead.summary || "No message yet"}</div>
+                    <div className="flex flex-wrap gap-1 pl-5">
+                      <Badge tone={lead.crmStatus === "human_review" ? "amber" : lead.crmStatus === "needs_reply" ? "teal" : "neutral"}>{lead.crmStatus.replace(/_/g, " ")}</Badge>
+                      <Badge tone="neutral">{productPipelineStatusLabel(pipeline)}</Badge>
+                    </div>
+                  </Link>
+                </li>
+              );
+            })
           ) : (
-            <p className="mt-3 text-sm leading-6 text-[var(--muted-2)]">No knowledge facts yet.</p>
+            <li className="flex h-48 items-center justify-center px-8 text-center text-[12.5px] text-muted-foreground">
+              No leads match this view.
+            </li>
           )}
-        </div>
-      </div>
+        </ul>
+      </section>
 
-      <div className="space-y-4">
-        <div className="grid gap-2">
-          {href ? (
-            <a
-              href={href}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-[6px] border border-teal-300/30 bg-teal-300/[0.12] px-3 text-sm font-medium text-teal-100 hover:bg-teal-300/[0.18]"
-            >
-              <MessageCircle size={15} />
-              Open conversation
-              <ExternalLink size={13} />
-            </a>
-          ) : (
-            <span className="inline-flex h-10 items-center justify-center gap-2 rounded-[6px] border border-[var(--line)] bg-white/[0.03] px-3 text-sm text-[var(--muted-2)]">
-              No conversation URL
-            </span>
-          )}
-          <LeadStatusForm lead={lead} />
-          <form action="/api/leads/delete" method="post">
-            <input type="hidden" name="leadId" value={lead.id} />
-            <button
-              type="submit"
-              className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-[6px] border border-amber-300/25 bg-amber-300/10 px-3 text-sm font-medium text-amber-100 hover:bg-amber-300/[0.16]"
-            >
-              <Archive size={15} />
-              Archive lead
-            </button>
-          </form>
-        </div>
-
-        <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
-          <div className="text-sm font-semibold text-white">Knowledge sources</div>
-          <div className="mt-3 grid gap-2">
-            <Badge tone="teal">{included.length} included in AI</Badge>
-            <Badge tone="amber">{excluded.length} excluded from AI</Badge>
-            <Badge tone="neutral">{lead.channels.length} channels</Badge>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function DetailLine({ label, value }: { label: string; value?: string }) {
-  return (
-    <div className="rounded-[6px] border border-[var(--line)] bg-white/[0.03] p-3">
-      <div className="mono text-[10px] uppercase text-[var(--muted)]">{label}</div>
-      <div className="mt-2 break-words text-sm text-white">{value || "Not recorded"}</div>
-    </div>
-  );
-}
-
-function LeadInput({ name, label, value }: { name: string; label: string; value?: string }) {
-  return (
-    <label className="grid gap-2 text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
-      {label}
-      <input
-        name={name}
-        defaultValue={value || ""}
-        className="h-10 rounded-[6px] border border-[var(--line)] bg-black/30 px-3 text-sm normal-case tracking-normal text-white outline-none"
-      />
-    </label>
-  );
-}
-
-function AIConversationSummary({ lead }: { lead: LeadKnowledgeRecord }) {
-  return (
-    <section className="rounded-[8px] border border-teal-300/20 bg-teal-300/[0.06] p-4">
-      <div className="flex items-center gap-2 text-sm font-semibold text-white">
-        <Sparkles size={16} className="text-[var(--teal)]" />
-        AI conversation summary
-      </div>
-      <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
-        <DetailLine label="Current Need" value={notYetCollected(lead.qualificationFields.need)} />
-        <DetailLine label="Current Objection" value={leadRisk(lead)} />
-        <DetailLine label="Sentiment" value={conversationSentiment(lead)} />
-        <DetailLine label="Last Meaningful Reply" value={notYetCollected(lastMeaningfulReply(lead))} />
-        <DetailLine label="Suggested Next Step" value={nextAction(lead)} />
-      </div>
-    </section>
-  );
-}
-
-function SuggestedReplyCard({ lead }: { lead: LeadKnowledgeRecord }) {
-  return (
-    <section className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div className="text-sm font-semibold text-white">Suggested reply</div>
-          <p className="mt-1 text-xs leading-5 text-[var(--muted)]">AI Draft only. No auto-send; copy, edit, then approve from the human workflow.</p>
-        </div>
-        <Badge tone="amber">No auto-send</Badge>
-      </div>
-      <div className="mt-3 rounded-[6px] border border-[var(--line)] bg-white/[0.04] p-3 text-sm leading-6 text-white">
-        <div className="mono mb-2 text-[10px] uppercase text-[var(--muted)]">AI Draft</div>
-        {suggestedReplyDraft(lead)}
-      </div>
-      <div className="mt-3 flex flex-wrap gap-2">
-        <button type="button" className="inline-flex h-9 items-center justify-center rounded-[6px] border border-[var(--line)] bg-white/[0.03] px-3 text-xs font-medium text-[var(--muted-2)]">Copy</button>
-        <button type="button" className="inline-flex h-9 items-center justify-center rounded-[6px] border border-[var(--line)] bg-white/[0.03] px-3 text-xs font-medium text-[var(--muted-2)]">Edit</button>
-        <button type="button" className="inline-flex h-9 items-center justify-center rounded-[6px] border border-lime-300/25 bg-lime-300/10 px-3 text-xs font-medium text-lime-100">Approve</button>
-      </div>
-    </section>
-  );
-}
-
-function LeadCommsTab({
-  lead,
-  activeView,
-  query,
-  commChannel
-}: {
-  lead: LeadKnowledgeRecord;
-  activeView: ViewFilter;
-  query: string;
-  commChannel: CommChannelFilter;
-}) {
-  const messages = messagesForCommChannel(lead, commChannel);
-  const orderedMessages = [...messages].sort((a, b) => messageTime(a) - messageTime(b));
-  const conversations = conversationsForCommChannel(lead, commChannel);
-  return (
-    <div className="min-h-0 space-y-4">
-      <AIConversationSummary lead={lead} />
-      <SuggestedReplyCard lead={lead} />
-      <div className="flex max-w-full gap-2 overflow-x-auto pb-1">
-        {commFilters.map((filter) => (
-          <Link
-            key={filter.id}
-            href={crmHref({ view: activeView, q: query, contact: lead.id, tab: "conversation", commChannel: filter.id })}
-            scroll={false}
-            className={`inline-flex h-9 shrink-0 items-center rounded-[6px] border px-3 text-xs font-medium ${
-              commChannel === filter.id
-                ? "border-teal-300/40 bg-teal-300/[0.12] text-teal-100"
-                : "border-[var(--line)] bg-white/[0.03] text-[var(--muted-2)] hover:text-white"
-            }`}
-          >
-            {filter.label}
-          </Link>
-        ))}
-      </div>
-
-      <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="order-2 space-y-4 xl:order-2">
-          <LeadCrmSummaryCard lead={lead} />
-          <ManualReplyHandoff lead={lead} />
-          <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-sm font-semibold text-white">
-                <RadioTower size={16} className="text-[var(--teal)]" />
-                Conversations
+      <section className="col-span-12 min-h-0 overflow-y-auto bg-background md:col-span-8 xl:col-span-6">
+        {active ? (
+          <div className="space-y-5 p-5">
+            <header className="border-b border-border pb-5">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="grid h-9 w-9 place-items-center rounded-full bg-surface-3 font-mono text-[12px]">
+                  {leadName(active).slice(0, 2).toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h1 className="truncate text-xl font-semibold">{leadName(active)}</h1>
+                  <p className="text-sm text-muted-foreground">{active.contact.phone || active.contact.email || "No contact detail"} · {active.leadSource || "Leadsy"}</p>
+                </div>
+                {activeConversation ? (
+                  <Link href={`/app/communications?conversation=${activeConversation.id}`} className="inline-flex h-8 items-center rounded-[5px] bg-primary px-3 text-sm font-medium text-primary-foreground">
+                    Open conversation
+                  </Link>
+                ) : null}
               </div>
-              <Badge tone="neutral">{conversations.length}</Badge>
-            </div>
-            <div className="mt-3 grid gap-2">
-              {conversations.length ? (
-                conversations.map((conversation) => <ConversationCard key={conversation.id} lead={lead} conversation={conversation} />)
-              ) : (
-                <p className="text-sm leading-6 text-[var(--muted-2)]">No conversations in this channel yet.</p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div data-testid="lead-comms-chat" className="order-1 flex min-h-[520px] flex-col overflow-hidden rounded-[8px] border border-[var(--line)] bg-black/20 xl:order-1 xl:max-h-[calc(100dvh-230px)]">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] bg-white/[0.03] px-4 py-3">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 text-sm font-semibold text-white">
-                <MessageCircle size={16} className="text-[var(--teal)]" />
-                Conversation chat
+              <div className="mt-4 grid gap-2 md:grid-cols-3">
+                <InfoCell label="Owner" value={activeOwner?.name || active.assigneeName || "Unassigned"} />
+                <InfoCell label="Qualification" value={active.qualificationStage.replace(/_/g, " ")} />
+                <InfoCell label="Pipeline" value={productPipelineStatusLabel(productPipelineStatusForLead(active))} />
               </div>
-              <div className="mt-1 truncate text-xs text-[var(--muted)]">{contactLabel(lead)}</div>
-            </div>
-            <Badge tone="neutral">{messages.length} messages</Badge>
-          </div>
-          <div className="flex-1 overflow-y-auto overflow-x-hidden bg-[radial-gradient(circle_at_top,rgba(32,230,190,0.06),transparent_32%)] px-3 py-4 md:px-4">
-            {orderedMessages.length ? (
-              <div className="flex flex-col gap-3">
-                {orderedMessages.map((message) => (
-                  <ChatMessageBubble key={message.id} lead={lead} message={message} />
+            </header>
+
+            <section className="rounded-[8px] border border-border bg-surface p-4">
+              <div className="caption">Qualification inputs</div>
+              <div className="mt-3 grid gap-px overflow-hidden rounded-[6px] border border-border bg-border md:grid-cols-2">
+                {(audit?.fields ?? []).map((field) => (
+                  <div key={field.field} className="bg-background p-3">
+                    <div className="caption">{field.field}</div>
+                    <div className="mt-1 text-sm">{field.value}</div>
+                    <div className="mt-2 font-mono text-[10px] text-muted-foreground">{field.state} · {field.confidence}</div>
+                  </div>
                 ))}
               </div>
-            ) : (
-              <div className="grid min-h-[460px] place-items-center">
-                <EmptyState icon={Inbox} title="No messages in this chat" detail="Choose another channel or log a manual communication." />
-              </div>
-            )}
-          </div>
-          <div className="border-t border-[var(--line)] bg-black/25">
-            <ManualMessageForm lead={lead} commChannel={commChannel} variant="composer" />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+            </section>
 
-function LeadCrmSummaryCard({ lead }: { lead: LeadKnowledgeRecord }) {
-  const fields = [
-    ["Name", lead.qualificationFields.name],
-    ["Phone", lead.qualificationFields.phone],
-    ["Company", lead.qualificationFields.company],
-    ["Need", lead.qualificationFields.need],
-    ["Volume", lead.qualificationFields.teamOrQueryVolume],
-    ["Budget", lead.qualificationFields.budget],
-    ["Timeline", lead.qualificationFields.timeline]
-  ].filter(([, value]) => value);
-
-  return (
-    <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2 text-sm font-semibold text-white">
-            <Sparkles size={16} className="text-[var(--teal)]" />
-            AI qualification
-          </div>
-          <p className="mt-2 text-xs leading-5 text-[var(--muted)]">Pipeline status, source, assignee, and captured facts for this conversation.</p>
-        </div>
-        <Badge tone={stageTone(crmStage(lead))}>{crmStage(lead)}</Badge>
-      </div>
-      <div className="mt-4 grid gap-2">
-        <DetailLine label="Lead source" value={lead.leadSource} />
-        <DetailLine label="Campaign ID" value={lead.campaignId} />
-        <DetailLine label="Assignee" value={lead.assigneeName} />
-        <DetailLine label="Qualification stage" value={lead.qualificationStage.replace(/_/g, " ")} />
-      </div>
-      <div className="mt-4">
-        <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Qualification fields</div>
-        {fields.length ? (
-          <div className="mt-2 grid gap-2">
-            {fields.map(([label, value]) => (
-              <div key={label} className="rounded-[6px] border border-[var(--line)] bg-white/[0.03] px-3 py-2">
-                <div className="mono text-[10px] uppercase text-[var(--muted)]">{label}</div>
-                <div className="mt-1 break-words text-sm text-white">{value}</div>
+            <section className="rounded-[8px] border border-border bg-surface p-4">
+              <div className="caption">Conversation messages</div>
+              <div className="mt-3 space-y-2">
+                {activeMessages.length ? (
+                  activeMessages.slice(-8).map((message) => (
+                    <div key={message.id} className={`rounded-[6px] border border-border p-3 ${message.direction === "outbound" ? "bg-primary/10" : "bg-background"}`}>
+                      <div className="font-mono text-[10px] text-muted-foreground">{message.direction} · {relativeTime(message.sentAt)}</div>
+                      <p className="mt-1 text-sm leading-6">{message.body}</p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">No messages tracked yet.</p>
+                )}
               </div>
-            ))}
+            </section>
           </div>
         ) : (
-          <p className="mt-2 text-sm leading-6 text-[var(--muted-2)]">No qualification answers captured yet.</p>
+          <div className="grid h-full place-items-center p-6 text-center text-sm text-muted-foreground">
+            Add or receive a lead to begin.
+          </div>
         )}
-      </div>
-    </div>
-  );
-}
-
-function ManualReplyHandoff({ lead }: { lead: LeadKnowledgeRecord }) {
-  const phone = (lead.contact.phone || lead.contact.waId || "").replace(/\D/g, "");
-  const email = lead.contact.email?.trim();
-  const profileUrl = lead.contact.profileUrl?.trim();
-  const conversationUrl = openHref(lead);
-  const metaUrl = conversationUrl && !conversationUrl.includes("web.whatsapp.com") ? conversationUrl : profileUrl;
-
-  return (
-    <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2 text-sm font-semibold text-white">
-            <MessageCircle size={16} className="text-[var(--teal)]" />
-            Manual reply handoff
-          </div>
-          <p className="mt-2 text-sm leading-6 text-[var(--muted-2)]">
-            Leadsy tracks this. You send it. Reply in the real channel, then log it in the chat composer.
-          </p>
-        </div>
-        <Badge tone="amber">Human in loop</Badge>
-      </div>
-      <div className="mt-3 grid gap-2">
-        {phone ? (
-          <a
-            href={`https://web.whatsapp.com/send?phone=${phone}`}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-lime-300/25 bg-lime-300/10 px-3 text-xs font-medium text-lime-100 hover:bg-lime-300/[0.16]"
-          >
-            <MessageCircle size={14} />
-            Open WhatsApp Web
-            <ExternalLink size={12} />
-          </a>
-        ) : null}
-        {email ? (
-          <a
-            href={`mailto:${email}`}
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-sky-300/25 bg-sky-300/10 px-3 text-xs font-medium text-sky-100 hover:bg-sky-300/[0.16]"
-          >
-            <Mail size={14} />
-            Open email client
-            <ExternalLink size={12} />
-          </a>
-        ) : null}
-        {phone ? (
-          <a
-            href={`tel:${phone}`}
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-[var(--line)] bg-white/[0.03] px-3 text-xs font-medium text-[var(--muted-2)] hover:text-white"
-          >
-            <PhoneCall size={14} />
-            Call lead
-          </a>
-        ) : null}
-        {metaUrl ? (
-          <a
-            href={metaUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-[var(--line)] bg-white/[0.03] px-3 text-xs font-medium text-[var(--muted-2)] hover:text-white"
-          >
-            <ExternalLink size={14} />
-            Open profile or inbox
-          </a>
-        ) : null}
-      </div>
-      <p className="mt-3 text-xs leading-5 text-[var(--muted)]">
-        Log outbound after sending. Log any manual reply back as inbound so Needs reply and future worker context stay accurate.
-      </p>
-    </div>
-  );
-}
-
-function LeadTasksTab({
-  lead,
-  tasks,
-  crmFollowUps,
-  taskEvents
-}: {
-  lead: LeadKnowledgeRecord;
-  tasks: ExtensionTask[];
-  crmFollowUps: CrmFollowUpTask[];
-  taskEvents: ExtensionTaskEvent[];
-}) {
-  return (
-    <div className="space-y-4">
-      <div className="grid gap-4 xl:grid-cols-[0.46fr_0.54fr]">
-        <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="flex items-center gap-2 text-sm font-semibold text-white">
-              <ListChecks size={16} className="text-[var(--teal)]" />
-              CRM follow-ups
-            </div>
-            <Badge tone="neutral">{crmFollowUps.length} open</Badge>
-          </div>
-          <form action="/api/crm/follow-up-tasks" method="post" className="mt-4 grid gap-3">
-            <input type="hidden" name="leadId" value={lead.id} />
-            <input type="hidden" name="assigneeName" value={lead.assigneeName || ""} />
-            <input type="hidden" name="assigneeId" value={lead.assigneeId || ""} />
-            <LeadInput name="topic" label="Follow-up task" />
-            <label className="grid gap-2 text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
-              Description
-              <textarea
-                name="description"
-                rows={3}
-                className="rounded-[6px] border border-[var(--line)] bg-black/30 px-3 py-2 text-sm normal-case leading-6 tracking-normal text-white outline-none"
-                placeholder="Call back tomorrow, send proposal, verify budget..."
-              />
-            </label>
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="grid gap-2 text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
-                Priority
-                <select name="priority" defaultValue="normal" className="h-10 rounded-[6px] border border-[var(--line)] bg-black/30 px-3 text-sm normal-case tracking-normal text-white outline-none">
-                  <option value="low">Low</option>
-                  <option value="normal">Normal</option>
-                  <option value="high">High</option>
-                  <option value="urgent">Urgent</option>
-                </select>
-              </label>
-              <label className="grid gap-2 text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
-                Due date
-                <input name="dueAt" type="datetime-local" className="h-10 rounded-[6px] border border-[var(--line)] bg-black/30 px-3 text-sm normal-case tracking-normal text-white outline-none" />
-              </label>
-            </div>
-            <button type="submit" className="inline-flex h-10 items-center justify-center gap-2 rounded-[6px] border border-teal-300/30 bg-teal-300/[0.12] px-3 text-sm font-medium text-teal-100 hover:bg-teal-300/[0.18]">
-              <CalendarDays size={15} />
-              Add follow-up
-            </button>
-          </form>
-
-          {crmFollowUps.length ? (
-            <div className="mt-4 grid gap-2">
-              {crmFollowUps.map((task) => (
-                <div key={task.id} className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold text-white">{task.topic}</div>
-                      <div className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--muted-2)]">{task.description || "No description"}</div>
-                    </div>
-                    <Badge tone={task.priority === "urgent" || task.priority === "high" ? "amber" : "teal"}>{task.priority}</Badge>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <Badge tone="neutral">{task.status.replace(/_/g, " ")}</Badge>
-                    {task.assigneeName ? <Badge tone="sky">{task.assigneeName}</Badge> : null}
-                    {task.dueAt ? <Badge tone="lime">{shortDate(task.dueAt)}</Badge> : null}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="mt-4 text-sm leading-6 text-[var(--muted-2)]">No CRM follow-up tasks yet.</p>
-          )}
-        </div>
-
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-sm font-semibold text-white">
-              <Workflow size={16} className="text-[var(--teal)]" />
-              Selected lead tasks
-            </div>
-            <Badge tone="neutral">{tasks.length} browser-send tasks</Badge>
-          </div>
-          <SelectedLeadTasks leadId={lead.id} initialTasks={tasks} initialEvents={taskEvents} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function LeadNotesTab({ lead }: { lead: LeadKnowledgeRecord }) {
-  return <KnowledgeSupportCard lead={lead} />;
-}
-
-function LeadTimelineTab({
-  lead,
-  tasks,
-  crmFollowUps,
-  taskEvents
-}: {
-  lead: LeadKnowledgeRecord;
-  tasks: ExtensionTask[];
-  crmFollowUps: CrmFollowUpTask[];
-  taskEvents: ExtensionTaskEvent[];
-}) {
-  const groupedMessages = groupMessagesForTimeline(conversationMessages(lead.messages));
-  return (
-    <div className="space-y-4">
-      <section className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="text-sm font-semibold text-white">Conversation Timeline</div>
-          <Badge tone="neutral">{groupedMessages.length} grouped turns</Badge>
-        </div>
-        <div className="mt-3 grid gap-3">
-          {groupedMessages.length ? groupedMessages.map((group) => (
-            <div key={group.key} className="rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge tone={toneForChannel(group.channel)}>{channelLabel(group.channel)}</Badge>
-                <Badge tone="neutral">{group.date}</Badge>
-                <Badge tone="teal">{group.participant}</Badge>
-              </div>
-              <div className="mt-2 space-y-2">
-                {group.messages.map((message) => <p key={message.id} className="text-sm leading-6 text-[var(--muted-2)]">{message.body}</p>)}
-              </div>
-            </div>
-          )) : <p className="text-sm leading-6 text-[var(--muted-2)]">No conversation events yet.</p>}
-        </div>
       </section>
-      <RecentActivityCard lead={lead} tasks={tasks} crmFollowUps={crmFollowUps} taskEvents={taskEvents} />
-    </div>
-  );
-}
 
-function followUpStatus(crmFollowUps: CrmFollowUpTask[]) {
-  if (crmFollowUps.some((task) => task.dueAt && Date.parse(task.dueAt) < Date.now() && task.status !== "done")) return "Overdue";
-  if (crmFollowUps.some((task) => task.status === "done")) return "Completed";
-  if (crmFollowUps.some((task) => task.dueAt)) return "Scheduled";
-  return crmFollowUps.length ? "Pending" : "Pending";
-}
-
-function LeadActionPanel({
-  lead,
-  href,
-  tasks,
-  crmFollowUps,
-  taskEvents
-}: {
-  lead: LeadKnowledgeRecord;
-  href: string;
-  tasks: ExtensionTask[];
-  crmFollowUps: CrmFollowUpTask[];
-  taskEvents: ExtensionTaskEvent[];
-}) {
-  const recommendation = recommendedQualificationAction(lead);
-  return (
-    <div className="min-w-0 space-y-4">
-      <section className="min-w-0 rounded-[8px] border border-teal-300/25 bg-teal-300/[0.08] p-4">
-        <div className="text-sm font-semibold text-white">Next Action</div>
-        <p className="mt-2 break-words text-sm leading-6 text-white">{recommendation.action}</p>
-        <p className="mt-2 break-words text-xs leading-5 text-[var(--muted-2)]">Why: {recommendation.why}</p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {href ? <a href={href} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-teal-300/30 bg-teal-300/[0.12] px-3 text-xs font-medium text-teal-100">Open channel</a> : null}
-          {(lead.contact.phone || lead.contact.waId) ? <a href={`tel:${(lead.contact.phone || lead.contact.waId || "").replace(/\D/g, "")}`} className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-[var(--line)] bg-white/[0.03] px-3 text-xs font-medium text-[var(--muted-2)]">Call Lead</a> : null}
-          <Badge tone="amber">One recommendation</Badge>
-          <Badge tone="teal">Human decides</Badge>
+      <aside className="hidden min-h-0 overflow-y-auto bg-background p-5 xl:col-span-3 xl:block">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <Users2 className="h-4 w-4 text-primary" />
+          Lead context
         </div>
-      </section>
-      <section className="min-w-0 rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="text-sm font-semibold text-white">Tasks</div>
-          <Badge tone="neutral">Open Tasks {crmFollowUps.length + tasks.length}</Badge>
-        </div>
-        <div className="mt-3 grid gap-2">
-          {crmFollowUps.slice(0, 4).map((task) => (
-            <div key={task.id} className="min-w-0 rounded-[6px] border border-[var(--line)] bg-white/[0.03] p-3">
-              <div className="text-sm font-semibold text-white">{task.topic}</div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <Badge tone="neutral">Status {task.status}</Badge>
-                <Badge tone="sky">Owner {task.assigneeName || lead.assigneeName || "Unassigned"}</Badge>
-                <Badge tone="lime">Due Date {task.dueAt ? shortDate(task.dueAt) : "Not Yet Collected"}</Badge>
-                <Badge tone="neutral">Human Generated</Badge>
-              </div>
+        {active ? (
+          <div className="mt-4 space-y-3">
+            <InfoCell label="Summary" value={active.summary || "No summary yet"} />
+            <InfoCell label="Next action" value={active.nextAction || "Continue qualification"} />
+            <InfoCell label="Messages" value={String(active.messageCount)} />
+            <InfoCell label="Conversations" value={String(active.conversations.length)} />
+            <div className="rounded-[8px] border border-border bg-surface p-3">
+              <div className="caption">Facts</div>
+              <ul className="mt-2 space-y-2 text-sm text-muted-foreground">
+                {active.facts.slice(0, 6).map((fact, index) => (
+                  <li key={`${active.id}-fact-${index}`}>{fact}</li>
+                ))}
+              </ul>
             </div>
-          ))}
-          {tasks.slice(0, 3).map((task) => (
-            <div key={task.id} className="min-w-0 rounded-[6px] border border-[var(--line)] bg-white/[0.03] p-3">
-              <div className="text-sm font-semibold text-white">{task.type.replace(/_/g, " ")}</div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <Badge tone="neutral">Status {task.status.replace(/_/g, " ")}</Badge>
-                <Badge tone="lime">Due Date {task.dueAt ? shortDate(task.dueAt) : "Not Yet Collected"}</Badge>
-                <Badge tone="teal">AI Generated</Badge>
-              </div>
-            </div>
-          ))}
-          {!crmFollowUps.length && !tasks.length ? <p className="text-sm leading-6 text-[var(--muted-2)]">No open tasks yet.</p> : null}
-        </div>
-      </section>
-      <section className="min-w-0 rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
-        <div className="text-sm font-semibold text-white">Follow-up Status</div>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {["Pending", "Scheduled", "Completed", "Overdue"].map((status) => <Badge key={status} tone={followUpStatus(crmFollowUps) === status ? "teal" : "neutral"}>{status}</Badge>)}
-        </div>
-      </section>
-      <RecentActivityCard lead={lead} tasks={tasks} crmFollowUps={crmFollowUps} taskEvents={taskEvents} />
+          </div>
+        ) : (
+          <p className="mt-4 text-sm text-muted-foreground">No active lead.</p>
+        )}
+      </aside>
     </div>
   );
 }
 
-function RecentActivityCard({
-  lead,
-  tasks,
-  crmFollowUps,
-  taskEvents
-}: {
-  lead: LeadKnowledgeRecord;
-  tasks: ExtensionTask[];
-  crmFollowUps: CrmFollowUpTask[];
-  taskEvents: ExtensionTaskEvent[];
-}) {
+function Metric({ label, value }: { label: string; value: number }) {
   return (
-    <section className="rounded-[8px] border border-[var(--line)] bg-black/20 p-4">
-      <div className="text-sm font-semibold text-white">Recent Activity</div>
-      <div className="mt-3 grid gap-2">
-        <DetailLine label="Assignments" value={lead.assigneeName || "Unassigned"} />
-        <DetailLine label="Status Changes" value={crmStage(lead)} />
-        <DetailLine label="Qualification Updates" value={lead.qualificationStage.replace(/_/g, " ")} />
-        <DetailLine label="Conversation Events" value={`${lead.messageCount} messages across ${lead.conversations.length} conversations`} />
-        <DetailLine label="Task Events" value={`${taskEvents.length} worker events, ${tasks.length} AI generated tasks, ${crmFollowUps.length} human generated tasks`} />
-      </div>
-    </section>
-  );
-}
-
-function LeadStatusForm({ lead, compact = false }: { lead: LeadKnowledgeRecord; compact?: boolean }) {
-  return (
-    <form action="/api/leads/status" method="post">
-      <input type="hidden" name="leadId" value={lead.id} />
-      <input type="hidden" name="leadStatus" value={lead.leadStatus === "excluded" ? "lead" : "excluded"} />
-      <button
-        type="submit"
-        className={`inline-flex ${compact ? "h-9 text-xs" : "h-10 w-full text-sm"} items-center justify-center gap-2 rounded-[6px] border px-3 font-medium ${
-          lead.leadStatus === "excluded"
-            ? "border-lime-300/25 bg-lime-300/10 text-lime-100 hover:bg-lime-300/[0.16]"
-            : "border-amber-300/25 bg-amber-300/10 text-amber-100 hover:bg-amber-300/[0.16]"
-        }`}
-      >
-        {lead.leadStatus === "excluded" ? <CheckCircle2 size={15} /> : <Ban size={15} />}
-        {lead.leadStatus === "excluded" ? "Restore as lead" : "Exclude lead"}
-      </button>
-    </form>
-  );
-}
-
-function defaultManualChannel(commChannel: CommChannelFilter): LeadKnowledgeChannel {
-  if (commChannel === "email") return "email";
-  if (commChannel === "call") return "call";
-  if (commChannel === "whatsapp") return "whatsapp";
-  if (commChannel === "instagram") return "instagram";
-  if (commChannel === "facebook") return "facebook";
-  if (commChannel === "browser") return "generic-web-chat";
-  return "manual";
-}
-
-function ManualMessageForm({
-  lead,
-  commChannel,
-  variant = "panel"
-}: {
-  lead: LeadKnowledgeRecord;
-  commChannel: CommChannelFilter;
-  variant?: "panel" | "composer";
-}) {
-  const isComposer = variant === "composer";
-  return (
-    <form
-      action="/api/leads/manual-message"
-      method="post"
-      className={isComposer ? "p-4" : "rounded-[8px] border border-[var(--line)] bg-white/[0.03] p-4"}
-    >
-      <input type="hidden" name="leadId" value={lead.id} />
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-sm font-semibold text-white">
-          <NotebookPen size={16} className="text-[var(--teal)]" />
-          Log manual comms
-        </div>
-        {isComposer ? <Badge tone="neutral">Chat composer</Badge> : null}
-      </div>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        <select
-          name="direction"
-          defaultValue="note"
-          className="h-10 rounded-[6px] border border-[var(--line)] bg-black/30 px-3 text-sm text-white outline-none"
-        >
-          <option value="note">Note</option>
-          <option value="inbound">Inbound</option>
-          <option value="outbound">Outbound</option>
-        </select>
-        <select
-          name="channel"
-          defaultValue={defaultManualChannel(commChannel)}
-          className="h-10 rounded-[6px] border border-[var(--line)] bg-black/30 px-3 text-sm text-white outline-none"
-        >
-          <option value="manual">Manual</option>
-          <option value="whatsapp">WhatsApp</option>
-          <option value="instagram">Instagram</option>
-          <option value="facebook">Facebook</option>
-          <option value="email">Email</option>
-          <option value="call">Call Notes</option>
-          <option value="generic-web-chat">Browser chat</option>
-        </select>
-      </div>
-      <textarea
-        name="body"
-        required
-        rows={isComposer ? 3 : 4}
-        placeholder="Log the next inbound, outbound, note, or channel handoff"
-        className="mt-2 w-full resize-y rounded-[6px] border border-[var(--line)] bg-black/30 px-3 py-2 text-sm leading-6 text-white outline-none placeholder:text-[var(--muted)]"
-      />
-      <div className="mt-3 flex justify-end">
-        <button
-          type="submit"
-          className="inline-flex h-10 items-center justify-center rounded-[6px] border border-teal-300/30 bg-teal-300/[0.12] px-3 text-sm font-medium text-teal-100 hover:bg-teal-300/[0.18]"
-        >
-          Save manual comm
-        </button>
-      </div>
-    </form>
-  );
-}
-
-function ConversationCard({ lead, conversation }: { lead: LeadKnowledgeRecord; conversation: LeadKnowledgeConversation }) {
-  return (
-    <div className="rounded-[8px] border border-[var(--line)] bg-black/20 p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <div className="flex items-center gap-2 text-sm font-semibold text-white">
-            {conversation.channel === "email" ? <Mail size={14} className="text-[var(--teal)]" /> : null}
-            {conversation.channel === "call" ? <PhoneCall size={14} className="text-[var(--teal)]" /> : null}
-            {channelLabel(conversation.channel)}
-          </div>
-          <div className="mono mt-1 break-all text-[10px] uppercase text-[var(--muted)]">{conversation.source}</div>
-        </div>
-        <Badge tone={conversation.knowledgeStatus === "excluded" ? "amber" : "teal"}>
-          {conversation.knowledgeStatus === "excluded" ? "Excluded from AI" : "In AI knowledge"}
-        </Badge>
-      </div>
-      <p className="mt-2 text-sm leading-6 text-[var(--muted-2)]">{conversation.lastMessagePreview || conversation.summary || "No messages yet"}</p>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <Badge tone="neutral">{conversation.messageCount} comms</Badge>
-        <span className="text-xs text-[var(--muted)]">{shortDate(conversation.lastMessageAt)}</span>
-        <form action="/api/leads/conversation-status" method="post">
-          <input type="hidden" name="leadId" value={lead.id} />
-          <input type="hidden" name="conversationId" value={conversation.id} />
-          <input
-            type="hidden"
-            name="knowledgeStatus"
-            value={conversation.knowledgeStatus === "excluded" ? "included" : "excluded"}
-          />
-          <button
-            type="submit"
-            className="inline-flex h-8 items-center justify-center rounded-[6px] border border-[var(--line)] bg-white/[0.03] px-2 text-xs font-medium text-[var(--muted-2)] hover:text-white"
-          >
-            {conversation.knowledgeStatus === "excluded" ? "Restore to AI" : "Exclude from AI"}
-          </button>
-        </form>
-      </div>
+    <div className="rounded-[5px] border border-border bg-background p-2">
+      <div className="font-mono text-[10px] text-muted-foreground">{label}</div>
+      <div className="mt-1 text-lg font-semibold">{value}</div>
     </div>
   );
 }
 
-function ChatMessageBubble({ lead, message }: { lead: LeadKnowledgeRecord; message: LeadKnowledgeMessage }) {
-  const isOutbound = message.direction === "outbound";
-  const isInternal = message.direction === "note" || message.direction === "system";
-  const rowClass = isInternal ? "justify-center" : isOutbound ? "justify-end" : "justify-start";
-  const bubbleClass = isInternal
-    ? "max-w-[92%] border-[var(--line)] bg-white/[0.04] text-[var(--muted-2)]"
-    : isOutbound
-      ? "max-w-[82%] border-sky-300/25 bg-sky-300/[0.13] text-sky-50"
-      : "max-w-[82%] border-teal-300/20 bg-white/[0.06] text-white";
-  const tailClass = isInternal ? "rounded-[8px]" : isOutbound ? "rounded-[8px] rounded-br-[3px]" : "rounded-[8px] rounded-bl-[3px]";
-
+function InfoCell({ label, value }: { label: string; value: string }) {
   return (
-    <div data-testid="lead-chat-bubble" className={`flex ${rowClass}`}>
-      <div className={`min-w-0 border px-3 py-2 shadow-[0_12px_30px_rgba(0,0,0,0.18)] ${tailClass} ${bubbleClass}`}>
-        <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-xs font-semibold">
-            <MessageCircle size={13} className={isOutbound ? "text-sky-100" : "text-[var(--teal)]"} />
-            {chatSenderLabel(message)}
-          </div>
-          <span className="text-[11px] text-current/60">{shortDate(message.sentAt)}</span>
-        </div>
-        <p className="whitespace-pre-wrap break-words text-sm leading-6">{message.body}</p>
-        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-current/70">
-          <Badge tone={message.direction === "outbound" ? "sky" : message.direction === "note" ? "neutral" : "teal"}>
-            {message.direction}
-          </Badge>
-          <Badge tone={toneForChannel(message.channel)}>{channelLabel(message.channel)}</Badge>
-          <Badge tone={sourceTone(message)}>{sourceLabel(message)}</Badge>
-          <form action="/api/leads/message-status" method="post">
-            <input type="hidden" name="leadId" value={lead.id} />
-            <input type="hidden" name="messageId" value={message.id} />
-            <input type="hidden" name="hidden" value="true" />
-            <button
-              type="submit"
-              data-testid="lead-chat-hide-message"
-              className="inline-flex h-7 items-center justify-center gap-1 rounded-[6px] border border-current/15 bg-black/15 px-2 text-[11px] font-medium text-current/70 hover:text-white"
-            >
-              <EyeOff size={12} />
-              Hide
-            </button>
-          </form>
-        </div>
-      </div>
+    <div className="rounded-[8px] border border-border bg-surface p-3">
+      <div className="caption">{label}</div>
+      <div className="mt-1 break-words text-sm text-foreground">{value}</div>
     </div>
   );
 }

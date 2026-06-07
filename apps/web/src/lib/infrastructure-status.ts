@@ -1,8 +1,6 @@
 import "server-only";
 
 import { automationWorkflowDefinitions, type AutomationWorkflowKey } from "./automation-workflows";
-import { summarizeCrmHealth } from "./crm-store";
-import { summarizeExtensionHealth } from "./extension-store";
 import { summarizeLeadKnowledgeHealth } from "./lead-knowledge-store";
 import { sourceHealth } from "./source-health";
 
@@ -134,10 +132,8 @@ function getProviderConfigHubStatus(): ProviderConfigHubStatus[] {
 }
 
 export async function getInfrastructureStatus() {
-  const [leadKnowledge, extension, crm, automation] = await Promise.all([
+  const [leadKnowledge, automation] = await Promise.all([
     summarizeLeadKnowledgeHealth(),
-    summarizeExtensionHealth(),
-    summarizeCrmHealth(),
     getAutomationStatus()
   ]);
   const sources = sourceHealth();
@@ -173,22 +169,12 @@ export async function getInfrastructureStatus() {
       detail: automation.detail
     },
     {
-      key: "meta",
-      label: "Meta",
-      status: process.env.META_APP_ID || process.env.META_EMBEDDED_SIGNUP_URL ? "healthy" : "warning",
-      errors: 0,
-      lastSync: now,
-      detail: process.env.META_APP_ID || process.env.META_EMBEDDED_SIGNUP_URL
-          ? "Meta web configuration is present."
-          : "Meta app configuration is pending."
-    },
-    {
       key: "whatsapp",
       label: "WhatsApp",
-      status: process.env.META_WHATSAPP_WEBHOOK_VERIFY_TOKEN || process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || process.env.TWILIO_ACCOUNT_SID ? "healthy" : "warning",
+      status: process.env.TWILIO_ACCOUNT_SID ? "healthy" : "warning",
       errors: 0,
       lastSync: now,
-      detail: `${leadKnowledge.metaSourced ?? 0} Meta-sourced leads; ${leadKnowledge.conversations ?? 0} conversations tracked. Twilio/WhatsApp transport config stays in Leadsy.`
+      detail: `${leadKnowledge.whatsappSourced ?? 0} WhatsApp-sourced leads; ${leadKnowledge.conversations ?? 0} conversations tracked. Twilio transport config stays in Leadsy.`
     },
     {
       key: "openrouter",
@@ -209,14 +195,6 @@ export async function getInfrastructureStatus() {
       detail: emailFallbackConfigured
         ? "Email configuration is present on the web service for operator notifications."
         : "Add SMTP, Resend, or Postmark configuration to the web service for operator notifications."
-    },
-    {
-      key: "extension",
-      label: "Extension",
-      status: sources.browserWorker ? "healthy" : "warning",
-      errors: 0,
-      lastSync: now,
-      detail: `${extension.tokens ?? 0} tokens, ${extension.visibleTasks ?? 0} visible tasks, ${crm.followUpTasks ?? 0} CRM follow-ups.`
     }
   ];
 

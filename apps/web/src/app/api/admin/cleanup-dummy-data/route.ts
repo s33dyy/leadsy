@@ -1,7 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { audit, rateLimit } from "@leadsy/security";
 import { requireApiSession } from "@/lib/api-auth";
-import { pruneExtensionDataToTargets } from "@/lib/extension-store";
 import { pruneLeadKnowledgeToTargets } from "@/lib/lead-knowledge-store";
 
 export const runtime = "nodejs";
@@ -38,17 +37,14 @@ export async function POST(request: NextRequest) {
     dryRun
   };
 
-  const [leadKnowledge, extension] = await Promise.all([
-    pruneLeadKnowledgeToTargets(scope),
-    pruneExtensionDataToTargets(scope)
-  ]);
+  const leadKnowledge = await pruneLeadKnowledgeToTargets(scope);
 
   audit({
     tenantId: auth.session.tenantId,
     actorId: auth.session.id,
     action: dryRun ? "admin.cleanup_dummy_data.dry_run" : "admin.cleanup_dummy_data",
     resource: tenantWide ? "tenant" : auth.session.id,
-    metadata: { keepTerms, leadKnowledge, extension }
+    metadata: { keepTerms, leadKnowledge }
   });
 
   return NextResponse.json({
@@ -56,7 +52,6 @@ export async function POST(request: NextRequest) {
     dryRun,
     tenantWide,
     keepTerms,
-    leadKnowledge,
-    extension
+    leadKnowledge
   });
 }

@@ -6,6 +6,7 @@ import {
   normalizeSimulatorWhatsAppAddress,
   saveSimulatedTwilioInboundMessage
 } from "@/lib/twilio-simulator";
+import { runAgentForInboundLead } from "@/lib/agent-runtime";
 
 export const runtime = "nodejs";
 
@@ -51,6 +52,16 @@ export async function POST(request: NextRequest) {
   });
 
   const message = result.saved[0];
+  const agent =
+    message
+      ? await runAgentForInboundLead({
+          tenantId: auth.session.tenantId,
+          ownerId: auth.session.id,
+          leadId: result.lead.id,
+          conversationId: result.conversation.id,
+          triggerMessageId: message.id
+        })
+      : { action: "skipped_loop_guard" as const, reason: "Inbound message was already stored." };
   audit({
     tenantId: auth.session.tenantId,
     actorId: auth.session.id,
@@ -59,7 +70,8 @@ export async function POST(request: NextRequest) {
     metadata: {
       messageId: message?.id,
       providerMessageSid: message?.providerMessageSid,
-      conversationId: result.conversation.id
+      conversationId: result.conversation.id,
+      agentAction: agent.action
     }
   });
 
@@ -70,6 +82,7 @@ export async function POST(request: NextRequest) {
     messageId: message?.id,
     providerMessageSid: message?.providerMessageSid,
     deliveryStatus: message?.deliveryStatus ?? "received",
-    transportMode: "simulator"
+    transportMode: "simulator",
+    agent
   });
 }

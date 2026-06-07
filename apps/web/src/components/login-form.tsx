@@ -224,9 +224,6 @@ export function LoginForm({ nextPath, initialMode = "login" }: LoginFormProps) {
             <Link href="/forgot-password" className="hover:text-white" onClick={() => selectMode("forgot")}>
               Forgot password?
             </Link>
-            <Link href="/extension" className="hover:text-white">
-              Download extension
-            </Link>
           </div>
         </>
       )}

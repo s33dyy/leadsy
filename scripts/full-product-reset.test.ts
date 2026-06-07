@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile, mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -17,14 +17,13 @@ async function main() {
 
   await writeFile(join(dataDir, "auth.json"), JSON.stringify({ users: [{ id: "usr_delete" }], sessions: [{ id: "sess_delete" }] }, null, 2));
   await writeFile(join(dataDir, "lead-knowledge.json"), JSON.stringify({ leads: [{ id: "lead_delete" }], conversations: [{ id: "conv_delete" }], messages: [{ id: "msg_delete" }] }, null, 2));
-  await writeFile(join(dataDir, "extension.json"), JSON.stringify({ tokens: [{ id: "token_delete" }], conversations: [{ id: "ext_conv_delete" }], messages: [{ id: "ext_msg_delete" }], events: [{ id: "event_delete" }], tasks: [{ id: "approval_delete" }], taskEvents: [{ id: "task_event_delete" }] }, null, 2));
-  await writeFile(join(dataDir, "lead-magnet.json"), JSON.stringify({ briefs: [{ id: "brief_delete" }], briefHistory: [{ id: "brief_history_delete" }], leads: [{ id: "magnet_lead_delete" }], runs: [{ id: "run_delete" }], drafts: [{ id: "draft_delete" }], agentRuns: [{ id: "agent_delete" }], searchSessions: [{ id: "search_delete" }], ownerSearchMemory: [{ id: "memory_delete" }] }, null, 2));
   await writeFile(join(dataDir, "lead-crm.json"), JSON.stringify({ assignmentRules: [{ id: "rule_delete" }], assignmentHistory: [{ id: "assignment_delete" }], followUpTasks: [{ id: "task_delete" }], qualificationProfiles: [{ id: "profile_delete" }] }, null, 2));
+  await writeFile(join(dataDir, "lead-magnet.json"), JSON.stringify({ briefs: [{ id: "brief_delete" }], briefHistory: [{ id: "brief_history_delete" }], leads: [{ id: "capture_delete" }], runs: [{ id: "run_delete" }], drafts: [{ id: "draft_delete" }], agentRuns: [{ id: "agent_delete" }], searchSessions: [{ id: "search_delete" }], ownerSearchMemory: [{ id: "memory_delete" }] }, null, 2));
   await writeFile(join(dataDir, "agency-clients.json"), JSON.stringify([{ id: "client_delete" }], null, 2));
-  await writeFile(join(dataDir, "meta-oauth.json"), JSON.stringify({ connections: [{ id: "meta_delete" }] }, null, 2));
-  await writeFile(join(dataDir, "meta-whatsapp-inbound.json"), JSON.stringify({ messages: [{ id: "meta_msg_delete" }], contactStatuses: [{ id: "meta_status_delete" }] }, null, 2));
   await writeFile(join(dataDir, "workspace-whatsapp-senders.json"), JSON.stringify({ senders: [{ tenantId: "tenant_delete", ownerId: "owner_delete", status: "approved" }] }, null, 2));
   await writeFile(join(dataDir, "twilio-integration.json"), JSON.stringify({ lastWebhookMessageSid: "SMDELETE" }, null, 2));
+  await writeFile(join(dataDir, "teamspace.json"), JSON.stringify({ members: [{ id: "member_delete" }], threadMessages: [{ id: "thread_delete" }] }, null, 2));
+  await writeFile(join(dataDir, "calendar.json"), JSON.stringify({ events: [{ id: "event_delete" }] }, null, 2));
 
   const reset = await import("../apps/web/src/lib/pre-twilio-reset");
 
@@ -33,6 +32,8 @@ async function main() {
   assert.equal(typeof reset.summarizeFullProductResetStores, "function");
   assert(reset.fullProductResetManifest.some((store: { file: string }) => store.file === "auth.json"));
   assert(reset.fullProductResetManifest.some((store: { file: string }) => store.file === "workspace-whatsapp-senders.json"));
+  assert(reset.fullProductResetManifest.some((store: { file: string }) => store.file === "teamspace.json"));
+  assert(reset.fullProductResetManifest.some((store: { file: string }) => store.file === "calendar.json"));
 
   await assert.rejects(
     () => reset.resetFullProductData({ dataDir, requiredBackupDir: join(backupRoot, "missing") }),
@@ -46,28 +47,31 @@ async function main() {
   assert.equal(existsSync(join(backup.backupDir, "workspace-whatsapp-senders.json")), true);
   assert.equal(backup.summary.auth.users, 1);
   assert.equal(backup.summary.workspaceSenders.senders, 1);
+  assert.equal(backup.summary.teamspace.members, 1);
+  assert.equal(backup.summary.calendar.events, 1);
 
   const result = await reset.resetFullProductData({ dataDir, requiredBackupDir: backup.backupDir });
   assert.equal(result.removed.authUsers, 1);
   assert.equal(result.removed.authSessions, 1);
   assert.equal(result.removed.leads, 1);
   assert.equal(result.removed.workspaceSenders, 1);
-  assert.equal(result.removed.metaConnections, 1);
+  assert.equal(result.removed.teamMembers, 1);
+  assert.equal(result.removed.calendarEvents, 1);
 
   assert.deepEqual(await readJson(join(dataDir, "auth.json")), { users: [], sessions: [] });
   assert.deepEqual(await readJson(join(dataDir, "lead-knowledge.json")), { leads: [], conversations: [], messages: [] });
-  assert.deepEqual(await readJson(join(dataDir, "extension.json")), { tokens: [], conversations: [], messages: [], events: [], tasks: [], taskEvents: [] });
-  assert.deepEqual(await readJson(join(dataDir, "lead-magnet.json")), { briefs: [], briefHistory: [], leads: [], runs: [], drafts: [], agentRuns: [], searchSessions: [], ownerSearchMemory: [] });
   assert.deepEqual(await readJson(join(dataDir, "lead-crm.json")), { assignmentRules: [], assignmentHistory: [], followUpTasks: [], qualificationProfiles: [] });
   assert.deepEqual(await readJson(join(dataDir, "agency-clients.json")), []);
-  assert.deepEqual(await readJson(join(dataDir, "meta-oauth.json")), { connections: [] });
-  assert.deepEqual(await readJson(join(dataDir, "meta-whatsapp-inbound.json")), { messages: [], contactStatuses: [] });
   assert.deepEqual(await readJson(join(dataDir, "workspace-whatsapp-senders.json")), { senders: [] });
   assert.deepEqual(await readJson(join(dataDir, "twilio-integration.json")), {});
+  assert.deepEqual(await readJson(join(dataDir, "teamspace.json")), { members: [], threadMessages: [] });
+  assert.deepEqual(await readJson(join(dataDir, "calendar.json")), { events: [] });
 
   const healthRoute = await readFile(join(process.cwd(), "apps/web/src/app/api/health/route.ts"), "utf8");
   assert(healthRoute.includes("summarizeAuthHealth"), "health should report auth user/session counts after full reset");
   assert(healthRoute.includes("workspaceWhatsAppSenders"), "health should report workspace sender count");
+  assert(healthRoute.includes("summarizeTeamspaceHealth"), "health should report teamspace count");
+  assert(healthRoute.includes("summarizeCalendarHealth"), "health should report calendar count");
 
   console.log("full product reset regression passed");
 }

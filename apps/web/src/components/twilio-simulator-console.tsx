@@ -52,9 +52,9 @@ const defaultPricing: WhatsAppPricingEstimateInput = {
   marketingTemplates: 0,
   authenticationTemplates: 0,
   phoneNumberMonthlyUsd: 1.15,
-  metaUtilityTemplateFeeUsd: 0,
-  metaMarketingTemplateFeeUsd: 0,
-  metaAuthenticationTemplateFeeUsd: 0,
+  providerUtilityTemplateFeeUsd: 0,
+  providerMarketingTemplateFeeUsd: 0,
+  providerAuthenticationTemplateFeeUsd: 0,
   fxRateInr: 83
 };
 
@@ -365,9 +365,9 @@ export function TwilioSimulatorConsole({ sender, recentEvents, simulatedConversa
                 ["marketingTemplates", "Marketing templates / month"],
                 ["authenticationTemplates", "Authentication templates / month"],
                 ["phoneNumberMonthlyUsd", "Phone number monthly USD"],
-                ["metaUtilityTemplateFeeUsd", "Meta utility fee USD"],
-                ["metaMarketingTemplateFeeUsd", "Meta marketing fee USD"],
-                ["metaAuthenticationTemplateFeeUsd", "Meta auth fee USD"],
+                ["providerUtilityTemplateFeeUsd", "Provider utility fee USD"],
+                ["providerMarketingTemplateFeeUsd", "Provider marketing fee USD"],
+                ["providerAuthenticationTemplateFeeUsd", "Provider auth fee USD"],
                 ["fxRateInr", "USD to INR"]
               ] as Array<[keyof WhatsAppPricingEstimateInput, string]>).map(([key, label]) => (
                 <label key={key} className="grid gap-1.5 text-sm">
@@ -402,8 +402,8 @@ export function TwilioSimulatorConsole({ sender, recentEvents, simulatedConversa
                   <span className="font-mono">{money(estimate.phoneNumberFeesUsd, "USD")}</span>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <span className="text-muted-foreground">Meta template fees</span>
-                  <span className="font-mono">{money(estimate.metaTemplateFeesUsd, "USD")}</span>
+                  <span className="text-muted-foreground">Provider template fees</span>
+                  <span className="font-mono">{money(estimate.providerTemplateFeesUsd, "USD")}</span>
                 </div>
                 <div className="border-t border-border pt-3">
                   <div className="flex justify-between gap-3 text-base font-semibold">
@@ -417,7 +417,7 @@ export function TwilioSimulatorConsole({ sender, recentEvents, simulatedConversa
                 </div>
               </div>
               <p className="mt-4 text-xs leading-5 text-muted-foreground">
-                Simulator mode costs {money(estimate.simulatorMonthlyUsd, "USD")} because it does not deliver externally. Twilio’s WhatsApp fee basis here is {money(twilioWhatsAppMessageFeeUsd, "USD")} per inbound or outbound message plus editable Meta pass-through template fees and country-specific phone-number rent.
+                Simulator mode costs {money(estimate.simulatorMonthlyUsd, "USD")} because it does not deliver externally. Twilio’s WhatsApp fee basis here is {money(twilioWhatsAppMessageFeeUsd, "USD")} per inbound or outbound message plus editable pass-through template fees and country-specific phone-number rent.
               </p>
               <div className="mt-3 flex flex-wrap gap-3 text-xs">
                 <a href="https://www.twilio.com/docs/whatsapp/pricing" className="text-primary hover:underline" target="_blank" rel="noreferrer">Twilio WhatsApp pricing</a>

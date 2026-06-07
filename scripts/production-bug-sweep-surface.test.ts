@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -10,54 +11,34 @@ async function read(path: string) {
 
 async function main() {
   const appShell = await read("apps/web/src/components/app-shell.tsx");
-  assert(appShell.includes("useSearchParams"), "app shell should use query params for query-specific nav items");
-  assert(!appShell.includes('label === "Approvals" || label === "Knowledge" || label === "Settings"'), "query-specific nav items should not be hard-disabled");
-  assert(appShell.includes("pendingApprovalCount"), "app shell should receive live pending approval counts");
-  assert(!appShell.includes("const pendingApprovals = 0"), "app shell should not hardcode the approval notification count");
+  assert(appShell.includes("/app/calendar"), "primary shell should expose the native calendar");
+  assert(appShell.includes("/app/communications"), "primary shell should expose Inbox");
+  assert(!appShell.includes(["Connect", "channels"].join(" ")), "shell should not promote retired channel setup");
 
-  const workspaceLayout = await read("apps/web/src/app/app/layout.tsx");
-  assert(workspaceLayout.includes("listExtensionTasks"), "workspace layout should load extension tasks for shell notifications");
-  assert(workspaceLayout.includes("pendingApprovalCount"), "workspace layout should pass live pending approvals into AppShell");
+  const teamPage = await read("apps/web/src/app/app/team/page.tsx");
+  assert(teamPage.includes("Teamspace"), "team page should be Teamspace, not read-only user inventory");
+  assert(teamPage.includes("TeamspaceConsole"), "team page should include management controls");
 
-  const dashboard = await read("apps/web/src/app/app/page.tsx");
-  assert(dashboard.includes("awaitingApprovalTaskStatuses"), "dashboard should share the same approval status definition used by the shell");
-  assert(!dashboard.includes('redirect("/app/leads")'), "dashboard hard loads should render the dashboard instead of redirecting or blanking");
-
-  const leadsPage = await read("apps/web/src/app/app/leads/page.tsx");
-  assert(leadsPage.includes("type LeadPanel"), "leads page should understand CRM versus knowledge sidebar panels");
-  assert(leadsPage.includes("panelFromValue"), "leads page should parse panel search params");
-  assert(leadsPage.includes("panel?: LeadPanel"), "CRM links should preserve the selected panel");
-  assert(!leadsPage.includes("leads.find((lead) => lead.id === selectedLeadId)"), "selected lead should not fall back to records hidden by current filters");
-  assert(!leadsPage.includes('name="contact" value={selectedLead.id}'), "search forms should not preserve stale selected contacts across a new query");
-  assert(leadsPage.includes('data-testid="lead-list-pane"') && leadsPage.includes("overflow-hidden"), "lead list pane should create a bounded scroll container instead of clipping long rows");
-  assert(leadsPage.includes('data-testid="lead-workspace-pane"') && leadsPage.includes("overflow-y-auto"), "selected lead workspace should scroll its own long content instead of disappearing under the app shell");
-
-  const settingsPage = await read("apps/web/src/app/app/settings/page.tsx");
-  assert(settingsPage.includes("type SettingsSection"), "settings page should model selectable settings sections");
-  assert(settingsPage.includes("sectionFromValue"), "settings page should parse the selected section from query params");
-  assert(settingsPage.includes("activeSection"), "settings sidebar should not hardcode Infrastructure as the active item");
-  assert(settingsPage.includes("`/app/settings?section=${group.id}`"), "settings sidebar links should navigate to their own settings section");
-
-  const workerPage = await read("apps/web/src/app/app/worker/page.tsx");
-  assert(workerPage.includes("type WorkerPageProps"), "worker page should accept search params");
-  assert(workerPage.includes("focusColumnFromTab"), "worker page should convert tab=pending into a focused task column");
-  assert(workerPage.includes('focusColumn={focusColumn}'), "worker page should pass the focused column to the task board");
-
-  const taskBoard = await read("apps/web/src/components/extension-task-board.tsx");
-  assert(taskBoard.includes("focusColumn"), "task board should accept a focused column from sidebar routing");
-  assert(taskBoard.includes("orderedColumns"), "task board should prioritize the focused column for query routes");
-  assert(taskBoard.includes("data-focused"), "task board should mark the focused lane for browser verification");
-
-  const connectPage = await read("apps/web/src/app/app/connect/page.tsx");
-  assert(connectPage.includes("type ConnectPanel"), "connect page should understand settings/profile query panels");
-  assert(connectPage.includes("panelFromValue"), "connect page should parse panel search params");
-  assert(connectPage.includes("activePanel"), "connect page should alter the page surface for selected settings panels");
+  const communicationsPage = await read("apps/web/src/app/app/communications/page.tsx");
+  assert(communicationsPage.includes("conversation="), "conversation rows should open the conversation view");
+  assert(communicationsPage.includes("Internal team thread"), "Inbox should expose internal lead team thread");
+  assert(communicationsPage.includes("Calendar proposals"), "Inbox should expose calendar proposals");
 
   const healthRoute = await read("apps/web/src/app/api/health/route.ts");
-  assert(healthRoute.includes("summarizeLeadKnowledgeHealth"), "health route should include real lead knowledge counts");
-  assert(healthRoute.includes("summarizeExtensionHealth"), "health route should include real extension workflow counts");
-  assert(healthRoute.includes("leadKnowledge.records"), "health route should map module lead counts to live knowledge records");
-  assert(healthRoute.includes("extension.pendingApprovals"), "health route should expose live pending worker approvals");
+  assert(healthRoute.includes("summarizeTeamspaceHealth"), "health route should include teamspace counts");
+  assert(healthRoute.includes("summarizeCalendarHealth"), "health route should include calendar counts");
+  assert(healthRoute.includes("workspaceWhatsAppSenders"), "health route should include WhatsApp sender counts");
+
+  const removedPaths = [
+    "apps/web/src/app/app/connect/page.tsx",
+    "apps/web/src/app/api/automation/agent/route.ts",
+    "apps/web/src/app/api/automation/executions/route.ts"
+  ];
+  for (const path of removedPaths) {
+    assert.equal(existsSync(join(root, path)), false, `${path} should not exist`);
+  }
+
+  console.log("production surface sweep passed");
 }
 
 main().catch((error) => {
