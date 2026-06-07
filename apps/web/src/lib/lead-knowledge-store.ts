@@ -303,6 +303,42 @@ async function writeState(state: LeadKnowledgeState) {
   await rename(tempFile, knowledgeFile);
 }
 
+function hasAssignedOwner(lead: Pick<LeadKnowledgeLead, "assigneeId" | "assigneeName">) {
+  const assigneeName = lead.assigneeName?.trim().toLowerCase();
+  return Boolean(lead.assigneeId?.trim() || (assigneeName && assigneeName !== "unassigned"));
+}
+
+async function backfillUnassignedLeadsToDefaultQualificationAgent(scope?: Scope) {
+  const state = await readState();
+  const agents = new Map<string, { id: string; name: string }>();
+  const now = nowIso();
+  let changed = false;
+
+  for (const lead of state.leads) {
+    if (lead.deletedAt || hasAssignedOwner(lead)) continue;
+    if (scope && !scopeMatches(scope, lead)) continue;
+
+    const key = `${lead.tenantId}:${lead.ownerId}`;
+    let agent = agents.get(key);
+    if (!agent) {
+      agent = await ensureDefaultQualificationAgent({
+        tenantId: lead.tenantId,
+        ownerId: lead.ownerId
+      });
+      agents.set(key, agent);
+    }
+
+    lead.assigneeId = agent.id;
+    lead.assigneeName = agent.name;
+    lead.updatedAt = now;
+    changed = true;
+  }
+
+  if (changed) {
+    await writeState(state);
+  }
+}
+
 function phoneKey(value?: string) {
   const digits = value?.replace(/\D/g, "") ?? "";
   return digits.length >= 7 ? `phone:${digits}` : undefined;
@@ -939,6 +975,7 @@ function recordForLead(state: LeadKnowledgeState, scope: Scope, leadId: string):
 }
 
 export async function listLeadKnowledgeRecords(scope: Scope) {
+  await backfillUnassignedLeadsToDefaultQualificationAgent(scope);
   const state = await readState();
   return state.leads
     .filter((lead) => scopeMatches(scope, lead) && !lead.deletedAt)
@@ -1015,6 +1052,7 @@ export function buildQualificationInputAudit(lead: LeadKnowledgeRecord) {
 }
 
 export async function summarizeLeadKnowledgeHealth() {
+  await backfillUnassignedLeadsToDefaultQualificationAgent();
   const state = await readState();
   const records = state.leads
     .filter((lead) => !lead.deletedAt)
