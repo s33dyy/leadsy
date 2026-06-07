@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -126,6 +126,33 @@ async function main() {
     const leads = await listLeadKnowledgeRecords(scope);
     assert.equal(leads.some((lead) => lead.assigneeName === "Unassigned"), false);
     assert.equal(leads.some((lead) => /sales owner/i.test(lead.assigneeName ?? "") && lead.assigneeName !== "Sales Owner"), false);
+
+    const legacyScope = { tenantId: "tenant_legacy_assignment", ownerId: "owner_legacy_assignment" };
+    await writeFile(join(tempDir, "lead-knowledge.json"), `${JSON.stringify({
+      leads: [
+        {
+          id: "lead_legacy_unassigned",
+          ...legacyScope,
+          identityKeys: ["phone:15550000000"],
+          contact: { displayName: "Legacy Lead", phone: "+15550000000" },
+          leadStatus: "lead",
+          crmStatus: "new_lead",
+          productPipelineStatus: "contacted",
+          leadSource: "Twilio Simulator",
+          qualificationFields: {},
+          qualificationStage: "collecting",
+          facts: [],
+          createdAt: "2026-06-01T00:00:00.000Z",
+          updatedAt: "2026-06-01T00:00:00.000Z"
+        }
+      ],
+      conversations: [],
+      messages: []
+    }, null, 2)}\n`);
+    const [legacyLead] = await listLeadKnowledgeRecords(legacyScope);
+    assert.equal(legacyLead.assigneeName, "Qualification AI", "legacy unassigned leads should be backfilled to the default agent");
+    const legacyAgents = await listTeamMembers(legacyScope);
+    assert.equal(legacyAgents.filter((member) => member.name === "Qualification AI").length, 1);
 
     const assignRoute = await readFile(join(process.cwd(), "apps/web/src/app/api/leads/assign/route.ts"), "utf8");
     assert.match(assignRoute, /assignLeadOwner/);
