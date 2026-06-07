@@ -62,8 +62,13 @@ async function main() {
     assert.equal(assistedAgent.type, "ai_agent_assisted");
 
     const provisioned = await provisionTeamMemberSender({ ...scope, memberId: qualificationAgent.id });
-    assert.equal(provisioned.sender.transportMode, "simulator");
-    assert.equal(provisioned.member.senderMode, "simulator");
+    assert.equal(provisioned.sender.transportMode, "workspace");
+    assert.equal(provisioned.member.senderMode, "workspace");
+
+    const assistedProvisioned = await provisionTeamMemberSender({ ...scope, memberId: assistedAgent.id });
+    assert.equal(assistedProvisioned.sender.transportMode, "simulator");
+    assert.equal(assistedProvisioned.member.senderMode, "simulator");
+    assert.match(assistedProvisioned.member.simulatorPhoneNumber ?? "", /^\+1555\d{7}$/);
 
     const paused = await updateTeamMember({
       ...scope,

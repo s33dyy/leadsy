@@ -3,6 +3,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { leadsyDataDir } from "./data-dir";
 import { editLeadKnowledgeRecord, listLeadKnowledgeRecords, type LeadCrmStatus, type LeadKnowledgeRecord } from "./lead-knowledge-store";
+import { ensureDefaultQualificationAgent } from "./teamspace-store";
 
 const crmFile = join(leadsyDataDir, "lead-crm.json");
 
@@ -121,36 +122,14 @@ function scopeMatches(scope: Scope, item: Scope) {
   return item.tenantId === scope.tenantId && item.ownerId === scope.ownerId;
 }
 
-function defaultAssignmentRules(scope: Scope): CrmAssignmentRule[] {
-  const now = "default";
-  return [
-    {
-      ...scope,
-      id: "default-whatsapp-inbound",
-      title: "WhatsApp inbound leads",
-      sourceIncludes: "WhatsApp",
-      assigneeId: "whatsapp-sales-owner",
-      assigneeName: "WhatsApp sales owner",
-      createdAt: now,
-      updatedAt: now
-    },
-    {
-      ...scope,
-      id: "default-google-website",
-      title: "Website and Google leads",
-      sourceIncludes: "Google",
-      assigneeId: "website-sales-owner",
-      assigneeName: "Website sales owner",
-      createdAt: now,
-      updatedAt: now
-    }
-  ];
+function defaultAssignmentRules(): CrmAssignmentRule[] {
+  return [];
 }
 
 export async function listCrmAssignmentRules(scope: Scope) {
   const state = await readState();
   return [
-    ...defaultAssignmentRules(scope),
+    ...defaultAssignmentRules(),
     ...state.assignmentRules.filter((rule) => scopeMatches(scope, rule))
   ];
 }
@@ -286,6 +265,22 @@ export async function assignLeadOwner(input: Scope & {
     assigneeName
   });
   return updated;
+}
+
+export async function assignLeadToDefaultQualificationAgent(input: Scope & {
+  leadId: string;
+  assignedById?: string;
+  assignedByName?: string;
+  reason?: string;
+}) {
+  const agent = await ensureDefaultQualificationAgent(input);
+  return assignLeadOwner({
+    ...input,
+    assigneeId: agent.id,
+    assigneeName: agent.name,
+    method: "manual",
+    reason: input.reason ?? "Assigned to default Qualification AI."
+  });
 }
 
 export async function assignLeadByRoundRobin(input: Scope & {

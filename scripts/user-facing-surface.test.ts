@@ -28,7 +28,8 @@ async function main() {
   const team = await read("apps/web/src/components/teamspace-console.tsx");
   assert(team.includes("Full AI agent"), "Teamspace should support full AI agents");
   assert(team.includes("User-handled AI agent"), "Teamspace should support assisted AI agents");
-  assert(team.includes("Provision simulator sender"), "Teamspace should provision simulator sender identities");
+  assert(team.includes("simulator sender"), "Teamspace should show simulator sender identities");
+  assert(team.includes("Repair sender"), "Teamspace should keep a sender repair action");
   assert(team.includes("Toggle auto-reply"), "Teamspace should expose auto-reply controls");
 
   const calendar = await read("apps/web/src/app/app/calendar/page.tsx");

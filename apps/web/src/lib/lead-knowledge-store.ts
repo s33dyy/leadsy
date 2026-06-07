@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { getDemoSession } from "@leadsy/security";
 import { leadsyDataDir } from "./data-dir";
 import { conversationMessages, internalNotes, latestConversationMessage } from "./conversation-contract";
+import { ensureDefaultQualificationAgent } from "./teamspace-store";
 export { conversationMessages, internalNotes, systemEvents } from "./conversation-contract";
 
 const knowledgeFile = join(leadsyDataDir, "lead-knowledge.json");
@@ -440,15 +441,13 @@ function nextMissingQualificationField(fields: LeadQualificationFields) {
   return qualificationFieldOrder.find((field) => !fields[field]);
 }
 
-function defaultAssigneeForLeadSource(leadSource?: string) {
-  if (!leadSource) return {};
-  if (/whatsapp/i.test(leadSource)) {
-    return { assigneeId: "whatsapp-sales-owner", assigneeName: "WhatsApp sales owner" };
-  }
-  if (/google|website|gads|organic/i.test(leadSource)) {
-    return { assigneeId: "website-sales-owner", assigneeName: "Website sales owner" };
-  }
+function defaultAssigneeForLeadSource(): { assigneeId?: string; assigneeName?: string } {
   return {};
+}
+
+async function defaultQualificationAssignee(scope: Scope) {
+  const agent = await ensureDefaultQualificationAgent(scope);
+  return { assigneeId: agent.id, assigneeName: agent.name };
 }
 
 function qualificationDecisionForLead(input: {
@@ -536,7 +535,7 @@ function upsertLead(state: LeadKnowledgeState, scope: Scope, input: {
 
   if (existing) {
     ensureLeadCrmDefaults(existing);
-    const defaultAssignee = defaultAssigneeForLeadSource(input.leadSource || existing.leadSource);
+    const defaultAssignee = defaultAssigneeForLeadSource();
     existing.identityKeys = uniqueStrings([...existing.identityKeys, ...identityKeys]);
     existing.contact = mergeContacts(existing.contact, contact);
     existing.summary = input.summary || existing.summary;
@@ -554,7 +553,7 @@ function upsertLead(state: LeadKnowledgeState, scope: Scope, input: {
     return existing;
   }
 
-  const defaultAssignee = defaultAssigneeForLeadSource(input.leadSource);
+  const defaultAssignee = defaultAssigneeForLeadSource();
   const lead: LeadKnowledgeLead = {
     id: input.leadId || `leadkb_${crypto.randomUUID()}`,
     tenantId: scope.tenantId,
@@ -709,6 +708,7 @@ export async function appendManualLeadMessage(input: Scope & {
   occurredAt?: string;
   sourceUrl?: string;
 }) {
+  const defaultAssignee = await defaultQualificationAssignee(input);
   const state = await readState();
   const occurredAt = input.occurredAt ?? nowIso();
   const contact = cleanContact(input.contact);
@@ -718,7 +718,9 @@ export async function appendManualLeadMessage(input: Scope & {
     identityKeys: identityKeysForContact(channel, contact),
     contact,
     facts: [input.body],
-    leadSource: channel === "manual" ? "Manual" : channelLabelForSource(channel)
+    leadSource: channel === "manual" ? "Manual" : channelLabelForSource(channel),
+    assigneeId: defaultAssignee.assigneeId,
+    assigneeName: defaultAssignee.assigneeName
   });
   const conversation = upsertConversation(state, input, {
     leadId: lead.id,
@@ -761,6 +763,7 @@ export async function saveTwilioInboundMessage(input: Scope & {
   deliveryStatus?: string;
   raw?: unknown;
 }) {
+  const defaultAssignee = await defaultQualificationAssignee(input);
   const state = await readState();
   const receivedAt = input.receivedAt ?? nowIso();
   const sentAt = input.sentAt ?? receivedAt;
@@ -776,7 +779,9 @@ export async function saveTwilioInboundMessage(input: Scope & {
     contact,
     facts: [input.body],
     nextAction: "Reply in Leadsy-approved channel and qualify intent.",
-    leadSource: input.leadSource ?? (source === "twilio_simulator" ? "Twilio Simulator" : "Twilio WhatsApp")
+    leadSource: input.leadSource ?? (source === "twilio_simulator" ? "Twilio Simulator" : "Twilio WhatsApp"),
+    assigneeId: defaultAssignee.assigneeId,
+    assigneeName: defaultAssignee.assigneeName
   });
   const conversation = upsertConversation(state, input, {
     leadId: lead.id,
@@ -828,6 +833,7 @@ export async function appendTwilioOutboundMessage(input: Scope & {
   contentVariables?: Record<string, string>;
   raw?: unknown;
 }) {
+  const defaultAssignee = await defaultQualificationAssignee(input);
   const state = await readState();
   const receivedAt = input.receivedAt ?? nowIso();
   const sentAt = input.sentAt ?? receivedAt;
@@ -839,7 +845,9 @@ export async function appendTwilioOutboundMessage(input: Scope & {
     leadId: input.leadId,
     identityKeys: identityKeysForContact("whatsapp", contact),
     contact,
-    leadSource: input.leadSource ?? (source === "twilio_simulator" ? "Twilio Simulator" : "Twilio WhatsApp")
+    leadSource: input.leadSource ?? (source === "twilio_simulator" ? "Twilio Simulator" : "Twilio WhatsApp"),
+    assigneeId: defaultAssignee.assigneeId,
+    assigneeName: defaultAssignee.assigneeName
   });
   const conversation = upsertConversation(state, input, {
     leadId: lead.id,
@@ -1153,7 +1161,7 @@ export async function editLeadKnowledgeRecord(input: Scope & {
   lead.facts = uniqueStrings(input.facts ?? []).slice(0, 30);
   lead.leadSource = input.leadSource?.trim() || lead.leadSource;
   lead.campaignId = input.campaignId?.trim() || lead.campaignId;
-  const defaultAssignee = defaultAssigneeForLeadSource(lead.leadSource);
+  const defaultAssignee = defaultAssigneeForLeadSource();
   lead.assigneeId = input.assigneeId?.trim() || lead.assigneeId || defaultAssignee.assigneeId;
   lead.assigneeName = input.assigneeName?.trim() || lead.assigneeName || defaultAssignee.assigneeName;
   lead.productPipelineStatus = input.productPipelineStatus ?? lead.productPipelineStatus;

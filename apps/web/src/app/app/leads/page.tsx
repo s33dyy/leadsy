@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Mail, MessageSquare, Phone, Search, Users2 } from "lucide-react";
 import { Badge } from "@/components/ui";
 import { getCurrentSession } from "@/lib/auth";
+import { listCrmAssignmentHistory } from "@/lib/crm-store";
 import {
   buildQualificationInputAudit,
   conversationMessages,
@@ -10,7 +11,7 @@ import {
   productPipelineStatusLabel,
   type LeadKnowledgeRecord
 } from "@/lib/lead-knowledge-store";
-import { listTeamMembers } from "@/lib/teamspace-store";
+import { ensureDefaultQualificationAgent, listTeamMembers, type TeamMember } from "@/lib/teamspace-store";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +45,13 @@ function channelIcon(channel?: string) {
   return MessageSquare;
 }
 
+function memberTypeLabel(member?: TeamMember) {
+  if (!member) return "No member record";
+  if (member.type === "human") return "Human";
+  if (member.type === "ai_agent_assisted") return "Assisted AI";
+  return "Full AI";
+}
+
 function matchesSearch(lead: LeadKnowledgeRecord, query: string) {
   if (!query) return true;
   const haystack = [
@@ -68,6 +76,9 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
   const query = paramValue(params, "q");
   const session = await getCurrentSession();
   const scope = session ? { tenantId: session.tenantId, ownerId: session.id } : undefined;
+  if (scope) {
+    await ensureDefaultQualificationAgent(scope);
+  }
   const [allLeads, members] = scope
     ? await Promise.all([listLeadKnowledgeRecords(scope), listTeamMembers(scope)])
     : [[], []];
@@ -77,6 +88,8 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
   const activeConversation = active?.conversations.find((conversation) => conversation.id === activeMessages.at(-1)?.conversationId) ?? active?.conversations[0];
   const activeOwner = active?.assigneeId ? members.find((member) => member.id === active.assigneeId) : undefined;
   const audit = active ? buildQualificationInputAudit(active) : undefined;
+  const assignmentHistory = active && scope ? await listCrmAssignmentHistory(scope, { leadId: active.id }) : [];
+  const latestAssignment = assignmentHistory[0];
 
   return (
     <div className="grid h-full min-h-0 grid-cols-12 gap-px bg-border">
@@ -148,6 +161,46 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
                 <InfoCell label="Pipeline" value={productPipelineStatusLabel(productPipelineStatusForLead(active))} />
               </div>
             </header>
+
+            <section className="rounded-[8px] border border-border bg-surface p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="caption">Assign lead</div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Current owner: {activeOwner?.name || active.assigneeName || "Unassigned"} · {memberTypeLabel(activeOwner)} · senderMode {activeOwner?.senderMode ?? "none"}
+                  </p>
+                </div>
+                <Badge tone={activeOwner?.senderMode === "workspace" ? "teal" : activeOwner?.senderMode === "simulator" ? "amber" : "neutral"}>
+                  {activeOwner?.senderMode === "workspace" ? "workspace sender" : activeOwner?.senderMode === "simulator" ? "simulator sender" : "no sender"}
+                </Badge>
+              </div>
+              <form action="/api/leads/assign" method="post" className="mt-3 flex flex-col gap-2 sm:flex-row">
+                <input type="hidden" name="leadId" value={active.id} />
+                <select
+                  name="assigneeId"
+                  defaultValue={active.assigneeId ?? ""}
+                  className="h-9 min-w-0 flex-1 rounded-[6px] border border-border bg-background px-3 text-sm outline-none focus:border-primary"
+                >
+                  <option value="" disabled>Select owner</option>
+                  {members.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.name} · {memberTypeLabel(member)} · {member.senderMode}
+                    </option>
+                  ))}
+                </select>
+                <button type="submit" className="h-9 rounded-[6px] bg-primary px-3 text-sm font-medium text-primary-foreground">
+                  Assign owner
+                </button>
+              </form>
+              <div className="mt-3 rounded-[6px] border border-border bg-background p-3">
+                <div className="caption">Assignment history</div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {latestAssignment
+                    ? `${latestAssignment.fromAssigneeName || "Unassigned"} -> ${latestAssignment.toAssigneeName || "Unassigned"} by ${latestAssignment.assignedByName || "Leadsy"}`
+                    : "No manual reassignment recorded yet."}
+                </p>
+              </div>
+            </section>
 
             <section className="rounded-[8px] border border-border bg-surface p-4">
               <div className="caption">Qualification inputs</div>
