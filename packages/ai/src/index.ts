@@ -1556,8 +1556,95 @@ function dedupeLeads(leads: LeadDossier[]) {
   return [...byKey.values()].sort((left, right) => right.score.overall - left.score.overall);
 }
 
+export type LeadsyAiTask = "onboarding-options" | "lead-research-planner" | "lead-dossier" | "message-draft";
+
+export type LeadsyAiCostTier = "zero" | "free" | "paid" | "premium";
+
+export type LeadsyAiModelSelection = {
+  task: LeadsyAiTask;
+  provider: "deterministic" | "openrouter";
+  model?: string;
+  costTier: LeadsyAiCostTier;
+  reason:
+    | "remote_ai_not_enabled"
+    | "free_model"
+    | "paid_model_allowed"
+    | "premium_model_allowed"
+    | "blocked_paid_or_expensive_model";
+};
+
+function envFlag(env: Record<string, string | undefined>, key: string) {
+  return /^(1|true|yes|on)$/i.test(env[key]?.trim() ?? "");
+}
+
+function configured(env: Record<string, string | undefined>, ...keys: string[]) {
+  for (const key of keys) {
+    const value = env[key]?.trim();
+    if (value) return value;
+  }
+  return undefined;
+}
+
+function isFreeAiModel(model: string) {
+  const normalized = model.toLowerCase();
+  return normalized === "openrouter/free" || /(^|[:/_-])free($|[:/_-])/.test(normalized);
+}
+
+function isPremiumAiModel(model: string) {
+  return /gpt-5|claude-4|opus|o1|o3|o4|reasoning/.test(model.toLowerCase());
+}
+
+function modelCandidateForTask(task: LeadsyAiTask, env: Record<string, string | undefined>) {
+  if (task === "lead-dossier") {
+    return configured(env, "LEADSY_DOSSIER_MODEL", "OPENROUTER_DOSSIER_MODEL", "OPENROUTER_RESEARCH_MODEL", "OPENROUTER_SENTIMENT_MODEL", "AI_DEFAULT_MODEL");
+  }
+  if (task === "lead-research-planner") {
+    return configured(env, "LEADSY_PLANNER_MODEL", "OPENROUTER_FAST_MODEL", "OPENROUTER_RESEARCH_MODEL", "AI_DEFAULT_MODEL");
+  }
+  return configured(env, "LEADSY_ROUTINE_MODEL", "OPENROUTER_FAST_MODEL", "AI_DEFAULT_MODEL");
+}
+
+export function shouldUseRemoteAi(env: Record<string, string | undefined> = process.env) {
+  const provider = env.AI_PROVIDER?.trim().toLowerCase();
+  if (provider === "deterministic") return false;
+  return Boolean(env.OPENROUTER_API_KEY?.trim()) && (provider === "openrouter" || envFlag(env, "LEADSY_ENABLE_REMOTE_AI"));
+}
+
+export function selectLeadsyAiModel(
+  task: LeadsyAiTask,
+  env: Record<string, string | undefined> = process.env
+): LeadsyAiModelSelection {
+  if (!shouldUseRemoteAi(env)) {
+    return { task, provider: "deterministic", model: undefined, costTier: "zero", reason: "remote_ai_not_enabled" };
+  }
+
+  const fallbackModel = configured(env, "LEADSY_FREE_AI_MODEL") ?? defaultRoutineOpenRouterModel;
+  const candidate = modelCandidateForTask(task, env) ?? fallbackModel;
+  if (isFreeAiModel(candidate)) {
+    return { task, provider: "openrouter", model: candidate, costTier: "free", reason: "free_model" };
+  }
+
+  const expensiveAllowed = envFlag(env, "LEADSY_ALLOW_EXPENSIVE_AI_MODELS") || env.LEADSY_AI_COST_MODE?.trim().toLowerCase() === "premium";
+  if (isPremiumAiModel(candidate)) {
+    if (expensiveAllowed) {
+      return { task, provider: "openrouter", model: candidate, costTier: "premium", reason: "premium_model_allowed" };
+    }
+    return { task, provider: "openrouter", model: fallbackModel, costTier: "free", reason: "blocked_paid_or_expensive_model" };
+  }
+
+  const paidAllowed =
+    envFlag(env, "LEADSY_ALLOW_PAID_AI_MODELS") ||
+    expensiveAllowed ||
+    ["paid", "premium"].includes(env.LEADSY_AI_COST_MODE?.trim().toLowerCase() ?? "");
+  if (paidAllowed) {
+    return { task, provider: "openrouter", model: candidate, costTier: "paid", reason: "paid_model_allowed" };
+  }
+
+  return { task, provider: "openrouter", model: fallbackModel, costTier: "free", reason: "blocked_paid_or_expensive_model" };
+}
+
 function openRouterKey() {
-  return process.env.OPENROUTER_API_KEY?.trim();
+  return shouldUseRemoteAi() ? process.env.OPENROUTER_API_KEY?.trim() : undefined;
 }
 
 function openRouterBaseUrl() {
@@ -2013,16 +2100,15 @@ function spendCapFromEnv() {
 }
 
 function openRouterPlannerModel() {
-  return process.env.OPENROUTER_FAST_MODEL || process.env.OPENROUTER_RESEARCH_MODEL || process.env.AI_DEFAULT_MODEL || defaultRoutineOpenRouterModel;
+  return selectLeadsyAiModel("lead-research-planner").model ?? defaultRoutineOpenRouterModel;
 }
 
 function openRouterDossierModel() {
-  return process.env.OPENROUTER_DOSSIER_MODEL || process.env.OPENROUTER_RESEARCH_MODEL || process.env.OPENROUTER_SENTIMENT_MODEL || process.env.AI_DEFAULT_MODEL || defaultRoutineOpenRouterModel;
+  return selectLeadsyAiModel("lead-dossier").model ?? defaultRoutineOpenRouterModel;
 }
 
 function expensiveResearchModel() {
-  const model = openRouterDossierModel().toLowerCase();
-  return /gpt-5|claude-4|opus|o1|o3|o4|reasoning/.test(model);
+  return selectLeadsyAiModel("lead-dossier").costTier === "premium";
 }
 
 function sanitizeSearchTerm(value: string) {
@@ -5562,7 +5648,7 @@ export async function draftLeadMessage(input: {
           "x-title": "Leadsy Message Drafting"
         },
         body: JSON.stringify({
-          model: process.env.OPENROUTER_FAST_MODEL || defaultRoutineOpenRouterModel,
+          model: selectLeadsyAiModel("message-draft").model ?? defaultRoutineOpenRouterModel,
           messages: [
             {
               role: "system",

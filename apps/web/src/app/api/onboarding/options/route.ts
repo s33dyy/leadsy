@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { selectLeadsyAiModel, shouldUseRemoteAi } from "@leadsy/ai";
 import { rateLimit } from "@leadsy/security";
 import { requireApiSession } from "@/lib/api-auth";
 import {
@@ -15,8 +16,8 @@ function cleanText(value: unknown) {
 
 async function aiOptions(input: Record<string, unknown>): Promise<OnboardingOptionGroups | undefined> {
   const apiKey = process.env.OPENROUTER_API_KEY?.trim();
-  if (!apiKey || process.env.AI_PROVIDER === "deterministic") return undefined;
-  const model = process.env.OPENROUTER_FAST_MODEL || process.env.AI_DEFAULT_MODEL || "openrouter/free";
+  const modelSelection = selectLeadsyAiModel("onboarding-options");
+  if (!apiKey || !shouldUseRemoteAi() || modelSelection.provider !== "openrouter" || !modelSelection.model) return undefined;
   const prompt = {
     businessName: cleanText(input.businessName),
     industry: cleanText(input.industry),
@@ -30,7 +31,7 @@ async function aiOptions(input: Record<string, unknown>): Promise<OnboardingOpti
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      model,
+      model: modelSelection.model,
       messages: [
         {
           role: "system",
