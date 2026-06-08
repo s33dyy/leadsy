@@ -149,6 +149,12 @@ async function main() {
     assert(receipt.lineItems.some((item) => item.category === "conversation" && item.amountUsd === 0));
     assert(receipt.assumptions.some((item) => item.includes("Simulator")), "receipt should explain simulator messages are not externally delivered");
 
+    const teamMemberReceipt = await getCostReceipt({ tenantId: scope.tenantId, ownerId: "team_member_cost_receipt" });
+    assert.equal(teamMemberReceipt.summary.twilio.billableMessages, 2);
+    assert.equal(teamMemberReceipt.summary.conversations.simulatedMessages, 1);
+    closeTo(teamMemberReceipt.summary.openrouter.totalUsd, 0.35);
+    assert.equal(teamMemberReceipt.lineItems.filter((item) => item.category === "openrouter").length, 2);
+
     const routeSource = await readFile(join(process.cwd(), "apps/web/src/app/api/costs/receipt/route.ts"), "utf8");
     assert.match(routeSource, /getCostReceipt/);
     assert.match(routeSource, /requireApiSession\(request, "analytics:read"\)/);

@@ -983,6 +983,15 @@ export async function listLeadKnowledgeRecords(scope: Scope) {
     .sort((left, right) => (right.lastMessageAt ?? right.updatedAt).localeCompare(left.lastMessageAt ?? left.updatedAt));
 }
 
+export async function listTenantLeadKnowledgeRecords(tenantId: string) {
+  await backfillUnassignedLeadsToDefaultQualificationAgent();
+  const state = await readState();
+  return state.leads
+    .filter((lead) => lead.tenantId === tenantId && !lead.deletedAt)
+    .map((lead) => recordForLead(state, { tenantId: lead.tenantId, ownerId: lead.ownerId }, lead.id))
+    .sort((left, right) => (right.lastMessageAt ?? right.updatedAt).localeCompare(left.lastMessageAt ?? left.updatedAt));
+}
+
 export type QualificationInputAuditRow = {
   field: Extract<LeadQualificationFieldKey, "need" | "budget" | "timeline" | "authority" | "location" | "company" | "serviceInterest" | "intent">;
   value: string;

@@ -1,8 +1,8 @@
 import "server-only";
 
 import type { OpenRouterUsageCost } from "@leadsy/domain";
-import { listAiUsageRuns } from "./ai-usage-store";
-import { listLeadKnowledgeRecords, type LeadKnowledgeMessage } from "./lead-knowledge-store";
+import { listTenantAiUsageRuns } from "./ai-usage-store";
+import { listTenantLeadKnowledgeRecords, type LeadKnowledgeMessage } from "./lead-knowledge-store";
 import { twilioWhatsAppMessageFeeUsd } from "./whatsapp-pricing-estimator";
 
 type Scope = {
@@ -156,8 +156,8 @@ export async function getCostReceipt(scope: Scope): Promise<CostReceipt> {
   const checkedAt = new Date().toISOString();
   const fx = getFxSnapshot();
   const messageFeeUsd = twilioMessageFeeUsd();
-  const records = await listLeadKnowledgeRecords(scope);
-  const aiUsage = await listAiUsageRuns(scope);
+  const records = await listTenantLeadKnowledgeRecords(scope.tenantId);
+  const aiUsage = await listTenantAiUsageRuns(scope.tenantId);
   const messages = records.flatMap((record) => record.messages);
   const billableMessages = messages.filter(isExternalWhatsAppMessage);
   const simulatorMessages = messages.filter(isSimulatorWhatsAppMessage);

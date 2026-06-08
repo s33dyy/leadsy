@@ -55,10 +55,22 @@ function scopeMatches(scope: Scope, item: { tenantId: string; ownerId: string })
   return item.tenantId === scope.tenantId && item.ownerId === scope.ownerId;
 }
 
+function tenantMatches(tenantId: string, item: { tenantId: string }) {
+  return item.tenantId === tenantId;
+}
+
 export async function listAiUsageRuns(scope: Scope) {
   const state = await readState();
   return {
     runs: (Array.isArray(state.runs) ? state.runs : []).filter((run) => scopeMatches(scope, run)),
     agentRuns: (Array.isArray(state.agentRuns) ? state.agentRuns : []).filter((run) => scopeMatches(scope, run))
+  };
+}
+
+export async function listTenantAiUsageRuns(tenantId: string) {
+  const state = await readState();
+  return {
+    runs: (Array.isArray(state.runs) ? state.runs : []).filter((run) => tenantMatches(tenantId, run)),
+    agentRuns: (Array.isArray(state.agentRuns) ? state.agentRuns : []).filter((run) => tenantMatches(tenantId, run))
   };
 }
