@@ -12,6 +12,7 @@ async function main() {
     const { createTeamMember } = await import("../apps/web/src/lib/teamspace-store");
     const { createCalendarEvent } = await import("../apps/web/src/lib/calendar-store");
     const { saveTwilioInboundMessage, listLeadKnowledgeRecords } = await import("../apps/web/src/lib/lead-knowledge-store");
+    const { assignLeadOwner, listCrmFollowUpTasks } = await import("../apps/web/src/lib/crm-store");
 
     const scope = { tenantId: "tenant_agents", ownerId: "owner_agents" };
     const qualificationAgent = await createTeamMember({
@@ -68,6 +69,45 @@ async function main() {
     const afterReply = (await listLeadKnowledgeRecords(scope)).find((lead) => lead.id === inbound.lead.id);
     assert.equal(afterReply?.messages.filter((message) => message.direction === "outbound").length, 1);
 
+    const retainerAi = await createTeamMember({
+      ...scope,
+      type: "ai_agent_full",
+      name: "Retainer AI",
+      role: "agent",
+      pipelineStages: ["collecting"],
+      behaviorInstructions: "Represent the owner's company and answer content retainer questions.",
+      autoReplyEnabled: true,
+      escalationKeywords: ["human"]
+    });
+    await assignLeadOwner({
+      ...scope,
+      leadId: inbound.lead.id,
+      assigneeId: retainerAi.id,
+      assigneeName: retainerAi.name,
+      assignedByName: "Account Owner",
+      reason: "Retainer stage owner"
+    });
+    const followUpInbound = await saveTwilioInboundMessage({
+      ...scope,
+      source: "twilio_simulator",
+      messageSid: "SIMIN_1_FOLLOWUP",
+      from: "whatsapp:+919000000001",
+      to: "whatsapp:leadsy-simulator",
+      profileName: "Asha Buyer",
+      body: "what are your services?",
+      receivedAt: "2026-06-08T04:03:00.000Z"
+    });
+    const assignedAiRun = await runAgentForInboundLead({
+      ...scope,
+      leadId: followUpInbound.lead.id,
+      conversationId: followUpInbound.conversation.id,
+      triggerMessageId: followUpInbound.saved[0].id,
+      now: "2026-06-08T04:04:00.000Z"
+    });
+    assert.equal(assignedAiRun.action, "auto_replied");
+    assert.equal(assignedAiRun.memberId, retainerAi.id, "current full AI assignee should handle new inbound messages");
+    assert.doesNotMatch(assignedAiRun.replyBody ?? "", /Leadsy|Qualification AI/i);
+
     const duplicate = await runAgentForInboundLead({
       ...scope,
       leadId: inbound.lead.id,
@@ -76,6 +116,76 @@ async function main() {
       now: "2026-06-08T04:02:00.000Z"
     });
     assert.equal(duplicate.action, "skipped_loop_guard");
+
+    const humanLeadInbound = await saveTwilioInboundMessage({
+      ...scope,
+      source: "twilio_simulator",
+      messageSid: "SIMIN_HUMAN_ASSIGNEE",
+      from: "whatsapp:+919000000004",
+      to: "whatsapp:leadsy-simulator",
+      profileName: "Human Lead",
+      body: "I want to speak with sales about services.",
+      receivedAt: "2026-06-08T04:05:00.000Z"
+    });
+    await assignLeadOwner({
+      ...scope,
+      leadId: humanLeadInbound.lead.id,
+      assigneeId: closer.id,
+      assigneeName: closer.name,
+      assignedByName: "Account Owner",
+      reason: "Human owns this enquiry"
+    });
+    const humanRun = await runAgentForInboundLead({
+      ...scope,
+      leadId: humanLeadInbound.lead.id,
+      conversationId: humanLeadInbound.conversation.id,
+      triggerMessageId: humanLeadInbound.saved[0].id,
+      now: "2026-06-08T04:06:00.000Z"
+    });
+    assert.equal(humanRun.action, "no_action");
+    assert.equal(humanRun.responderMemberId, closer.id);
+    assert.match(humanRun.reason ?? "", /human/i);
+    const humanTasks = await listCrmFollowUpTasks(scope, { leadId: humanLeadInbound.lead.id });
+    assert(humanTasks.some((task) => task.destination === "human_tasks" && task.assigneeId === closer.id), "human assignee should receive a task instead of an AI auto-reply");
+
+    const assistedAi = await createTeamMember({
+      ...scope,
+      type: "ai_agent_assisted",
+      name: "Assisted AI",
+      role: "agent",
+      pipelineStages: ["collecting"],
+      autoReplyEnabled: true
+    });
+    const assistedLeadInbound = await saveTwilioInboundMessage({
+      ...scope,
+      source: "twilio_simulator",
+      messageSid: "SIMIN_ASSISTED_ASSIGNEE",
+      from: "whatsapp:+919000000005",
+      to: "whatsapp:leadsy-simulator",
+      profileName: "Assisted Lead",
+      body: "Can you prepare a proposal?",
+      receivedAt: "2026-06-08T04:07:00.000Z"
+    });
+    await assignLeadOwner({
+      ...scope,
+      leadId: assistedLeadInbound.lead.id,
+      assigneeId: assistedAi.id,
+      assigneeName: assistedAi.name,
+      assignedByName: "Account Owner",
+      reason: "Needs AI-assisted review"
+    });
+    const assistedRun = await runAgentForInboundLead({
+      ...scope,
+      leadId: assistedLeadInbound.lead.id,
+      conversationId: assistedLeadInbound.conversation.id,
+      triggerMessageId: assistedLeadInbound.saved[0].id,
+      now: "2026-06-08T04:08:00.000Z"
+    });
+    assert.equal(assistedRun.action, "no_action");
+    assert.equal(assistedRun.responderMemberId, assistedAi.id);
+    assert.match(assistedRun.reason ?? "", /approval|assisted/i);
+    const assistedTasks = await listCrmFollowUpTasks(scope, { leadId: assistedLeadInbound.lead.id });
+    assert(assistedTasks.some((task) => task.destination === "ai_approvals" && task.assigneeId === assistedAi.id), "assisted AI assignee should route to approval queue");
 
     const qualifiedInbound = await saveTwilioInboundMessage({
       ...scope,

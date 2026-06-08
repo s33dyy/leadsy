@@ -33,6 +33,10 @@ export type AgentRunResult = {
   assignedMemberId?: string;
   replyBody?: string;
   reason?: string;
+  responderMemberId?: string;
+  responderType?: TeamMember["type"] | "none";
+  responderName?: string;
+  skippedReason?: string;
 };
 
 export type InitialAiOutboundAction =
@@ -352,6 +356,40 @@ async function guardAlreadyHandled(input: AgentRunInput) {
   return existing.some((message) => message.triggerId === input.triggerMessageId);
 }
 
+export async function resolveInboundResponderForLead(input: Scope & {
+  leadId: string;
+  lead?: Awaited<ReturnType<typeof listLeadKnowledgeRecords>>[number];
+  allowHumanReviewResponder?: boolean;
+}) {
+  const lead = input.lead ?? (await listLeadKnowledgeRecords(input)).find((record) => record.id === input.leadId);
+  if (!lead) return { mode: "none" as const, reason: "Lead was not found." };
+  if (!input.allowHumanReviewResponder && (lead.crmStatus === "human_review" || lead.qualificationStage === "human_review")) {
+    return { mode: "none" as const, reason: "Lead is in human review." };
+  }
+  if (lead.assigneeId) {
+    const assigned = await getTeamMember({ ...input, memberId: lead.assigneeId });
+    if (assigned?.status === "active") {
+      if (assigned.type === "ai_agent_full") {
+        return assigned.autoReplyEnabled
+          ? { mode: "full_ai" as const, member: assigned }
+          : { mode: "ai_disabled" as const, member: assigned, reason: "Assigned AI auto-reply is disabled." };
+      }
+      if (assigned.type === "ai_agent_assisted") {
+        return { mode: "assisted_ai" as const, member: assigned, reason: "Assisted AI requires approval before external replies." };
+      }
+      return { mode: "human" as const, member: assigned, reason: "Lead is assigned to a human team member." };
+    }
+  }
+  if (lead.qualificationStage === "qualified" || lead.crmStatus === "interested") {
+    return { mode: "none" as const, reason: "Qualified lead has no active AI responder." };
+  }
+  const fallback = await findPrimaryQualificationAgent(input);
+  if (!fallback) return { mode: "none" as const, reason: "No active qualification AI agent is configured." };
+  return fallback.autoReplyEnabled
+    ? { mode: "full_ai" as const, member: fallback }
+    : { mode: "ai_disabled" as const, member: fallback, reason: "Default qualification AI auto-reply is disabled." };
+}
+
 export async function runAgentForInboundLead(input: AgentRunInput): Promise<AgentRunResult> {
   const now = input.now ?? new Date().toISOString();
   if (await guardAlreadyHandled(input)) {
@@ -366,8 +404,34 @@ export async function runAgentForInboundLead(input: AgentRunInput): Promise<Agen
   if (!triggerMessage || triggerMessage.direction !== "inbound") return { action: "no_action", reason: "Trigger is not an inbound message." };
   if (latestConversationMessage?.direction === "outbound") return { action: "skipped_loop_guard", reason: "Last external message is already from Leadsy." };
 
-  const agent = await findPrimaryQualificationAgent(input);
-  if (!agent) return { action: "no_agent_available", reason: "No active qualification AI agent is configured." };
+  const responder = await resolveInboundResponderForLead({
+    ...input,
+    lead,
+    allowHumanReviewResponder: escalationRequested(triggerMessage.body)
+  });
+  if (!responder.member) {
+    return { action: responder.mode === "none" ? "no_action" : "no_agent_available", reason: responder.reason, skippedReason: responder.reason, responderType: "none" };
+  }
+  const agent = responder.member;
+  if (responder.mode === "human" || responder.mode === "assisted_ai" || responder.mode === "ai_disabled") {
+    await routeCrmEventToTasks({
+      ...input,
+      eventType: "inbound_message",
+      leadId: input.leadId,
+      assigneeId: agent.id,
+      source: "agent_runtime",
+      reason: responder.reason ?? "New inbound message needs assigned owner handling."
+    });
+    return {
+      action: "no_action",
+      memberId: agent.id,
+      responderMemberId: agent.id,
+      responderType: agent.type,
+      responderName: agent.name,
+      reason: responder.reason,
+      skippedReason: responder.reason
+    };
+  }
   const context = await buildLeadAiContext({ ...input, memberId: agent.id });
   if (!context) return { action: "no_action", reason: "Lead context was not found." };
 
@@ -404,7 +468,7 @@ export async function runAgentForInboundLead(input: AgentRunInput): Promise<Agen
       source: "agent_runtime",
       reason: "Escalation keyword detected during AI qualification."
     });
-    return { action: "escalated_to_human", memberId: agent.id };
+    return { action: "escalated_to_human", memberId: agent.id, responderMemberId: agent.id, responderType: agent.type, responderName: agent.name };
   }
 
   const fields = context.qualificationFields;
@@ -476,12 +540,25 @@ export async function runAgentForInboundLead(input: AgentRunInput): Promise<Agen
     return {
       action: "assigned_to_pipeline_owner",
       memberId: agent.id,
+      responderMemberId: agent.id,
+      responderType: agent.type,
+      responderName: agent.name,
       assignedMemberId: owner?.id,
       replyBody
     };
   }
 
-  if (!agent.autoReplyEnabled) return { action: "no_action", memberId: agent.id, reason: "Agent auto-reply is disabled." };
+  if (!agent.autoReplyEnabled) {
+    return {
+      action: "no_action",
+      memberId: agent.id,
+      responderMemberId: agent.id,
+      responderType: agent.type,
+      responderName: agent.name,
+      reason: "Agent auto-reply is disabled.",
+      skippedReason: "Agent auto-reply is disabled."
+    };
+  }
 
   const ai = await generateLeadAiReply({
     ...input,
@@ -536,6 +613,9 @@ export async function runAgentForInboundLead(input: AgentRunInput): Promise<Agen
     return {
       action: "assigned_to_pipeline_owner",
       memberId: agent.id,
+      responderMemberId: agent.id,
+      responderType: agent.type,
+      responderName: agent.name,
       assignedMemberId: owner?.id,
       replyBody
     };
@@ -556,5 +636,5 @@ export async function runAgentForInboundLead(input: AgentRunInput): Promise<Agen
     eventType: "handoff_summary",
     triggerId: `${input.triggerMessageId}:reply`
   });
-  return { action: "auto_replied", memberId: agent.id, replyBody };
+  return { action: "auto_replied", memberId: agent.id, responderMemberId: agent.id, responderType: agent.type, responderName: agent.name, replyBody };
 }

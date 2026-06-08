@@ -105,6 +105,9 @@ export type NotificationRecord = SettingsScope & {
   title: string;
   detail: string;
   href?: string;
+  targetUserId?: string;
+  targetMemberId?: string;
+  targetRole?: "owner" | "assignee" | "manager" | "approval_queue";
   priority: "low" | "medium" | "high";
   createdAt: string;
   readAt?: string;
@@ -496,6 +499,9 @@ export async function createNotificationRecord(input: SettingsScope & {
   title: string;
   detail: string;
   href?: string;
+  targetUserId?: string;
+  targetMemberId?: string;
+  targetRole?: NotificationRecord["targetRole"];
   priority?: "low" | "medium" | "high";
 }) {
   return mutateState((state) => {
@@ -509,6 +515,9 @@ export async function createNotificationRecord(input: SettingsScope & {
       title: input.title.trim(),
       detail: input.detail.trim(),
       href: input.href,
+      targetUserId: input.targetUserId?.trim() || undefined,
+      targetMemberId: input.targetMemberId?.trim() || undefined,
+      targetRole: input.targetRole,
       priority: input.priority ?? "medium",
       createdAt: now
     };

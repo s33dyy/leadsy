@@ -20,6 +20,7 @@ async function main() {
     } = await import("../apps/web/src/lib/teamspace-store");
     const { assignLeadOwner, listCrmFollowUpTasks, routeCrmEventToTasks } = await import("../apps/web/src/lib/crm-store");
     const { buildLeadBackedInboxItems } = await import("../apps/web/src/lib/inbox-stabilization");
+    const { listNotificationRecords } = await import("../apps/web/src/lib/user-settings-store");
 
     const scope = { tenantId: "tenant_team_chat", ownerId: "owner_team_chat" };
     const qualificationAi = await ensureDefaultQualificationAgent(scope);
@@ -96,6 +97,15 @@ async function main() {
     assert(
       workspaceMessages.some((message) => message.eventType === "assignment_changed" && /Asha Buyer.*Qualification AI.*Vedant Human/.test(message.body)),
       "Assignment changes should appear in the workspace team chat"
+    );
+    const assignmentNotifications = await listNotificationRecords(scope);
+    assert(
+      assignmentNotifications.some((notification) => notification.targetRole === "owner" && /Asha Buyer.*Vedant Human/i.test(notification.detail)),
+      "Assignment should notify the workspace owner"
+    );
+    assert(
+      assignmentNotifications.some((notification) => notification.targetRole === "assignee" && notification.targetMemberId === human.id),
+      "Assignment should create a targeted notification for the assignee"
     );
 
     const ordinaryHumanMessage = await postTeamThreadMessage({

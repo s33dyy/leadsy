@@ -25,6 +25,19 @@ type LeadAiRuntimeContext = LeadAiContext & {
   aiSettings: Awaited<ReturnType<typeof getAiWorkspaceSettings>>;
 };
 
+export type OwnerBusinessContext = {
+  businessName: string;
+  externalIdentity: string;
+  industry?: string;
+  website?: string;
+  markets: string[];
+  services: string[];
+  servicesHandled: string[];
+  communicationStyle: string;
+  knowledgeBase?: string;
+  fallbackUsed: boolean;
+};
+
 type OpenRouterResponse = {
   id?: string;
   model?: string;
@@ -42,6 +55,7 @@ type OpenRouterResponse = {
 };
 
 const coreFields = ["company", "need", "budget", "timeline", "authority"] as const;
+const platformPlaceholderPattern = /\b(leadsy|lead qualification|whatsapp follow-up|appointment booking|crm routing|assignment|bookings|follow-up automation)\b/i;
 
 function clean(value: unknown) {
   return typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
@@ -51,6 +65,10 @@ function compactList(values: unknown, fallback: string[] = []) {
   return Array.isArray(values)
     ? values.map(clean).filter(Boolean).slice(0, 12)
     : fallback;
+}
+
+function ownerList(values: unknown) {
+  return compactList(values).filter((value) => !platformPlaceholderPattern.test(value));
 }
 
 function parseNumber(value: unknown) {
@@ -121,13 +139,39 @@ function leadName(context: LeadAiContext) {
   return clean(context.lead.contact.displayName).split(/\s+/)[0] || "there";
 }
 
+export function buildOwnerBusinessContext(context: Pick<LeadAiContext, "workspace" | "operator">): OwnerBusinessContext {
+  const businessName = clean(context.workspace.businessName);
+  const safeBusinessName = businessName && !/^leadsy workspace$/i.test(businessName) && !/^leadsy$/i.test(businessName)
+    ? businessName
+    : "";
+  const services = ownerList(context.workspace.services);
+  const servicesHandled = ownerList(context.operator.servicesHandled);
+  const mergedServices = [...new Set([...services, ...servicesHandled])].slice(0, 8);
+  const knowledgeBase = clean(context.operator.knowledgeBase);
+  const safeKnowledgeBase = knowledgeBase && !/^add operator-specific context/i.test(knowledgeBase) ? knowledgeBase : "";
+  const externalIdentity = safeBusinessName ? `${safeBusinessName} team` : "our team";
+  return {
+    businessName: safeBusinessName || "the business",
+    externalIdentity,
+    industry: clean(context.workspace.industry) && !/sales operations/i.test(clean(context.workspace.industry)) ? clean(context.workspace.industry) : undefined,
+    website: clean(context.workspace.website) || undefined,
+    markets: ownerList(context.workspace.markets),
+    services: mergedServices,
+    servicesHandled,
+    communicationStyle: clean(context.operator.communicationStyle) || "Concise, helpful, and consultative",
+    knowledgeBase: safeKnowledgeBase || undefined,
+    fallbackUsed: !safeBusinessName || mergedServices.length === 0
+  };
+}
+
 function workspaceServicePhrase(context: LeadAiContext) {
-  const services = compactList(context.workspace.services);
+  const ownerBusiness = buildOwnerBusinessContext(context);
+  const services = ownerBusiness.services;
   if (services.length) return services.slice(0, 3).join(", ");
   if (/content|marketing|seo|linkedin/i.test(`${context.workspace.industry} ${context.workspace.businessName}`)) {
     return "content marketing";
   }
-  return "your sales process";
+  return "your requirement";
 }
 
 function fieldQuestion(field: string, context: LeadAiContext) {
@@ -146,33 +190,68 @@ function nextMissingField(context: LeadAiContext) {
   return coreFields.find((field) => !fieldValue(context, field));
 }
 
+function latestInboundBody(context: LeadAiContext) {
+  return [...context.recentMessages].reverse().find((message) => message.direction === "inbound")?.body ?? "";
+}
+
+function asksAboutServices(text: string) {
+  return /\b(services|what do you do|what else|do you offer|offerings|speciali[sz]e|best at)\b/i.test(text);
+}
+
+function oneQuestion(text: string) {
+  const firstQuestion = text.indexOf("?");
+  if (firstQuestion < 0) return text;
+  return text.slice(0, firstQuestion + 1) + text.slice(firstQuestion + 1).replace(/\?/g, ".");
+}
+
+function sanitizeLeadFacingReply(text: string, context: LeadAiContext) {
+  const ownerBusiness = buildOwnerBusinessContext(context);
+  let reply = clean(text)
+    .replace(/\bQualification AI\b/gi, ownerBusiness.externalIdentity)
+    .replace(/\bfrom Leadsy\b/gi, `from ${ownerBusiness.businessName}`)
+    .replace(/\bLeadsy\b/g, ownerBusiness.businessName)
+    .replace(/\bqualification\b/gi, "fit")
+    .replace(/\bfollow-up automation\b/gi, "next steps")
+    .replace(/\bassignment\b/gi, "handoff")
+    .replace(/\bbookings\b/gi, "meeting times")
+    .replace(/\bCRM routing\b/gi, "team routing");
+  reply = reply.replace(/\s+/g, " ").trim();
+  return oneQuestion(reply);
+}
+
 function deterministicReply(context: LeadAiRuntimeContext, purpose: LeadAiReplyPurpose, options: { ownerName?: string; slotText?: string } = {}): LeadAiReplyResult {
   const firstName = leadName(context);
-  const agentName = clean(context.member?.name) || "Leadsy";
+  const ownerBusiness = buildOwnerBusinessContext(context);
   const company = fieldValue(context, "company");
   const need = fieldValue(context, "need");
   const servicePhrase = workspaceServicePhrase(context);
+  const serviceList = ownerBusiness.services.length ? ownerBusiness.services.slice(0, 4).join(", ") : servicePhrase;
   const missing = nextMissingField(context);
   const knownLine = company && need
     ? `${company} is looking at ${need}.`
     : company
       ? `This is for ${company}.`
       : need
-        ? `You are looking at ${need}.`
-        : `I can help with ${servicePhrase}.`;
+      ? `You are looking at ${need}.`
+      : `I can help with ${servicePhrase}.`;
+
+  if (asksAboutServices(latestInboundBody(context))) {
+    const reply = `${ownerBusiness.businessName === "the business" ? "We" : ownerBusiness.businessName} can help with ${serviceList}. ${missing && missing !== "need" ? fieldQuestion(missing, context) : "What outcome should we focus on first?"}`;
+    return { reply: sanitizeLeadFacingReply(reply, context), extractedFields: {}, nextMissingField: missing, shouldEscalate: false, confidence: 0.58, provider: "deterministic" };
+  }
 
   if (purpose === "qualified_handoff") {
     const reply = options.slotText
       ? `Thanks ${firstName}. ${options.ownerName ?? "Our sales owner"} has time at ${options.slotText}. Which slot works for you?`
       : `Thanks ${firstName}. ${options.ownerName ?? "Our sales owner"} will take this forward with the next step.`;
-    return { reply, extractedFields: {}, shouldEscalate: false, confidence: 0.62, provider: "deterministic" };
+    return { reply: sanitizeLeadFacingReply(reply, context), extractedFields: {}, shouldEscalate: false, confidence: 0.62, provider: "deterministic" };
   }
 
   const question = missing ? fieldQuestion(missing, context) : "Would you like me to route this to the right sales owner?";
   const reply = purpose === "initial_outbound"
-    ? `Hi ${firstName}, I am ${agentName} from ${clean(context.workspace.businessName) || "Leadsy"}. ${knownLine} ${question}`
+    ? `Hi ${firstName}, this is ${ownerBusiness.externalIdentity}. ${knownLine} ${question}`
     : `${knownLine} ${question}`;
-  return { reply, extractedFields: {}, nextMissingField: missing, shouldEscalate: false, confidence: 0.55, provider: "deterministic" };
+  return { reply: sanitizeLeadFacingReply(reply, context), extractedFields: {}, nextMissingField: missing, shouldEscalate: false, confidence: 0.55, provider: "deterministic" };
 }
 
 function aiTaskForPurpose(purpose: LeadAiReplyPurpose): LeadsyAiTask {
@@ -199,6 +278,7 @@ function envForTask(context: LeadAiRuntimeContext, task: LeadsyAiTask): Record<s
 }
 
 function contextForPrompt(context: LeadAiRuntimeContext, purpose: LeadAiReplyPurpose, options: { ownerName?: string; slotText?: string }) {
+  const ownerBusiness = buildOwnerBusinessContext(context);
   return {
     purpose,
     lead: {
@@ -219,8 +299,34 @@ function contextForPrompt(context: LeadAiRuntimeContext, purpose: LeadAiReplyPur
     internalNotes: context.internalNotes,
     assignmentHistory: context.assignmentHistory.slice(-6),
     openTasks: context.openTasks.slice(0, 6),
-    workspace: context.workspace,
-    operator: context.operator,
+    workspace: {
+      businessName: ownerBusiness.businessName,
+      industry: ownerBusiness.industry,
+      website: ownerBusiness.website,
+      services: ownerBusiness.services,
+      markets: ownerBusiness.markets,
+      leadSources: ownerList(context.workspace.leadSources),
+      pipelineStages: compactList(context.workspace.pipelineStages),
+      qualificationFields: compactList(context.workspace.qualificationFields),
+      timezone: context.workspace.timezone,
+      currency: context.workspace.currency,
+      calendarDefaults: clean(context.workspace.calendarDefaults)
+    },
+    operator: {
+      roleTitle: clean(context.operator.roleTitle),
+      seniority: clean(context.operator.seniority),
+      languages: compactList(context.operator.languages),
+      timezone: clean(context.operator.timezone),
+      workingHours: clean(context.operator.workingHours),
+      communicationStyle: ownerBusiness.communicationStyle,
+      expertise: ownerList(context.operator.expertise),
+      markets: ownerBusiness.markets,
+      servicesHandled: ownerBusiness.servicesHandled,
+      escalationPreferences: clean(context.operator.escalationPreferences),
+      restrictedClaims: compactList(context.operator.restrictedClaims),
+      knowledgeBase: ownerBusiness.knowledgeBase
+    },
+    ownerBusiness,
     agent: context.member
       ? {
           name: context.member.name,
@@ -313,7 +419,7 @@ export async function generateLeadAiReply(input: Scope & {
         authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
         "content-type": "application/json",
         "http-referer": process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
-        "x-title": "Leadsy Qualification AI"
+        "x-title": "Owner Sales Assistant"
       },
       body: JSON.stringify({
         model: selection.model,
@@ -321,7 +427,7 @@ export async function generateLeadAiReply(input: Scope & {
           {
             role: "system",
             content:
-              "You are a human-sounding sales teammate inside Leadsy. Use only the provided CRM context. Extract qualification facts from the latest conversation. Ask at most one clear question. Do not mention internal automation, routing, OpenRouter, or model details. Never invent facts. Return JSON only."
+              "You are a human-sounding sales teammate for the owner business in ownerBusiness. Speak as that business or team, never as the CRM platform or as an AI product. Answer the lead's direct question first, then ask at most one clear next question. Use only the provided CRM context. Extract qualification facts from the latest conversation. Do not mention internal automation, routing, OpenRouter, model details, CRM routing, assignment, qualification, bookings, or the platform name unless the lead explicitly asks about them. Never invent facts. Return JSON only."
           },
           {
             role: "user",
@@ -360,6 +466,7 @@ export async function generateLeadAiReply(input: Scope & {
     const payload = JSON.parse(text) as OpenRouterResponse;
     const parsed = resultFromUnknown(parseJsonFromText(payload.choices?.[0]?.message?.content ?? ""));
     if (!parsed) return fallback;
+    parsed.reply = sanitizeLeadFacingReply(parsed.reply, context);
     const cost = openRouterCostFromResponse(payload, stageForPurpose(input.purpose));
     await recordLeadAiUsage({
       tenantId: input.tenantId,
