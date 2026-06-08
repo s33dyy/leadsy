@@ -34,7 +34,7 @@
     "test:railway-start-signal": "tsx scripts/railway-start-signal.test.ts",
     "test:assignment-task-inbox": "tsx scripts/assignment-task-inbox.test.ts",
     "test:demo-seed": "tsx scripts/demo-workspace-seed.test.ts",
-    "test:account-stress-demo": "tsx scripts/account-stress-demo.test.ts",
+    "test:account-stress-demo": "NODE_OPTIONS='--conditions=react-server' tsx scripts/account-stress-demo.test.ts",
     "test:data-dir": "tsx scripts/data-dir.test.ts",
     "test:automation-retirement": "tsx scripts/automation-retirement.test.ts",
     "test:auth-page-surface": "tsx scripts/auth-page-surface.test.ts",

@@ -17,6 +17,8 @@ async function main() {
   const root = await mkdtemp(join(tmpdir(), "leadsy-account-stress-demo-"));
   const dataDir = join(root, "data");
   await mkdir(dataDir, { recursive: true });
+  process.env.LEADSY_DATA_DIR = dataDir;
+  process.env.USD_INR_RATE = "83";
   const targetOwner = {
     id: "usr_target_owner",
     tenantId: "tenant_target",
@@ -108,6 +110,7 @@ async function main() {
   });
 
   const seed = await import("../apps/web/src/lib/account-stress-demo-seed");
+  const { getCostReceipt } = await import("../apps/web/src/lib/cost-receipt");
   await assert.rejects(
     () => seed.seedAccountStressDemo({ email: "missing@example.com", confirm: "missing@example.com", dataDir }),
     /target_account_not_found/
@@ -188,6 +191,12 @@ async function main() {
   const sender = senders.senders.find((item: Json) => item.tenantId === targetOwner.tenantId && item.ownerId === targetOwner.id);
   assert.equal(sender.transportMode, "simulator");
   assert.equal(sender.status, "approved");
+
+  const receipt = await getCostReceipt({ tenantId: targetOwner.tenantId, ownerId: targetOwner.id });
+  assert(receipt.summary.conversations.simulatedMessages >= first.counts.messages, "receipt should include all simulator messages as zero-cost tracked conversations");
+  assert(receipt.summary.openrouter.requests >= 4, "stress demo should seed realistic AI utilization receipt rows");
+  assert(receipt.summary.openrouter.totalInr > 0, "stress demo should show non-zero AI utilization spend");
+  assert(receipt.lineItems.some((item: Json) => item.category === "openrouter" && item.label.includes("Qualification")), "receipt should explain qualification AI spend");
 
   console.log("account stress demo seed regression passed");
 }
