@@ -124,10 +124,19 @@ async function main() {
     });
 
     assert.equal(openRouterCalls.length, 1, "qualification replies should call OpenRouter when AI settings enable remote AI");
+    const callMessages = openRouterCalls[0].messages as Array<{ role: string; content: string }>;
+    assert.doesNotMatch(callMessages[0].content, /inside Leadsy|Leadsy Qualification/i, "lead-facing AI prompt should not frame the agent as Leadsy");
+    const promptedContext = JSON.parse(callMessages[1].content) as {
+      workspace: { businessName?: string; services?: string[] };
+      ownerBusiness?: { businessName?: string; services?: string[]; externalIdentity?: string };
+    };
+    assert.equal(promptedContext.ownerBusiness?.businessName, "XYZ Company");
+    assert(promptedContext.ownerBusiness?.services?.some((service) => /SEO blogs/i.test(service)), "owner business context should include saved services");
+    assert.doesNotMatch(JSON.stringify(promptedContext.ownerBusiness), /WhatsApp follow-up|Appointment booking|Lead qualification/i, "owner business context should strip platform placeholders");
     assert.equal(run.memberId, qualificationAgent.id);
     assert.match(run.replyBody ?? "", /NovaFit/i);
     assert.match(run.replyBody ?? "", /SEO blog|LinkedIn|content/i);
-    assert.doesNotMatch(run.replyBody ?? "", /qualification|follow-up|assignment|bookings/i);
+    assert.doesNotMatch(run.replyBody ?? "", /Leadsy|qualification|follow-up|assignment|bookings/i);
     assert.equal((run.replyBody?.match(/\?/g) ?? []).length <= 1, true, "AI reply should ask at most one question");
 
     const lead = (await listLeadKnowledgeRecords(scope)).find((record) => record.id === inbound.lead.id);
@@ -142,6 +151,50 @@ async function main() {
     assert(receipt.lineItems.some((item) => item.category === "openrouter" && /Qualification/i.test(item.label)));
 
     assert.equal(closer.name, "Sales Manager");
+
+    const fallbackScope = { tenantId: "tenant_owner_fallback", ownerId: "owner_owner_fallback" };
+    await updateWorkspaceBusinessSettings({
+      ...fallbackScope,
+      businessName: "XYZ Company",
+      industry: "Content marketing",
+      services: ["SEO blogs", "LinkedIn ghostwriting", "Content calendars"],
+      qualificationFields: ["company", "need", "budget", "timeline", "authority"]
+    });
+    await updateOperatorProfileSettings({
+      ...fallbackScope,
+      communicationStyle: "Warm and direct",
+      knowledgeBase: "XYZ Company helps founders turn expertise into SEO blogs, LinkedIn posts, and monthly content calendars."
+    });
+    await createTeamMember({
+      ...fallbackScope,
+      type: "ai_agent_full",
+      name: "Qualification AI",
+      role: "agent",
+      pipelineStages: ["new", "collecting"],
+      behaviorInstructions: "Represent XYZ Company and answer service questions directly.",
+      autoReplyEnabled: true
+    });
+    const serviceQuestion = await saveTwilioInboundMessage({
+      ...fallbackScope,
+      source: "twilio_simulator",
+      messageSid: "SIMIN_OWNER_SERVICES",
+      from: "whatsapp:+919000002222",
+      to: "whatsapp:leadsy-simulator",
+      profileName: "Devika",
+      body: "what are your services?",
+      receivedAt: "2026-06-08T06:00:00.000Z"
+    });
+    const fallbackRun = await runAgentForInboundLead({
+      ...fallbackScope,
+      leadId: serviceQuestion.lead.id,
+      conversationId: serviceQuestion.conversation.id,
+      triggerMessageId: serviceQuestion.saved[0].id,
+      now: "2026-06-08T06:01:00.000Z"
+    });
+    assert.equal(fallbackRun.action, "auto_replied");
+    assert.match(fallbackRun.replyBody ?? "", /XYZ Company|SEO blogs|LinkedIn ghostwriting|Content calendars/i);
+    assert.doesNotMatch(fallbackRun.replyBody ?? "", /Leadsy|Qualification AI|WhatsApp follow-up|Appointment booking|qualification|assignment|bookings/i);
+    assert(((fallbackRun.replyBody ?? "").match(/\?/g) ?? []).length <= 1, "fallback service reply should ask at most one question");
   } finally {
     globalThis.fetch = originalFetch;
     await rm(tempDir, { recursive: true, force: true });

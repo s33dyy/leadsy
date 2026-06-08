@@ -610,6 +610,7 @@ function upsertLead(state: LeadKnowledgeState, scope: Scope, input: {
   campaignId?: string;
   assigneeId?: string;
   assigneeName?: string;
+  assigneeIsDefault?: boolean;
   crmStatus?: LeadCrmStatus;
   productPipelineStatus?: LeadProductPipelineStatus;
   qualificationFields?: LeadQualificationFields;
@@ -623,6 +624,11 @@ function upsertLead(state: LeadKnowledgeState, scope: Scope, input: {
   if (existing) {
     ensureLeadCrmDefaults(existing);
     const defaultAssignee = defaultAssigneeForLeadSource();
+    const requestedAssigneeId = input.assigneeId?.trim();
+    const requestedAssigneeName = input.assigneeName?.trim();
+    const requestedDefaultAssignee =
+      input.assigneeIsDefault ||
+      requestedAssigneeId === defaultAssignee.assigneeId && requestedAssigneeName === defaultAssignee.assigneeName;
     existing.identityKeys = uniqueStrings([...existing.identityKeys, ...identityKeys]);
     existing.contact = mergeContacts(existing.contact, contact);
     existing.summary = input.summary || existing.summary;
@@ -630,8 +636,13 @@ function upsertLead(state: LeadKnowledgeState, scope: Scope, input: {
     existing.facts = uniqueStrings([...(input.facts ?? []), ...existing.facts]).slice(0, 30);
     existing.leadSource = input.leadSource || existing.leadSource;
     existing.campaignId = input.campaignId || existing.campaignId;
-    existing.assigneeId = input.assigneeId || existing.assigneeId || defaultAssignee.assigneeId;
-    existing.assigneeName = input.assigneeName || existing.assigneeName || defaultAssignee.assigneeName;
+    if (!existing.assigneeId || !existing.assigneeName) {
+      existing.assigneeId = requestedAssigneeId || existing.assigneeId || defaultAssignee.assigneeId;
+      existing.assigneeName = requestedAssigneeName || existing.assigneeName || defaultAssignee.assigneeName;
+    } else if (requestedAssigneeId && requestedAssigneeName && !requestedDefaultAssignee) {
+      existing.assigneeId = requestedAssigneeId;
+      existing.assigneeName = requestedAssigneeName;
+    }
     existing.crmStatus = input.crmStatus || existing.crmStatus;
     existing.productPipelineStatus = input.productPipelineStatus || existing.productPipelineStatus;
     existing.qualificationFields = { ...existing.qualificationFields, ...(input.qualificationFields ?? {}) };
@@ -807,7 +818,8 @@ export async function appendManualLeadMessage(input: Scope & {
     facts: [input.body],
     leadSource: channel === "manual" ? "Manual" : channelLabelForSource(channel),
     assigneeId: defaultAssignee.assigneeId,
-    assigneeName: defaultAssignee.assigneeName
+    assigneeName: defaultAssignee.assigneeName,
+    assigneeIsDefault: true
   });
   const conversation = upsertConversation(state, input, {
     leadId: lead.id,
@@ -868,7 +880,8 @@ export async function saveTwilioInboundMessage(input: Scope & {
     nextAction: "Reply in Leadsy-approved channel and qualify intent.",
     leadSource: input.leadSource ?? (source === "twilio_simulator" ? "Twilio Simulator" : "Twilio WhatsApp"),
     assigneeId: defaultAssignee.assigneeId,
-    assigneeName: defaultAssignee.assigneeName
+    assigneeName: defaultAssignee.assigneeName,
+    assigneeIsDefault: true
   });
   const conversation = upsertConversation(state, input, {
     leadId: lead.id,
@@ -934,7 +947,8 @@ export async function appendTwilioOutboundMessage(input: Scope & {
     contact,
     leadSource: input.leadSource ?? (source === "twilio_simulator" ? "Twilio Simulator" : "Twilio WhatsApp"),
     assigneeId: defaultAssignee.assigneeId,
-    assigneeName: defaultAssignee.assigneeName
+    assigneeName: defaultAssignee.assigneeName,
+    assigneeIsDefault: true
   });
   const conversation = upsertConversation(state, input, {
     leadId: lead.id,

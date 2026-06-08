@@ -253,6 +253,46 @@ async function recordAssignment(input: Scope & {
   return history;
 }
 
+export async function createAssignmentNotifications(input: Scope & {
+  lead: LeadKnowledgeRecord;
+  toAssigneeId: string;
+  toAssigneeName: string;
+  fromAssigneeName?: string;
+  method: CrmAssignmentMethod;
+  reason?: string;
+}) {
+  const leadName = input.lead.contact.displayName || input.lead.contact.phone || "Lead";
+  const fromName = input.fromAssigneeName || "Unassigned";
+  const reason = input.reason?.trim();
+  const detail = `${leadName} assigned from ${fromName} to ${input.toAssigneeName}. Method: ${input.method}${reason ? `. Reason: ${reason}` : ""}.`;
+  const href = `/app/leads?contact=${input.lead.id}`;
+  const assignee = await getTeamMember({ tenantId: input.tenantId, ownerId: input.ownerId, memberId: input.toAssigneeId });
+  const ownerNotification = await createNotificationRecord({
+    tenantId: input.tenantId,
+    ownerId: input.ownerId,
+    type: "assignedToMe",
+    title: `Lead assigned to ${input.toAssigneeName}`,
+    detail,
+    href,
+    targetUserId: input.ownerId,
+    targetRole: "owner",
+    priority: "medium"
+  });
+  const assigneeNotification = await createNotificationRecord({
+    tenantId: input.tenantId,
+    ownerId: input.ownerId,
+    type: assignee?.type?.startsWith("ai_agent") ? "humanReviewNeeded" : "assignedToMe",
+    title: assignee?.type?.startsWith("ai_agent") ? `AI queue assignment: ${leadName}` : `Lead assigned: ${leadName}`,
+    detail,
+    href,
+    targetUserId: assignee?.authUserId,
+    targetMemberId: input.toAssigneeId,
+    targetRole: assignee?.type?.startsWith("ai_agent") ? "approval_queue" : "assignee",
+    priority: assignee?.type?.startsWith("ai_agent") ? "high" : "medium"
+  });
+  return [ownerNotification, assigneeNotification];
+}
+
 export async function recordLeadAssignmentKnowledge(input: Scope & {
   leadId: string;
   toAssigneeId: string;
@@ -308,14 +348,15 @@ export async function recordLeadAssignmentKnowledge(input: Scope & {
     triggerId: `workspace-assignment:${input.historyId ?? lead.id}:${input.toAssigneeId}:${assignedAt}`
   });
 
-  await createNotificationRecord({
+  await createAssignmentNotifications({
     tenantId: input.tenantId,
     ownerId: input.ownerId,
-    type: "assignedToMe",
-    title: `Lead assigned to ${input.toAssigneeName}`,
-    detail: `${lead.contact.displayName || "Lead"} assigned to ${input.toAssigneeName}${reason ? `: ${reason}` : "."}`,
-    href: `/app/leads?contact=${lead.id}`,
-    priority: "medium"
+    lead,
+    toAssigneeId: input.toAssigneeId,
+    toAssigneeName: input.toAssigneeName,
+    fromAssigneeName: input.fromAssigneeName,
+    method: input.method,
+    reason
   });
 
   return updated;
