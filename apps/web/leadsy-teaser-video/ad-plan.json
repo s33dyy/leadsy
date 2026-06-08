@@ -1,0 +1,49 @@
+{
+  "title": "Leadsy Click It Forget It",
+  "slug": "leadsy-click-it-forget-it",
+  "width": 1920,
+  "height": 1080,
+  "fps": 30,
+  "durationSeconds": 5,
+  "durationFrames": 150,
+  "production": {
+    "pipeline": "openmontage/cinematic",
+    "rendererFamily": "cinematic-trailer",
+    "renderRuntime": "remotion",
+    "sourceUrl": "https://leadsy.up.railway.app",
+    "captureApp": "Brave Browser",
+    "runtimeDecision": "Remotion is locked by user requirement and OpenMontage preflight reports remotion, ffmpeg, and hyperframes available.",
+    "mood": ["premium", "minimal", "dark", "cinematic", "high contrast"]
+  },
+  "audio": {
+    "ambientPad": "../public/leadsy-teaser/audio/ambient-pad.wav",
+    "clickImpact": "../public/leadsy-teaser/audio/click-impact.wav",
+    "clickImpactFrame": 32
+  },
+  "scenes": [
+    {
+      "id": "click-it",
+      "fromFrame": 0,
+      "durationFrames": 60,
+      "asset": "../public/leadsy-teaser/ui/dashboard-brave.png",
+      "clickFrame": 32,
+      "clickTarget": { "x": 1688, "y": 82 },
+      "clickLabel": "+ New",
+      "text": "CLICK IT."
+    },
+    {
+      "id": "forget-it",
+      "fromFrame": 60,
+      "durationFrames": 60,
+      "asset": "../public/leadsy-teaser/lifestyle/reading-couch.jpg",
+      "text": "FORGET IT."
+    },
+    {
+      "id": "end-card",
+      "fromFrame": 120,
+      "durationFrames": 30,
+      "headline": "GET YOUR NUMBER TODAY",
+      "url": "leadsy.up.railway.app"
+    }
+  ]
+}
