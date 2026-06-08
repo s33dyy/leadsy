@@ -28,6 +28,7 @@ import {
   type LucideIcon
 } from "lucide-react";
 import type { SessionUser } from "@leadsy/security";
+import { CommandSearchModal } from "@/components/command-search-modal";
 import { CostReceiptButton } from "@/components/cost-receipt-button";
 import { OnboardingWizard } from "@/components/onboarding-wizard";
 import { ToastProvider } from "@/components/toast-provider";
@@ -195,6 +196,7 @@ export function AppShell({
   const [notificationRecords, setNotificationRecords] = useState<NotificationRecord[]>([]);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [logoutPending, setLogoutPending] = useState(false);
+  const [commandSearchOpen, setCommandSearchOpen] = useState(false);
   const title = pageTitle(pathname, searchParams);
   const onboardingReminder = session.onboardingCompletedAt ? 0 : 1;
   const unreadNotifications = notificationRecords.filter((item) => !item.readAt);
@@ -215,6 +217,19 @@ export function AppShell({
       cancelled = true;
       window.clearInterval(timer);
     };
+  }, []);
+
+  useEffect(() => {
+    function handleCommandSearchShortcut(event: KeyboardEvent) {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "k") return;
+      event.preventDefault();
+      setCommandSearchOpen(true);
+      setNotificationsOpen(false);
+      setUserMenuOpen(false);
+    }
+
+    window.addEventListener("keydown", handleCommandSearchShortcut);
+    return () => window.removeEventListener("keydown", handleCommandSearchShortcut);
   }, []);
 
   const notificationItems = useMemo(
@@ -310,6 +325,7 @@ export function AppShell({
 
   return (
     <ToastProvider>
+      <CommandSearchModal open={commandSearchOpen} onOpenChange={setCommandSearchOpen} />
       <div data-layout="lovable-operator" className="flex h-[100dvh] max-h-[100dvh] w-full overflow-hidden bg-background text-foreground">
         <aside
           data-testid="global-sidebar"
@@ -335,13 +351,21 @@ export function AppShell({
 
           {!collapsed ? (
             <div className="px-2.5 pt-2.5">
-              <Link href="/app/leads?q=" className="flex h-7 w-full items-center gap-2 rounded-[5px] border border-sidebar-border bg-background/40 px-2 text-left text-[12px] text-muted-foreground hover:bg-sidebar-accent">
+              <button
+                type="button"
+                onClick={() => {
+                  setCommandSearchOpen(true);
+                  setNotificationsOpen(false);
+                  setUserMenuOpen(false);
+                }}
+                className="flex h-7 w-full items-center gap-2 rounded-[5px] border border-sidebar-border bg-background/40 px-2 text-left text-[12px] text-muted-foreground hover:bg-sidebar-accent"
+              >
                 <Search className="h-3.5 w-3.5" />
                 <span className="flex-1">Quick search</span>
                 <span className="kbd">
                   <Command className="h-2.5 w-2.5" />K
                 </span>
-              </Link>
+              </button>
             </div>
           ) : null}
 
