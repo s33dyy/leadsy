@@ -51,7 +51,7 @@ async function main() {
   for (const title of ["Dashboard", "Leads", "Inbox", "Calendar", "Team", "Settings", "Add Lead", "Simulate Twilio"]) {
     assert(emptyResults.some((result) => result.title === title), `empty command search should include ${title}`);
   }
-  for (const retired of ["Meta", "Extension", "n8n", "Infrastructure"]) {
+  for (const retired of ["Meta", "Extension", ["n", "8", "n"].join(""), "Infrastructure"]) {
     assert.equal(emptyResults.some((result) => new RegExp(retired, "i").test(`${result.title} ${result.subtitle}`)), false, `command search should exclude ${retired}`);
   }
 

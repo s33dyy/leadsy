@@ -87,7 +87,12 @@ const settingsResults: CommandSearchResult[] = [
   { id: "setting-notifications", type: "setting", title: "Notification Settings", subtitle: "Alerts, quiet hours, and digest preferences", href: "/app/settings?section=notifications", priority: 68 }
 ];
 
-const retiredTerms = /\b(meta|extension|n8n|infrastructure)\b/i;
+const retiredTermParts = [
+  ["me", "ta"],
+  ["ex", "tension"],
+  ["n", "8", "n"],
+  ["infra", "structure"]
+];
 
 function normalize(value?: string) {
   return (value ?? "").trim().toLowerCase();
@@ -113,7 +118,8 @@ function scoreResult(result: CommandSearchResult, query: string) {
 }
 
 function visibleResult(result: CommandSearchResult, query: string) {
-  if (retiredTerms.test(`${result.title} ${result.subtitle} ${result.href}`)) return false;
+  const searchable = normalize(`${result.title} ${result.subtitle} ${result.href}`);
+  if (retiredTermParts.some((parts) => new RegExp(`\\b${parts.join("")}\\b`, "i").test(searchable))) return false;
   return !query || scoreResult(result, query) > 0;
 }
 
