@@ -8,6 +8,7 @@ import {
 } from "@/lib/twilio-simulator";
 import { runAgentForInboundLead } from "@/lib/agent-runtime";
 import { buildSimulatorSnapshot } from "@/lib/live-conversation-snapshots";
+import { routeCrmEventToTasks } from "@/lib/crm-store";
 
 export const runtime = "nodejs";
 
@@ -63,6 +64,17 @@ export async function POST(request: NextRequest) {
           triggerMessageId: message.id
         })
       : { action: "skipped_loop_guard" as const, reason: "Inbound message was already stored." };
+  if (message) {
+    await routeCrmEventToTasks({
+      tenantId: auth.session.tenantId,
+      ownerId: auth.session.id,
+      eventType: "inbound_message",
+      leadId: result.lead.id,
+      assigneeId: result.lead.assigneeId,
+      source: "twilio_simulator",
+      reason: "New simulated WhatsApp inbound message needs CRM handling."
+    });
+  }
   audit({
     tenantId: auth.session.tenantId,
     actorId: auth.session.id,

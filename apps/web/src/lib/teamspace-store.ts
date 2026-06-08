@@ -9,12 +9,17 @@ export type TeamMemberRole = "owner" | "admin" | "manager" | "agent";
 export type TeamMemberStatus = "active" | "paused" | "invited";
 export type TeamMemberSenderMode = "none" | "simulator" | "twilio" | "workspace";
 export type TeamThreadAuthorType = "human" | "ai_agent" | "system";
+export type TeamThreadScope = "workspace" | "lead";
 export type TeamThreadEventType =
   | "internal_note"
   | "task_assignment"
   | "handoff_summary"
   | "calendar_proposal"
-  | "agent_guard";
+  | "agent_guard"
+  | "assignment_changed"
+  | "ai_mention"
+  | "task_generated"
+  | "task_approved";
 
 export type TeamMember = {
   id: string;
@@ -46,7 +51,8 @@ export type TeamThreadMessage = {
   id: string;
   tenantId: string;
   ownerId: string;
-  leadId: string;
+  threadScope: TeamThreadScope;
+  leadId?: string;
   conversationId?: string;
   authorMemberId?: string;
   authorType: TeamThreadAuthorType;
@@ -94,7 +100,8 @@ type UpdateTeamMemberInput = Scope & {
 };
 
 type PostThreadInput = Scope & {
-  leadId: string;
+  threadScope?: TeamThreadScope;
+  leadId?: string;
   conversationId?: string;
   authorMemberId?: string;
   authorType: TeamThreadAuthorType;
@@ -191,6 +198,7 @@ function normalizeMember(member: TeamMember): TeamMember {
 function normalizeThreadMessage(message: TeamThreadMessage): TeamThreadMessage {
   return {
     ...message,
+    threadScope: message.threadScope ?? (message.leadId ? "lead" : "workspace"),
     eventType: message.eventType ?? "internal_note",
     visibility: "internal"
   };
@@ -464,9 +472,14 @@ export async function provisionTeamMemberSender(input: Scope & { memberId: strin
 
 export async function postTeamThreadMessage(input: PostThreadInput) {
   return mutateState((state) => {
+    const threadScope = input.threadScope ?? (input.leadId ? "lead" : "workspace");
     if (input.triggerId) {
       const existing = state.threadMessages.find(
-        (message) => scopeMatches(input, message) && message.leadId === input.leadId && message.triggerId === input.triggerId
+        (message) =>
+          scopeMatches(input, message) &&
+          message.threadScope === threadScope &&
+          (!input.leadId || message.leadId === input.leadId) &&
+          message.triggerId === input.triggerId
       );
       if (existing) return { result: existing };
     }
@@ -474,6 +487,7 @@ export async function postTeamThreadMessage(input: PostThreadInput) {
       id: `tthread_${crypto.randomUUID()}`,
       tenantId: input.tenantId,
       ownerId: input.ownerId,
+      threadScope,
       leadId: input.leadId,
       conversationId: input.conversationId,
       authorMemberId: input.authorMemberId,
@@ -494,13 +508,82 @@ export async function postTeamThreadMessage(input: PostThreadInput) {
   });
 }
 
-export async function listTeamThreadMessages(input: Scope & { leadId?: string; conversationId?: string }) {
+export async function listTeamThreadMessages(input: Scope & { threadScope?: TeamThreadScope; leadId?: string; conversationId?: string }) {
   const state = await readState();
+  const requestedScope = input.threadScope;
   return state.threadMessages
     .filter((message) => scopeMatches(input, message))
+    .filter((message) => !requestedScope || message.threadScope === requestedScope)
     .filter((message) => !input.leadId || message.leadId === input.leadId)
     .filter((message) => !input.conversationId || message.conversationId === input.conversationId)
     .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+}
+
+export async function postWorkspaceTeamEvent(input: Scope & {
+  body: string;
+  eventType?: TeamThreadEventType;
+  leadId?: string;
+  conversationId?: string;
+  triggerId?: string;
+}) {
+  return postTeamThreadMessage({
+    tenantId: input.tenantId,
+    ownerId: input.ownerId,
+    threadScope: "workspace",
+    leadId: input.leadId,
+    conversationId: input.conversationId,
+    authorType: "system",
+    body: input.body,
+    eventType: input.eventType ?? "internal_note",
+    triggerId: input.triggerId
+  });
+}
+
+function escapeRegex(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function parseAiMentions(body: string, members: TeamMember[]) {
+  const mentioned = new Map<string, TeamMember>();
+  for (const member of members) {
+    if (!member.type.startsWith("ai_agent")) continue;
+    const pattern = new RegExp(`(^|\\s)@${escapeRegex(member.name)}(?=\\b|\\s|$)`, "i");
+    if (pattern.test(body)) mentioned.set(member.id, member);
+  }
+  return [...mentioned.values()];
+}
+
+export async function runMentionedAgentOnce(input: Scope & { messageId: string }) {
+  const state = await readState();
+  const message = state.threadMessages.find(
+    (candidate) => scopeMatches(input, candidate) && candidate.id === input.messageId && candidate.threadScope === "workspace"
+  );
+  if (!message) return { action: "message_not_found" as const };
+  if (message.authorType !== "human") return { action: "not_human_message" as const };
+
+  const members = state.members.filter((member) => scopeMatches(input, member) && member.status === "active");
+  const mentions = parseAiMentions(message.body, members);
+  if (!mentions.length) return { action: "no_mention" as const };
+
+  const agent = mentions[0];
+  const triggerId = `ai-mention:${message.id}:${agent.id}`;
+  const existing = state.threadMessages.find((candidate) => scopeMatches(input, candidate) && candidate.triggerId === triggerId);
+  if (existing) return { action: "skipped_duplicate" as const, message: existing, agent };
+
+  const response = await postTeamThreadMessage({
+    tenantId: input.tenantId,
+    ownerId: input.ownerId,
+    threadScope: "workspace",
+    leadId: message.leadId,
+    conversationId: message.conversationId,
+    authorType: "ai_agent",
+    authorMemberId: agent.id,
+    body: `${agent.name}: I noted the request. I will use the linked lead context and create a review item instead of starting an autonomous chain.`,
+    eventType: "ai_mention",
+    triggerId
+  });
+
+  return { action: "responded" as const, message: response, agent };
 }
 
 export async function summarizeTeamspaceHealth() {

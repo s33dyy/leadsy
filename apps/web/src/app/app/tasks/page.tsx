@@ -95,7 +95,7 @@ function groupedTasks(rows: TaskRow[]) {
 export default async function TasksPage() {
   const session = await getCurrentSession();
   const crmTasks = session
-    ? await listCrmFollowUpTasks({ tenantId: session.tenantId, ownerId: session.id }, { includeClosed: true })
+    ? await listCrmFollowUpTasks({ tenantId: session.tenantId, ownerId: session.id }, { includeClosed: true, destination: "human_tasks" })
     : [];
   const rows = crmTasks.map(rowFromCrmTask);
   const groups = groupedTasks(rows);

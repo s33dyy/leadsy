@@ -51,6 +51,8 @@ export default async function CommunicationsPage({ searchParams }: Communication
   const active =
     visibleItems.find((item) => item.conversationId === selectedConversationId) ??
     items.find((item) => item.conversationId === selectedConversationId) ??
+    visibleItems.find((item) => item.channelTabs.some((tab) => tab.conversationId === selectedConversationId)) ??
+    items.find((item) => item.channelTabs.some((tab) => tab.conversationId === selectedConversationId)) ??
     visibleItems[0];
   const contextLead = active ? leads.find((lead) => lead.id === active.leadId) : undefined;
   const assignedMember = contextLead?.assigneeId ? teamMembers.find((member) => member.id === contextLead.assigneeId) : undefined;

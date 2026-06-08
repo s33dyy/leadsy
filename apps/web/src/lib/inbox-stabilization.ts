@@ -22,6 +22,15 @@ export type StabilizedInboxItem = {
   qualification: string;
   important: boolean;
   href: string;
+  channelTabs: Array<{
+    channel: Extract<LeadKnowledgeChannel, "whatsapp" | "email" | "call">;
+    label: "WhatsApp" | "Email" | "Calls";
+    conversationId?: string;
+    messageCount: number;
+    lastActivity?: string;
+    preview?: string;
+    messages: StabilizedInboxItem["messages"];
+  }>;
   messages: Array<{
     id: string;
     author: string;
@@ -55,6 +64,14 @@ export function channelLabelForInbox(channels: LeadKnowledgeChannel[]): Stabiliz
   return "WhatsApp";
 }
 
+const orderedChannels: Array<Extract<LeadKnowledgeChannel, "whatsapp" | "email" | "call">> = ["whatsapp", "email", "call"];
+
+function channelTabLabel(channel: Extract<LeadKnowledgeChannel, "whatsapp" | "email" | "call">): "WhatsApp" | "Email" | "Calls" {
+  if (channel === "email") return "Email";
+  if (channel === "call") return "Calls";
+  return "WhatsApp";
+}
+
 function labelFromSlug(value?: string) {
   if (!value) return "Not Yet Collected";
   return value
@@ -77,6 +94,29 @@ export function buildLeadBackedInboxItems(leads: LeadKnowledgeRecord[]): Stabili
     const contact = lead.contact.displayName || lead.contact.handle || lead.contact.phone || lead.contact.email || "Unknown lead";
     const time = relativeTime(lastMessage.sentAt);
     const needsReply = lead.crmStatus === "needs_reply" || lastMessage.direction === "inbound";
+    const channelTabs = orderedChannels
+      .filter((channel) => lead.channels.includes(channel))
+      .map((channel) => {
+        const channelMessages = visibleMessages.filter((message) => message.channel === channel);
+        const latestChannelMessage = latestConversationMessage(channelMessages);
+        const channelConversation = lead.conversations.find((candidate) => candidate.channel === channel);
+        return {
+          channel,
+          label: channelTabLabel(channel),
+          conversationId: channelConversation?.id,
+          messageCount: channelMessages.length,
+          lastActivity: latestChannelMessage?.sentAt ? relativeTime(latestChannelMessage.sentAt) : undefined,
+          preview: latestChannelMessage?.body,
+          messages: channelMessages.slice(-8).map((message) => ({
+            id: message.id,
+            author: message.direction === "outbound" ? "Leadsy" : contact,
+            from: message.direction === "outbound" ? ("us" as const) : ("lead" as const),
+            text: message.body,
+            time: relativeTime(message.sentAt),
+            deliveryStatus: message.deliveryStatus
+          }))
+        };
+      });
     const item: StabilizedInboxItem = {
       id: `lead_${lead.id}`,
       leadId: lead.id,
@@ -98,6 +138,7 @@ export function buildLeadBackedInboxItems(leads: LeadKnowledgeRecord[]): Stabili
       qualification: labelFromSlug(lead.qualificationStage),
       important: lead.crmStatus === "human_review" || lead.crmStatus === "needs_reply",
       href: `/app/communications?conversation=${conversation.id}`,
+      channelTabs,
       messages: visibleMessages.slice(-8).map((message) => ({
         id: message.id,
         author: message.direction === "outbound" ? "Leadsy" : contact,

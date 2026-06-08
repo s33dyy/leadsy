@@ -3,7 +3,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { leadsyDataDir } from "./data-dir";
 import { editLeadKnowledgeRecord, listLeadKnowledgeRecords, type LeadCrmStatus, type LeadKnowledgeRecord } from "./lead-knowledge-store";
-import { ensureDefaultQualificationAgent, postTeamThreadMessage } from "./teamspace-store";
+import { ensureDefaultQualificationAgent, getTeamMember, postTeamThreadMessage, postWorkspaceTeamEvent } from "./teamspace-store";
 import { createNotificationRecord } from "./user-settings-store";
 
 const crmFile = join(leadsyDataDir, "lead-crm.json");
@@ -45,6 +45,19 @@ export type CrmAssignmentHistoryRecord = Scope & {
 
 export type CrmTaskType = "follow_up" | "call" | "whatsapp_follow_up" | "meeting" | "site_visit" | "review_lead" | "custom";
 export type CrmUserRole = "admin" | "manager" | "agent";
+export type CrmTaskDestination = "human_tasks" | "ai_approvals";
+export type CrmTaskEventType =
+  | "inbound_message"
+  | "assignment_changed"
+  | "qualification_completed"
+  | "escalation"
+  | "human_review_needed"
+  | "meeting_created"
+  | "meeting_rescheduled"
+  | "meeting_cancelled"
+  | "delivery_failed"
+  | "stale_needs_reply"
+  | "follow_up_due";
 
 export type CrmTaskNote = {
   id: string;
@@ -65,6 +78,10 @@ export type CrmFollowUpTask = Scope & {
   assigneeId?: string;
   assigneeName?: string;
   dueAt?: string;
+  destination: CrmTaskDestination;
+  eventType?: CrmTaskEventType;
+  dedupeKey?: string;
+  source?: string;
   createdByRole?: CrmUserRole;
   createdById?: string;
   createdByName?: string;
@@ -101,7 +118,7 @@ async function readState(): Promise<CrmState> {
     return {
       assignmentRules: Array.isArray(parsed.assignmentRules) ? parsed.assignmentRules : [],
       assignmentHistory: Array.isArray(parsed.assignmentHistory) ? parsed.assignmentHistory : [],
-      followUpTasks: Array.isArray(parsed.followUpTasks) ? parsed.followUpTasks : [],
+      followUpTasks: Array.isArray(parsed.followUpTasks) ? parsed.followUpTasks.map(normalizeTask) : [],
       qualificationProfiles: Array.isArray(parsed.qualificationProfiles) ? parsed.qualificationProfiles : []
     };
   } catch (error) {
@@ -110,6 +127,13 @@ async function readState(): Promise<CrmState> {
     }
     throw error;
   }
+}
+
+function normalizeTask(task: CrmFollowUpTask): CrmFollowUpTask {
+  return {
+    ...task,
+    destination: task.destination ?? "human_tasks"
+  };
 }
 
 async function writeState(state: CrmState) {
@@ -267,11 +291,21 @@ export async function recordLeadAssignmentKnowledge(input: Scope & {
   await postTeamThreadMessage({
     tenantId: input.tenantId,
     ownerId: input.ownerId,
+    threadScope: "lead",
     leadId: lead.id,
     authorType: "system",
     body: `${assignmentFact}${input.fromAssigneeName ? ` Previous owner: ${input.fromAssigneeName}.` : ""}`,
     eventType: "handoff_summary",
     triggerId: `assignment:${input.historyId ?? lead.id}:${input.toAssigneeId}:${assignedAt}`
+  });
+
+  await postWorkspaceTeamEvent({
+    tenantId: input.tenantId,
+    ownerId: input.ownerId,
+    leadId: lead.id,
+    body: `Lead ${lead.contact.displayName || lead.contact.phone || lead.id} assigned from ${input.fromAssigneeName || "Unassigned"} to ${input.toAssigneeName}. Method: ${input.method}${reason ? `. Reason: ${reason}` : ""}.`,
+    eventType: "assignment_changed",
+    triggerId: `workspace-assignment:${input.historyId ?? lead.id}:${input.toAssigneeId}:${assignedAt}`
   });
 
   await createNotificationRecord({
@@ -327,7 +361,7 @@ export async function assignLeadOwner(input: Scope & {
     assigneeId,
     assigneeName
   });
-  return recordLeadAssignmentKnowledge({
+  const updated = await recordLeadAssignmentKnowledge({
     tenantId: input.tenantId,
     ownerId: input.ownerId,
     leadId: input.leadId,
@@ -340,6 +374,16 @@ export async function assignLeadOwner(input: Scope & {
     historyId: history.id,
     createdAt: history.createdAt
   });
+  await routeCrmEventToTasks({
+    tenantId: input.tenantId,
+    ownerId: input.ownerId,
+    eventType: "assignment_changed",
+    leadId: input.leadId,
+    assigneeId,
+    source: "assignment",
+    reason: input.reason || "Lead owner changed."
+  });
+  return updated;
 }
 
 export async function assignLeadToDefaultQualificationAgent(input: Scope & {
@@ -479,6 +523,10 @@ export async function createCrmFollowUpTask(input: Scope & {
   topic: string;
   description?: string;
   priority?: CrmFollowUpTask["priority"];
+  destination?: CrmTaskDestination;
+  eventType?: CrmTaskEventType;
+  dedupeKey?: string;
+  source?: string;
   assigneeId?: string;
   assigneeName?: string;
   dueAt?: string;
@@ -488,6 +536,17 @@ export async function createCrmFollowUpTask(input: Scope & {
 }) {
   const state = await readState();
   const now = new Date().toISOString();
+  const dedupeKey = input.dedupeKey?.trim();
+  if (dedupeKey) {
+    const existing = state.followUpTasks.find(
+      (task) =>
+        scopeMatches(input, task) &&
+        task.dedupeKey === dedupeKey &&
+        task.status !== "done" &&
+        task.status !== "cancelled"
+    );
+    if (existing) return existing;
+  }
   const task: CrmFollowUpTask = {
     tenantId: input.tenantId,
     ownerId: input.ownerId,
@@ -501,6 +560,10 @@ export async function createCrmFollowUpTask(input: Scope & {
     assigneeId: input.assigneeId?.trim() || undefined,
     assigneeName: input.assigneeName?.trim() || undefined,
     dueAt: input.dueAt?.trim() || undefined,
+    destination: input.destination ?? "human_tasks",
+    eventType: input.eventType,
+    dedupeKey,
+    source: input.source?.trim() || undefined,
     createdByRole: input.createdByRole,
     createdById: input.createdById?.trim() || undefined,
     createdByName: input.createdByName?.trim() || undefined,
@@ -513,13 +576,85 @@ export async function createCrmFollowUpTask(input: Scope & {
   return task;
 }
 
-export async function listCrmFollowUpTasks(scope: Scope, options: { leadId?: string; includeClosed?: boolean } = {}) {
+export async function listCrmFollowUpTasks(scope: Scope, options: { leadId?: string; includeClosed?: boolean; destination?: CrmTaskDestination } = {}) {
   const state = await readState();
   return state.followUpTasks
     .filter((task) => scopeMatches(scope, task))
     .filter((task) => !options.leadId || task.leadId === options.leadId)
+    .filter((task) => !options.destination || task.destination === options.destination)
     .filter((task) => options.includeClosed || (task.status !== "done" && task.status !== "cancelled"))
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+}
+
+function taskTypeForEvent(eventType: CrmTaskEventType): CrmTaskType {
+  if (eventType === "meeting_created" || eventType === "meeting_rescheduled" || eventType === "meeting_cancelled") return "meeting";
+  if (eventType === "inbound_message" || eventType === "stale_needs_reply" || eventType === "follow_up_due") return "whatsapp_follow_up";
+  if (eventType === "human_review_needed" || eventType === "escalation" || eventType === "qualification_completed") return "review_lead";
+  return "follow_up";
+}
+
+function taskTopicForEvent(eventType: CrmTaskEventType) {
+  const labels: Record<CrmTaskEventType, string> = {
+    inbound_message: "Review new inbound message",
+    assignment_changed: "Take over assigned lead",
+    qualification_completed: "Review qualified lead",
+    escalation: "Handle escalated lead",
+    human_review_needed: "Review AI handoff",
+    meeting_created: "Prepare for meeting",
+    meeting_rescheduled: "Confirm rescheduled meeting",
+    meeting_cancelled: "Follow up after cancelled meeting",
+    delivery_failed: "Fix failed message delivery",
+    stale_needs_reply: "Reply to stale lead",
+    follow_up_due: "Complete scheduled follow-up"
+  };
+  return labels[eventType];
+}
+
+export async function routeCrmEventToTasks(input: Scope & {
+  eventType: CrmTaskEventType;
+  leadId: string;
+  assigneeId?: string;
+  source?: string;
+  reason?: string;
+}) {
+  const assignee = input.assigneeId
+    ? await getTeamMember({
+        tenantId: input.tenantId,
+        ownerId: input.ownerId,
+        memberId: input.assigneeId
+      })
+    : null;
+  const destination: CrmTaskDestination = assignee?.type?.startsWith("ai_agent") ? "ai_approvals" : "human_tasks";
+  const assigneeName = assignee?.name;
+  const dedupeKey = `${input.eventType}:${input.leadId}:${input.assigneeId || "unassigned"}:${taskTypeForEvent(input.eventType)}`;
+  const task = await createCrmFollowUpTask({
+    tenantId: input.tenantId,
+    ownerId: input.ownerId,
+    leadId: input.leadId,
+    type: taskTypeForEvent(input.eventType),
+    topic: taskTopicForEvent(input.eventType),
+    description: input.reason,
+    priority: input.eventType === "escalation" || input.eventType === "delivery_failed" ? "high" : "normal",
+    assigneeId: input.assigneeId,
+    assigneeName,
+    destination,
+    eventType: input.eventType,
+    source: input.source,
+    dedupeKey,
+    createdByRole: "agent",
+    createdByName: "Leadsy event router"
+  });
+
+  await postWorkspaceTeamEvent({
+    tenantId: input.tenantId,
+    ownerId: input.ownerId,
+    leadId: input.leadId,
+    body: `Task generated for ${assigneeName || "Unassigned"}: ${task.topic}. Queue: ${destination === "ai_approvals" ? "Approval Queue" : "Tasks"}.`,
+    eventType: "task_generated",
+    triggerId: `task-generated:${task.dedupeKey}`
+  });
+
+  return { destination, task };
 }
 
 export async function updateCrmFollowUpTask(input: Scope & {
@@ -531,6 +666,7 @@ export async function updateCrmFollowUpTask(input: Scope & {
   assigneeId?: string;
   assigneeName?: string;
   dueAt?: string;
+  destination?: CrmTaskDestination;
 }) {
   const state = await readState();
   const index = state.followUpTasks.findIndex((task) => task.id === input.taskId && scopeMatches(input, task));
@@ -545,6 +681,7 @@ export async function updateCrmFollowUpTask(input: Scope & {
     assigneeId: input.assigneeId?.trim() || current.assigneeId,
     assigneeName: input.assigneeName?.trim() || current.assigneeName,
     dueAt: input.dueAt?.trim() || current.dueAt,
+    destination: input.destination ?? current.destination,
     updatedAt: new Date().toISOString()
   };
   state.followUpTasks[index] = next;

@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { audit, rateLimit } from "@leadsy/security";
 import { requireApiSession } from "@/lib/api-auth";
 import { createCalendarEvent, listCalendarEvents, type CalendarEventStatus, type CalendarEventType } from "@/lib/calendar-store";
+import { routeCrmEventToTasks } from "@/lib/crm-store";
 
 export const runtime = "nodejs";
 
@@ -76,6 +77,18 @@ export async function POST(request: NextRequest) {
       resource: event.id,
       metadata: { eventType: event.eventType, status: event.status, leadId: event.leadId }
     });
+
+    if (event.leadId) {
+      await routeCrmEventToTasks({
+        tenantId: auth.session.tenantId,
+        ownerId: auth.session.id,
+        eventType: "meeting_created",
+        leadId: event.leadId,
+        assigneeId: event.memberId,
+        source: "calendar",
+        reason: `Meeting created: ${event.title}`
+      });
+    }
 
     return NextResponse.json({ ok: true, event }, { status: 201 });
   } catch (error) {

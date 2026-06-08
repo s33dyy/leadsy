@@ -8,6 +8,7 @@ import {
   verifyTwilioSignature
 } from "@/lib/twilio-transport";
 import { runAgentForInboundLead } from "@/lib/agent-runtime";
+import { routeCrmEventToTasks } from "@/lib/crm-store";
 
 export const runtime = "nodejs";
 
@@ -36,6 +37,15 @@ export async function POST(request: NextRequest) {
         leadId: result.lead.id,
         conversationId: result.conversation.id,
         triggerMessageId: message.id
+      });
+      await routeCrmEventToTasks({
+        tenantId: scope.tenantId,
+        ownerId: scope.ownerId,
+        eventType: "inbound_message",
+        leadId: result.lead.id,
+        assigneeId: result.lead.assigneeId,
+        source: "twilio",
+        reason: "New WhatsApp inbound message needs CRM handling."
       });
     }
   } catch (error) {

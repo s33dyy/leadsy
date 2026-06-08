@@ -11,7 +11,11 @@ const eventTypes = new Set<TeamThreadEventType>([
   "task_assignment",
   "handoff_summary",
   "calendar_proposal",
-  "agent_guard"
+  "agent_guard",
+  "assignment_changed",
+  "ai_mention",
+  "task_generated",
+  "task_approved"
 ]);
 
 export async function POST(request: NextRequest) {
@@ -23,14 +27,16 @@ export async function POST(request: NextRequest) {
 
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   const leadId = typeof body.leadId === "string" ? body.leadId.trim() : "";
+  const threadScope = body.threadScope === "workspace" ? "workspace" : "lead";
   const messageBody = typeof body.body === "string" ? body.body.trim() : "";
-  if (!leadId) return NextResponse.json({ error: "lead_id_required" }, { status: 400 });
+  if (threadScope === "lead" && !leadId) return NextResponse.json({ error: "lead_id_required" }, { status: 400 });
 
   if (body.action === "list") {
     const messages = await listTeamThreadMessages({
       tenantId: auth.session.tenantId,
       ownerId: auth.session.id,
-      leadId,
+      threadScope,
+      leadId: leadId || undefined,
       conversationId: typeof body.conversationId === "string" ? body.conversationId : undefined
     });
     return NextResponse.json({ ok: true, messages });
@@ -48,7 +54,8 @@ export async function POST(request: NextRequest) {
   const message = await postTeamThreadMessage({
     tenantId: auth.session.tenantId,
     ownerId: auth.session.id,
-    leadId,
+    threadScope,
+    leadId: leadId || undefined,
     conversationId: typeof body.conversationId === "string" ? body.conversationId : undefined,
     authorMemberId: typeof body.authorMemberId === "string" ? body.authorMemberId : auth.session.id,
     authorType,
@@ -61,7 +68,7 @@ export async function POST(request: NextRequest) {
     tenantId: auth.session.tenantId,
     actorId: auth.session.id,
     action: "agent.group_thread.post",
-    resource: leadId,
+    resource: leadId || "workspace",
     metadata: { messageId: message.id, eventType: message.eventType, visibility: message.visibility }
   });
 

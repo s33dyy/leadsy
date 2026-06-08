@@ -5,6 +5,7 @@ import {
   updateTwilioDeliveryStatusFromForm,
   verifyTwilioSignature
 } from "@/lib/twilio-transport";
+import { routeCrmEventToTasks } from "@/lib/crm-store";
 
 export const runtime = "nodejs";
 
@@ -23,5 +24,15 @@ export async function POST(request: NextRequest) {
   }
 
   const result = await updateTwilioDeliveryStatusFromForm({ form });
+  if (result.message && /failed|undelivered/i.test(result.message.deliveryStatus ?? "")) {
+    await routeCrmEventToTasks({
+      tenantId: result.message.tenantId,
+      ownerId: result.message.ownerId,
+      eventType: "delivery_failed",
+      leadId: result.message.leadId,
+      source: "twilio_status",
+      reason: `WhatsApp delivery status: ${result.message.deliveryStatus}`
+    });
+  }
   return NextResponse.json({ ok: true, updated: result.updated });
 }

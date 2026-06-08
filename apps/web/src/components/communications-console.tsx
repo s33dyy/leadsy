@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Bot, CalendarDays, Mail, MessageSquare, Phone, Search, Sparkles, Star, Users2 } from "lucide-react";
 import { InboxReplyComposer } from "@/components/inbox-reply-composer";
 import { Badge } from "@/components/ui";
@@ -33,6 +34,8 @@ type CommunicationsConsoleProps = {
   leadCalendarEvents: CalendarEvent[];
 };
 
+type ConversationChannel = "whatsapp" | "email" | "call";
+
 function itemMatchesTab(item: StabilizedInboxItem, tab: InboxTabId) {
   if (tab === "unread") return item.unread > 0;
   if (tab === "needs-reply") return item.needsReply;
@@ -44,6 +47,12 @@ function channelIcon(channel: StabilizedInboxItem["channel"]) {
   if (channel === "Email") return Mail;
   if (channel === "Call") return Phone;
   return MessageSquare;
+}
+
+function channelLabel(channel: ConversationChannel) {
+  if (channel === "email") return "Email";
+  if (channel === "call") return "Calls";
+  return "WhatsApp";
 }
 
 function initials(name: string) {
@@ -83,12 +92,21 @@ export function CommunicationsConsole({
   internalThread,
   leadCalendarEvents
 }: CommunicationsConsoleProps) {
+  const searchParams = useSearchParams();
   const [items, setItems] = useState(initialItems);
   const visibleItems = useMemo(() => items.filter((item) => itemMatchesTab(item, activeTab)), [activeTab, items]);
   const active =
     visibleItems.find((item) => item.conversationId === selectedConversationId) ??
     items.find((item) => item.conversationId === selectedConversationId) ??
     visibleItems[0];
+  const requestedChannel = searchParams.get("channel");
+  const activeChannel: ConversationChannel =
+    requestedChannel === "email" || requestedChannel === "call" ? requestedChannel : "whatsapp";
+  const activeChannelTab =
+    active?.channelTabs.find((tab) => tab.channel === activeChannel) ??
+    active?.channelTabs.find((tab) => tab.channel === "whatsapp") ??
+    active?.channelTabs[0];
+  const activeMessages = activeChannelTab?.messages ?? [];
 
   useEffect(() => {
     const stream = new EventSource("/api/conversations/stream");
@@ -135,7 +153,7 @@ export function CommunicationsConsole({
                 const selected = active?.conversationId === item.conversationId;
                 return (
                   <li key={item.conversationId} className={`border-b border-border/70 px-3 py-2.5 hover:bg-surface-2 ${selected ? "bg-surface-2" : ""}`}>
-                    <Link href={`/app/communications?conversation=${item.conversationId}`} className="flex flex-col gap-1">
+                    <Link href={`/app/communications?conversation=${item.conversationId}&channel=${item.channelTabs[0]?.channel ?? "whatsapp"}`} className="flex flex-col gap-1">
                       <div className="flex items-center gap-2">
                         <Icon className="h-3 w-3 text-muted-foreground" />
                         <span className="flex-1 truncate text-[12.5px] font-medium">{item.contact}</span>
@@ -182,7 +200,7 @@ export function CommunicationsConsole({
                 </div>
               </div>
               <div className="flex items-center gap-1.5">
-                <Link href={`/app/leads?contact=${active.leadId}&tab=conversation`} className="inline-flex h-7 items-center gap-1.5 rounded-[5px] border border-border bg-surface-2 px-2 text-[12px]">
+                <Link href={`/app/leads?contact=${active.leadId}&tab=comms&channel=${activeChannelTab?.channel ?? "whatsapp"}`} className="inline-flex h-7 items-center gap-1.5 rounded-[5px] border border-border bg-surface-2 px-2 text-[12px]">
                   <Users2 className="h-3 w-3" /> Open lead
                 </Link>
                 <span className="inline-flex h-7 items-center gap-1.5 rounded-[5px] border border-border bg-surface-2 px-2 text-[12px]">
@@ -218,9 +236,25 @@ export function CommunicationsConsole({
               ) : null}
             </div>
 
+            <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border px-4">
+              {(["whatsapp", "email", "call"] as ConversationChannel[]).map((channel) => {
+                const tab = active.channelTabs.find((candidate) => candidate.channel === channel);
+                const selected = activeChannelTab?.channel === channel;
+                return (
+                  <Link
+                    key={channel}
+                    href={`/app/communications?conversation=${active.conversationId}&channel=${channel}`}
+                    className={`rounded-[5px] px-2.5 py-1.5 text-[12px] ${selected ? "bg-surface-3 text-foreground" : "text-muted-foreground hover:bg-surface-2"}`}
+                  >
+                    {channelLabel(channel)} <span className="font-mono text-[10px] text-muted-foreground">{tab?.messageCount ?? 0}</span>
+                  </Link>
+                );
+              })}
+            </div>
+
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
               <div className="space-y-3">
-                {active.messages.map((message) => (
+                {activeMessages.length ? activeMessages.map((message) => (
                   <div
                     key={message.id}
                     className={`flex max-w-[78%] flex-col gap-1 rounded-[6px] border border-border p-3 ${
@@ -237,20 +271,30 @@ export function CommunicationsConsole({
                       <div className="font-mono text-[10px] text-primary-foreground/70">{message.deliveryStatus}</div>
                     ) : null}
                   </div>
-                ))}
+                )) : (
+                  <div className="rounded-[6px] border border-border bg-surface p-4 text-[13px] text-muted-foreground">
+                    No {activeChannelTab ? channelLabel(activeChannelTab.channel).toLowerCase() : "channel"} activity tracked for this lead yet.
+                  </div>
+                )}
               </div>
             </div>
 
             <div className="border-t border-border p-3">
-              <InboxReplyComposer
-                leadId={contextLead?.id}
-                to={whatsappToForLead(contextLead)}
-                channel={active.channel}
-                transportMode={sender?.transportMode}
-                senderStatus={sender?.status}
-                senderStatusReason={sender?.statusReason}
-                senderNumber={sender?.assignedPhoneNumber}
-              />
+              {activeChannelTab?.channel === "whatsapp" ? (
+                <InboxReplyComposer
+                  leadId={contextLead?.id}
+                  to={whatsappToForLead(contextLead)}
+                  channel={active.channel}
+                  transportMode={sender?.transportMode}
+                  senderStatus={sender?.status}
+                  senderStatusReason={sender?.statusReason}
+                  senderNumber={sender?.assignedPhoneNumber}
+                />
+              ) : (
+                <div className="rounded-[6px] border border-border bg-surface p-3 text-[12.5px] text-muted-foreground">
+                  {channelLabel(activeChannelTab?.channel ?? "email")} is tracked here for context. Log new email or call activity from the lead CRM Comms tab.
+                </div>
+              )}
             </div>
           </>
         ) : (

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowUpRight, Check, Filter, Inbox, Pencil, Search, Sparkles, X } from "lucide-react";
 import { Badge } from "@/components/ui";
 import { getCurrentSession } from "@/lib/auth";
+import { listCrmFollowUpTasks, type CrmFollowUpTask } from "@/lib/crm-store";
 import { listLeadKnowledgeRecords, type LeadKnowledgeRecord } from "@/lib/lead-knowledge-store";
 
 export const dynamic = "force-dynamic";
@@ -48,12 +49,35 @@ function leadApproval(lead: LeadKnowledgeRecord): ApprovalItem {
   };
 }
 
+function taskApproval(task: CrmFollowUpTask, lead?: LeadKnowledgeRecord): ApprovalItem {
+  return {
+    id: task.id,
+    kind: "Task",
+    priority: task.priority === "urgent" ? "P0" : task.priority === "high" ? "P1" : "P2",
+    subject: task.topic,
+    preview: task.description || "AI-routed task is waiting for operator review.",
+    worker: task.assigneeName || "AI agent",
+    leadName: lead ? leadName(lead) : "Lead",
+    createdAt: relativeTime(task.createdAt),
+    href: `/app/leads?contact=${task.leadId}&tab=tasks`
+  };
+}
+
 export default async function ApprovalsPage() {
   const session = await getCurrentSession();
-  const leads = session ? await listLeadKnowledgeRecords({ tenantId: session.tenantId, ownerId: session.id }) : [];
+  const scope = session ? { tenantId: session.tenantId, ownerId: session.id } : undefined;
+  const [leads, aiTasks] = scope
+    ? await Promise.all([
+        listLeadKnowledgeRecords(scope),
+        listCrmFollowUpTasks(scope, { includeClosed: false, destination: "ai_approvals" })
+      ])
+    : [[], []];
 
   const reviewLeads = leads.filter((lead) => lead.crmStatus === "human_review").slice(0, 6);
-  const approvals = reviewLeads.map(leadApproval);
+  const approvals = [
+    ...aiTasks.map((task) => taskApproval(task, leads.find((lead) => lead.id === task.leadId))),
+    ...reviewLeads.map(leadApproval)
+  ];
   const active = approvals[0];
 
   return (

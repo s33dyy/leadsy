@@ -15,7 +15,8 @@ import {
   productPipelineStatusForLead,
   productPipelineStatusLabel,
   type LeadKnowledgeMessage,
-  type LeadKnowledgeRecord
+  type LeadKnowledgeRecord,
+  type LeadKnowledgeChannel
 } from "@/lib/lead-knowledge-store";
 import { ensureDefaultQualificationAgent, listTeamMembers, type TeamMember } from "@/lib/teamspace-store";
 
@@ -26,6 +27,7 @@ type LeadsPageProps = {
 };
 
 type LeadWorkspaceTab = "details" | "comms" | "tasks";
+type LeadCommsChannel = Extract<LeadKnowledgeChannel, "whatsapp" | "email" | "call">;
 
 const workspaceTabs: Array<{ id: LeadWorkspaceTab; label: string }> = [
   { id: "details", label: "Details" },
@@ -43,9 +45,19 @@ function activeTabFromValue(value: string): LeadWorkspaceTab {
   return "details";
 }
 
+function activeCommsChannelFromValue(value: string): LeadCommsChannel {
+  if (value === "email" || value === "call") return value;
+  return "whatsapp";
+}
+
 function leadHref(leadId: string, tab: LeadWorkspaceTab = "details") {
   const params = new URLSearchParams({ contact: leadId });
   if (tab !== "details") params.set("tab", tab);
+  return `/app/leads?${params.toString()}`;
+}
+
+function commsHref(leadId: string, channel: LeadCommsChannel) {
+  const params = new URLSearchParams({ contact: leadId, tab: "comms", channel });
   return `/app/leads?${params.toString()}`;
 }
 
@@ -105,6 +117,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
   const selectedLeadId = paramValue(params, "contact");
   const query = paramValue(params, "q");
   const activeTab = activeTabFromValue(paramValue(params, "tab"));
+  const activeCommsChannel = activeCommsChannelFromValue(paramValue(params, "channel"));
   const session = await getCurrentSession();
   const scope = session ? { tenantId: session.tenantId, ownerId: session.id } : undefined;
   if (scope) {
@@ -199,7 +212,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
               />
             ) : null}
             {activeTab === "comms" ? (
-              <CommsTab active={active} activeMessages={activeMessages} conversationId={activeConversation?.id} />
+              <CommsTab active={active} activeMessages={activeMessages} activeChannel={activeCommsChannel} />
             ) : null}
             {activeTab === "tasks" ? <TasksTab active={active} members={members} tasks={tasks} /> : null}
           </div>
@@ -330,24 +343,53 @@ function DetailsTab({
   );
 }
 
-function CommsTab({ active, activeMessages, conversationId }: { active: LeadKnowledgeRecord; activeMessages: LeadKnowledgeMessage[]; conversationId?: string }) {
+function channelLabel(channel: LeadCommsChannel) {
+  if (channel === "email") return "Email";
+  if (channel === "call") return "Calls";
+  return "WhatsApp";
+}
+
+function CommsTab({
+  active,
+  activeMessages,
+  activeChannel
+}: {
+  active: LeadKnowledgeRecord;
+  activeMessages: LeadKnowledgeMessage[];
+  activeChannel: LeadCommsChannel;
+}) {
+  const channels: LeadCommsChannel[] = ["whatsapp", "email", "call"];
+  const channelMessages = activeMessages.filter((message) => message.channel === activeChannel);
+  const channelConversation = active.conversations.find((conversation) => conversation.channel === activeChannel);
+  const channelCounts = new Map(channels.map((channel) => [channel, activeMessages.filter((message) => message.channel === channel).length]));
   return (
     <div className="grid gap-5 xl:grid-cols-[0.66fr_0.34fr]">
       <section className="rounded-[8px] border border-border bg-surface p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <div className="caption">External WhatsApp thread</div>
-            <p className="mt-1 text-sm text-muted-foreground">Inbound and outbound messages only. Internal notes stay in CRM context.</p>
+            <div className="caption">Comms / {channelLabel(activeChannel)}</div>
+            <p className="mt-1 text-sm text-muted-foreground">Channel records stay separated. WhatsApp messages remain inbound and outbound only.</p>
           </div>
-          {conversationId ? (
-            <Link href={`/app/communications?conversation=${conversationId}`} className="h-8 rounded-[5px] bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground">
+          {activeChannel === "whatsapp" && channelConversation ? (
+            <Link href={`/app/communications?conversation=${channelConversation.id}`} className="h-8 rounded-[5px] bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground">
               Reply in Inbox
             </Link>
           ) : null}
         </div>
+        <div className="mt-4 flex flex-wrap gap-1 border-b border-border pb-3">
+          {channels.map((channel) => (
+            <Link
+              key={channel}
+              href={commsHref(active.id, channel)}
+              className={`rounded-[5px] px-2.5 py-1.5 text-[12px] ${activeChannel === channel ? "bg-surface-3 text-foreground" : "text-muted-foreground hover:bg-surface-2"}`}
+            >
+              {channelLabel(channel)} <span className="font-mono text-[10px] text-muted-foreground">{channelCounts.get(channel) ?? 0}</span>
+            </Link>
+          ))}
+        </div>
         <div className="mt-4 space-y-2">
-          {activeMessages.length ? (
-            activeMessages.slice(-12).map((message) => (
+          {channelMessages.length ? (
+            channelMessages.slice(-12).map((message) => (
               <div key={message.id} className={`rounded-[6px] border border-border p-3 ${message.direction === "outbound" ? "bg-primary/10" : "bg-background"}`}>
                 <div className="font-mono text-[10px] text-muted-foreground">
                   {message.direction} · {message.deliveryStatus || "tracked"} · {relativeTime(message.sentAt)}
@@ -356,12 +398,26 @@ function CommsTab({ active, activeMessages, conversationId }: { active: LeadKnow
               </div>
             ))
           ) : (
-            <p className="text-sm text-muted-foreground">No messages tracked yet.</p>
+            <div className="rounded-[6px] border border-border bg-background p-4">
+              <p className="text-sm text-muted-foreground">
+                No {channelLabel(activeChannel).toLowerCase()} activity tracked for this lead yet.
+              </p>
+              {activeChannel !== "whatsapp" ? (
+                <form action="/api/leads/channel-activity" method="post" className="mt-3 grid gap-2">
+                  <input type="hidden" name="leadId" value={active.id} />
+                  <input type="hidden" name="channel" value={activeChannel} />
+                  <textarea name="body" rows={3} required placeholder={`Log ${channelLabel(activeChannel).toLowerCase()} activity`} className="rounded-[6px] border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary" />
+                  <button type="submit" className="h-8 w-fit rounded-[5px] bg-primary px-3 text-sm font-medium text-primary-foreground">
+                    Log {channelLabel(activeChannel)}
+                  </button>
+                </form>
+              ) : null}
+            </div>
           )}
         </div>
       </section>
       <aside className="space-y-3">
-        <InfoCell label="Messages" value={String(active.messageCount)} />
+        <InfoCell label="Messages" value={String(channelMessages.length)} />
         <InfoCell label="Conversations" value={String(active.conversations.length)} />
         <InfoCell label="Last activity" value={active.lastMessageAt ? relativeTime(active.lastMessageAt) : "No activity yet"} />
       </aside>

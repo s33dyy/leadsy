@@ -15,6 +15,7 @@ type FollowUpTaskPayload = {
   assigneeId?: string;
   assigneeName?: string;
   dueAt?: string;
+  destination?: string;
 };
 
 export async function GET(request: NextRequest) {
@@ -68,6 +69,7 @@ export async function POST(request: NextRequest) {
     topic,
     description: payload.description,
     priority: priorityFromValue(payload.priority),
+    destination: payload.destination === "ai_approvals" ? "ai_approvals" : "human_tasks",
     assigneeId: payload.assigneeId,
     assigneeName: payload.assigneeName || member?.name,
     dueAt: payload.dueAt
@@ -103,7 +105,8 @@ async function readPayload(request: NextRequest): Promise<FollowUpTaskPayload> {
     priority: text(form.get("priority")),
     assigneeId: text(form.get("assigneeId")),
     assigneeName: text(form.get("assigneeName")),
-    dueAt: text(form.get("dueAt"))
+    dueAt: text(form.get("dueAt")),
+    destination: text(form.get("destination"))
   };
 }
 

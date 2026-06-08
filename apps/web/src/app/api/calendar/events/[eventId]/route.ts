@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { audit } from "@leadsy/security";
 import { requireApiSession } from "@/lib/api-auth";
 import { deleteCalendarEvent, updateCalendarEvent, type CalendarEventStatus, type CalendarEventType } from "@/lib/calendar-store";
+import { routeCrmEventToTasks } from "@/lib/crm-store";
 
 export const runtime = "nodejs";
 
@@ -56,6 +57,18 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       resource: event.id,
       metadata: { status: event.status, eventType: event.eventType }
     });
+
+    if (event.leadId) {
+      await routeCrmEventToTasks({
+        tenantId: auth.session.tenantId,
+        ownerId: auth.session.id,
+        eventType: event.status === "cancelled" ? "meeting_cancelled" : "meeting_rescheduled",
+        leadId: event.leadId,
+        assigneeId: event.memberId,
+        source: "calendar",
+        reason: `Calendar updated: ${event.title}`
+      });
+    }
 
     return NextResponse.json({ ok: true, event });
   } catch (error) {

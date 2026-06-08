@@ -1,6 +1,6 @@
 import { appendTwilioOutboundMessage, editLeadKnowledgeRecord, listLeadKnowledgeRecords } from "./lead-knowledge-store";
 import { findCalendarFreeSlots } from "./calendar-store";
-import { listCrmAssignmentHistory, listCrmFollowUpTasks } from "./crm-store";
+import { assignLeadOwner, listCrmAssignmentHistory, listCrmFollowUpTasks, routeCrmEventToTasks } from "./crm-store";
 import {
   findPipelineOwner,
   findPrimaryQualificationAgent,
@@ -406,6 +406,14 @@ export async function runAgentForInboundLead(input: AgentRunInput): Promise<Agen
       eventType: "handoff_summary",
       triggerId: `${input.triggerMessageId}:escalated`
     });
+    await routeCrmEventToTasks({
+      ...input,
+      eventType: "escalation",
+      leadId: input.leadId,
+      assigneeId: lead.assigneeId,
+      source: "agent_runtime",
+      reason: "Escalation keyword detected during AI qualification."
+    });
     return { action: "escalated_to_human", memberId: agent.id };
   }
 
@@ -437,6 +445,16 @@ export async function runAgentForInboundLead(input: AgentRunInput): Promise<Agen
         assigneeName: owner.name,
         nextAction: "Qualified lead assigned to pipeline owner."
       });
+      await assignLeadOwner({
+        ...input,
+        leadId: input.leadId,
+        assigneeId: owner.id,
+        assigneeName: owner.name,
+        method: "source_based",
+        assignedById: agent.id,
+        assignedByName: agent.name,
+        reason: "Qualification threshold reached."
+      });
     }
     await appendAgentReply({ ...input, leadId: input.leadId, to: contactPhone, body: replyBody, now });
     await postTeamThreadMessage({
@@ -448,6 +466,14 @@ export async function runAgentForInboundLead(input: AgentRunInput): Promise<Agen
         : "Qualified lead, but no pipeline owner was configured.",
       eventType: "handoff_summary",
       triggerId: `${input.triggerMessageId}:qualified`
+    });
+    await routeCrmEventToTasks({
+      ...input,
+      eventType: "qualification_completed",
+      leadId: input.leadId,
+      assigneeId: owner?.id,
+      source: "agent_runtime",
+      reason: owner ? `Qualified lead assigned to ${owner.name}.` : "Qualified lead has no configured pipeline owner."
     });
     return {
       action: "assigned_to_pipeline_owner",
