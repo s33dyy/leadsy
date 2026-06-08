@@ -74,6 +74,12 @@ async function main() {
   assert(wizard.includes("workspaceConfiguration"), "onboarding should save CRM setup answers to workspace configuration");
   assert(wizard.includes("/api/onboarding"), "wizard should save progress through the onboarding API");
   assert(wizard.includes("/api/onboarding/options"), "wizard should request AI-assisted onboarding options");
+  assert(wizard.includes("useRouter"), "wizard should refresh the authenticated shell after opening a completed workspace");
+  assert(wizard.includes("router.refresh()"), "completed onboarding should refresh server session state before returning to the workspace");
+  assert(wizard.includes("payload.user?.onboardingCompletedAt"), "wizard should require server confirmation before marking setup complete");
+  assert(!wizard.includes("leadsy_onboarding_dismissed"), "wizard should not use a global browser cookie to hide onboarding");
+  assert(!wizard.includes("localStorage"), "wizard should not persist skip state outside the server onboarding flag");
+  assert(!wizard.includes("document.cookie"), "wizard should not use browser cookies for onboarding completion state");
   for (const answer of ["Consumers", "Small businesses", "Mid-market", "Enterprise", "Parents/students", "Same day", "1-7 days", "2-4 weeks", "1-3 months"]) {
     assert(wizard.includes(answer), `target customer chips should include answer option ${answer}`);
   }

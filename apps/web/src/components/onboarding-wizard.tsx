@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, CheckCircle2, CircleAlert, Loader2, RefreshCw, Upload } from "lucide-react";
 import type { SessionUser } from "@leadsy/security";
 import { ProgressBar } from "@/components/ui";
@@ -142,22 +143,6 @@ async function fetchOnboardingOptions(profile: OnboardingProfile) {
   return response.ok ? payload.options : undefined;
 }
 
-function onboardingDismissedKey(userId: string) {
-  return `leadsy:onboarding-dismissed:${userId}`;
-}
-
-function onboardingDismissedCookie() {
-  return "leadsy_onboarding_dismissed=true";
-}
-
-function onboardingDismissed(userId: string) {
-  if (typeof window === "undefined") return false;
-  return (
-    document.cookie.includes(onboardingDismissedCookie()) ||
-    window.localStorage.getItem(onboardingDismissedKey(userId)) === "true"
-  );
-}
-
 function textFromProfile(profile: Record<string, unknown> | undefined, key: string) {
   const value = profile?.[key];
   return typeof value === "string" ? value : "";
@@ -197,10 +182,9 @@ function senderStatusLabel(status?: string) {
 
 export function OnboardingWizard({ session }: { session: SessionUser }) {
   const { toast } = useToast();
+  const router = useRouter();
   const initialProfile = session.onboardingProfile ?? {};
-  const [visible, setVisible] = useState(() => {
-    return !onboardingDismissed(session.id);
-  });
+  const [visible, setVisible] = useState(true);
   const [step, setStep] = useState(0);
   const [profile, setProfile] = useState<OnboardingProfile>({
     fullName: textFromProfile(initialProfile, "fullName") || session.name,
@@ -242,10 +226,13 @@ export function OnboardingWizard({ session }: { session: SessionUser }) {
   const completedFields = requiredKeys.filter((key) => profile[key]?.trim()).length;
   const completionScore = Math.round((completedFields / requiredKeys.length) * 100);
 
-  function dismissWizard() {
-    window.localStorage.setItem(onboardingDismissedKey(session.id), "true");
-    document.cookie = `${onboardingDismissedCookie()}; path=/; max-age=2592000; SameSite=Lax`;
+  function skipWizardForNow() {
     setVisible(false);
+  }
+
+  function openWorkspace() {
+    setVisible(false);
+    router.refresh();
   }
 
   function updateField(key: string, value: string) {
@@ -326,7 +313,10 @@ export function OnboardingWizard({ session }: { session: SessionUser }) {
           complete
         })
       });
-      const payload = (await response.json().catch(() => ({}))) as { sender?: OnboardingSenderState };
+      const payload = (await response.json().catch(() => ({}))) as {
+        sender?: OnboardingSenderState;
+        user?: { onboardingCompletedAt?: string };
+      };
       if (response.status === 401) {
         toast({ title: "Onboarding session expired", detail: "Refresh the page, then continue setup.", tone: "error" });
         return false;
@@ -336,6 +326,14 @@ export function OnboardingWizard({ session }: { session: SessionUser }) {
         return false;
       }
       if (complete) {
+        if (!payload.user?.onboardingCompletedAt) {
+          toast({
+            title: "Onboarding was not completed",
+            detail: "Leadsy saved your answers but did not receive completion confirmation. Try again.",
+            tone: "error"
+          });
+          return false;
+        }
         setCompletionSender(payload.sender);
         setSetupCompleted(true);
         toast({
@@ -382,7 +380,7 @@ export function OnboardingWizard({ session }: { session: SessionUser }) {
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={dismissWizard}
+                onClick={skipWizardForNow}
                 className="h-8 rounded-[5px] border border-[var(--line)] bg-white/[0.03] px-2.5 text-[12px] text-[var(--muted-2)] hover:bg-white/[0.06] hover:text-white"
               >
                 Skip for now
@@ -575,7 +573,7 @@ export function OnboardingWizard({ session }: { session: SessionUser }) {
             setupCompleted ? (
               <button
                 type="button"
-                onClick={dismissWizard}
+                onClick={openWorkspace}
                 className="inline-flex h-10 items-center gap-2 rounded-[6px] border border-teal-300/30 bg-teal-300/[0.12] px-4 text-sm font-medium text-teal-100 hover:bg-teal-300/[0.18]"
               >
                 <CheckCircle2 size={15} />
