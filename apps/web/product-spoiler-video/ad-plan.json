@@ -1,0 +1,139 @@
+{
+  "title": "Leadsy Product Spoiler",
+  "fps": 30,
+  "width": 1920,
+  "height": 1080,
+  "durationFrames": 660,
+  "renderRuntime": "remotion",
+  "openMontage": {
+    "pipeline": "screen-demo",
+    "productionMode": "real_capture",
+    "ttsProvider": "piper_tts",
+    "sourceBrowser": "Brave Browser",
+    "deliveryPromise": "A professional 16:9 product spoiler ad using real Leadsy UI frames, synchronized voiceover, concise kinetic text, and a clear number-acquisition CTA."
+  },
+  "voiceover": [
+    {
+      "id": "leadsy",
+      "text": "Leadsy.",
+      "fromFrame": 18,
+      "durationFrames": 28,
+      "audio": "../public/product-spoiler-video/voiceover/01-leadsy.wav"
+    },
+    {
+      "id": "click-it",
+      "text": "Click it.",
+      "fromFrame": 152,
+      "durationFrames": 28,
+      "audio": "../public/product-spoiler-video/voiceover/02-click-it.wav"
+    },
+    {
+      "id": "forget-it",
+      "text": "Forget it.",
+      "fromFrame": 318,
+      "durationFrames": 30,
+      "audio": "../public/product-spoiler-video/voiceover/03-forget-it.wav"
+    },
+    {
+      "id": "get-number",
+      "text": "Get your number today.",
+      "fromFrame": 566,
+      "durationFrames": 58,
+      "audio": "../public/product-spoiler-video/voiceover/04-get-number-today.wav"
+    }
+  ],
+  "music": {
+    "audio": "../public/product-spoiler-video/audio/subtle-bed.wav",
+    "volume": 0.22
+  },
+  "scenes": [
+    {
+      "id": "brand-hook",
+      "title": "Leadsy.",
+      "eyebrow": "AI Lead Capture",
+      "detail": "Capture inbound leads and coordinate conversion from one workspace.",
+      "fromFrame": 0,
+      "durationFrames": 84,
+      "screenshot": "../public/product-spoiler-video/screenshots/01-landing.png",
+      "focus": "brand",
+      "accent": "teal"
+    },
+    {
+      "id": "operator-overview",
+      "title": "See the day.",
+      "eyebrow": "Dashboard",
+      "detail": "Live records, pipeline status, sources, tasks, and the action queue.",
+      "fromFrame": 72,
+      "durationFrames": 84,
+      "screenshot": "../public/product-spoiler-video/screenshots/02-dashboard.png",
+      "focus": "metrics",
+      "accent": "cyan"
+    },
+    {
+      "id": "lead-record",
+      "title": "Click it.",
+      "eyebrow": "Leads",
+      "detail": "Open the lead and see qualification fields, owner, channel, and next action.",
+      "fromFrame": 144,
+      "durationFrames": 90,
+      "screenshot": "../public/product-spoiler-video/screenshots/03-leads.png",
+      "focus": "record",
+      "accent": "green"
+    },
+    {
+      "id": "inbox-context",
+      "title": "Every conversation carries context.",
+      "eyebrow": "Inbox",
+      "detail": "Messages, qualification notes, and summaries stay attached to the lead.",
+      "fromFrame": 222,
+      "durationFrames": 90,
+      "screenshot": "../public/product-spoiler-video/screenshots/04-inbox.png",
+      "focus": "conversation",
+      "accent": "teal"
+    },
+    {
+      "id": "approval-queue",
+      "title": "Forget it.",
+      "eyebrow": "Action queue",
+      "detail": "Leadsy keeps reply and review work queued without losing the thread.",
+      "fromFrame": 306,
+      "durationFrames": 90,
+      "screenshot": "../public/product-spoiler-video/screenshots/02-dashboard.png",
+      "focus": "queue",
+      "accent": "amber"
+    },
+    {
+      "id": "team-handoff",
+      "title": "AI and humans stay aligned.",
+      "eyebrow": "Team Chat",
+      "detail": "Qualification, handoff notes, and internal messages land where the team works.",
+      "fromFrame": 390,
+      "durationFrames": 90,
+      "screenshot": "../public/product-spoiler-video/screenshots/06-team-chat.png",
+      "focus": "handoff",
+      "accent": "violet"
+    },
+    {
+      "id": "follow-up",
+      "title": "Follow-up has an owner.",
+      "eyebrow": "Assignment",
+      "detail": "Owner, source, qualification, and next action stay attached to the lead.",
+      "fromFrame": 474,
+      "durationFrames": 78,
+      "screenshot": "../public/product-spoiler-video/screenshots/03-leads.png",
+      "focus": "tasks",
+      "accent": "cyan"
+    },
+    {
+      "id": "number-cta",
+      "title": "Get your number today.",
+      "eyebrow": "WhatsApp-ready workspace",
+      "detail": "Launch with a Leadsy-managed WhatsApp workflow and start capturing leads.",
+      "fromFrame": 540,
+      "durationFrames": 120,
+      "screenshot": "../public/product-spoiler-video/screenshots/08-settings.png",
+      "focus": "cta",
+      "accent": "teal"
+    }
+  ]
+}
