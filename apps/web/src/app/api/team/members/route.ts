@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { audit, rateLimit } from "@leadsy/security";
 import { requireApiSession } from "@/lib/api-auth";
-import { createTeamMember, listTeamMembers, type TeamMemberRole, type TeamMemberType } from "@/lib/teamspace-store";
+import { createProvisionedTeamMember, listTeamMembers, type TeamMemberRole, type TeamMemberType } from "@/lib/teamspace-store";
 
 export const runtime = "nodejs";
 
@@ -40,19 +40,28 @@ export async function POST(request: NextRequest) {
   if (!type) return NextResponse.json({ error: "team_member_type_required" }, { status: 400 });
   if (!name) return NextResponse.json({ error: "team_member_name_required" }, { status: 400 });
 
-  const member = await createTeamMember({
-    tenantId: auth.session.tenantId,
-    ownerId: auth.session.id,
-    type,
-    name,
-    emailOrPhone: typeof body.emailOrPhone === "string" ? body.emailOrPhone : undefined,
-    password: typeof body.password === "string" ? body.password : undefined,
-    role,
-    pipelineStages: stringArray(body.pipelineStages),
-    behaviorInstructions: typeof body.behaviorInstructions === "string" ? body.behaviorInstructions : undefined,
-    autoReplyEnabled: typeof body.autoReplyEnabled === "boolean" ? body.autoReplyEnabled : undefined,
-    escalationKeywords: stringArray(body.escalationKeywords)
-  });
+  let result;
+  try {
+    result = await createProvisionedTeamMember({
+      tenantId: auth.session.tenantId,
+      ownerId: auth.session.id,
+      type,
+      name,
+      emailOrPhone: typeof body.emailOrPhone === "string" ? body.emailOrPhone : undefined,
+      password: typeof body.password === "string" ? body.password : undefined,
+      role,
+      pipelineStages: stringArray(body.pipelineStages),
+      behaviorInstructions: typeof body.behaviorInstructions === "string" ? body.behaviorInstructions : undefined,
+      autoReplyEnabled: typeof body.autoReplyEnabled === "boolean" ? body.autoReplyEnabled : undefined,
+      escalationKeywords: stringArray(body.escalationKeywords)
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "team_member_create_failed";
+    if (message === "team_member_login_required") return NextResponse.json({ error: message }, { status: 400 });
+    if (message === "team_member_login_exists") return NextResponse.json({ error: message }, { status: 409 });
+    throw error;
+  }
+  const { member, credentials } = result;
 
   audit({
     tenantId: auth.session.tenantId,
@@ -62,5 +71,5 @@ export async function POST(request: NextRequest) {
     metadata: { type: member.type, autoReplyEnabled: member.autoReplyEnabled }
   });
 
-  return NextResponse.json({ ok: true, member }, { status: 201 });
+  return NextResponse.json({ ok: true, member, credentials }, { status: 201 });
 }

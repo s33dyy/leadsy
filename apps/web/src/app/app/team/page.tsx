@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui";
 import { TeamspaceConsole } from "@/components/teamspace-console";
 import { getCurrentSession } from "@/lib/auth";
 import { ensureDefaultQualificationAgent, listTeamMembers, summarizeTeamspaceHealth } from "@/lib/teamspace-store";
+import { getWorkspaceBusinessSettings } from "@/lib/user-settings-store";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,7 @@ export default async function TeamPage() {
     await ensureDefaultQualificationAgent({ tenantId: session.tenantId, ownerId: session.id });
   }
   const members = session ? await listTeamMembers({ tenantId: session.tenantId, ownerId: session.id }) : [];
+  const workspaceSettings = session ? await getWorkspaceBusinessSettings({ tenantId: session.tenantId, ownerId: session.id }) : undefined;
   const health = await summarizeTeamspaceHealth();
 
   return (
@@ -40,7 +42,7 @@ export default async function TeamPage() {
           <Metric icon={<MessageSquareText className="h-4 w-4 text-primary" />} label="Internal thread events" value={String(health.internalThreadMessages)} />
         </section>
 
-        <TeamspaceConsole initialMembers={members} />
+        <TeamspaceConsole initialMembers={members} pipelineStageOptions={workspaceSettings?.pipelineStages ?? ["new", "collecting", "qualified", "meeting", "won"]} />
       </div>
     </div>
   );

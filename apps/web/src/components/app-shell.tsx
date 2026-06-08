@@ -121,6 +121,12 @@ function isActiveLink(pathname: string, searchParams: SearchParamsLike, link: Sh
   return true;
 }
 
+function isEditableShortcutTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName.toLowerCase();
+  return tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable;
+}
+
 function whatsAppSenderLabel(sender?: ShellWhatsAppSender) {
   if (sender?.transportMode === "simulator") return "WhatsApp · simulator";
   if (sender?.assignedPhoneNumber) return `WhatsApp · ${sender.assignedPhoneNumber}`;
@@ -233,6 +239,21 @@ export function AppShell({
       cancelled = true;
       window.clearInterval(timer);
     };
+  }, []);
+
+  useEffect(() => {
+    function handleNewLeadShortcut(event: KeyboardEvent) {
+      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      if (event.key.toLowerCase() !== "n") return;
+      if (isEditableShortcutTarget(event.target)) return;
+      event.preventDefault();
+      setManualLeadOpen(true);
+      setNotificationsOpen(false);
+      setUserMenuOpen(false);
+    }
+
+    window.addEventListener("keydown", handleNewLeadShortcut);
+    return () => window.removeEventListener("keydown", handleNewLeadShortcut);
   }, []);
 
   useEffect(() => {

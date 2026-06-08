@@ -46,6 +46,22 @@ const notificationEventLabels: Record<NotificationEventKey, string> = {
   systemHealthWarning: "System health warning"
 };
 
+const aiTaskLabels: Record<AiWorkspaceTask, string> = {
+  "qualification-reply": "Qualification replies",
+  "message-draft": "Assisted drafts",
+  "calendar-reply": "Calendar replies",
+  "lead-research-planner": "Lead research planning",
+  "lead-dossier": "Lead summaries",
+  "onboarding-options": "Onboarding answer options"
+};
+
+function costTierLabel(value: string) {
+  if (value === "free") return "Lowest cost";
+  if (value === "paid") return "Balanced";
+  if (value === "premium") return "Best quality";
+  return "Leadsy selected";
+}
+
 function lines(values: string[]) {
   return values.join("\n");
 }
@@ -226,7 +242,10 @@ function AiSettings({ initial }: { initial: AiWorkspaceSettings }) {
     event.preventDefault();
     setPending(true);
     try {
-      const saved = await patchJson<AiWorkspaceSettings>("/api/settings/ai", form, "ai");
+      const saved = await patchJson<AiWorkspaceSettings>("/api/settings/ai", {
+        ...form,
+        providerMode: form.remoteAiEnabled ? "openrouter" : "deterministic"
+      }, "ai");
       setForm(saved);
       setStatus("AI settings saved.");
     } catch (error) {
@@ -248,7 +267,7 @@ function AiSettings({ initial }: { initial: AiWorkspaceSettings }) {
       setTestOutput(payload.error || "AI test failed.");
       return;
     }
-    setTestOutput(`${payload.result.provider} / ${payload.result.model} / ${payload.result.costTier}\n${payload.result.output}`);
+    setTestOutput(`${costTierLabel(payload.result.costTier)} route\n${payload.result.output}`);
   }
 
   return (
@@ -257,34 +276,28 @@ function AiSettings({ initial }: { initial: AiWorkspaceSettings }) {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-[15px] font-semibold">Advanced AI Lab</h2>
-            <p className="mt-1 text-[12.5px] leading-6 text-muted-foreground">Model routing, cost guardrails, prompt templates, and generation controls.</p>
+            <p className="mt-1 text-[12.5px] leading-6 text-muted-foreground">Reply behavior, cost guardrails, safety rules, and test replies.</p>
           </div>
           <div className="flex items-center gap-2">
-            <Badge tone={form.providerMode === "openrouter" ? "teal" : "neutral"}>{form.providerMode}</Badge>
+            <Badge tone={form.remoteAiEnabled ? "teal" : "neutral"}>{form.remoteAiEnabled ? "AI replies on" : "AI replies off"}</Badge>
             <SaveButton pending={pending} />
           </div>
         </div>
 
         <div className="mt-5 grid gap-4 md:grid-cols-4">
-          <Field label="Provider mode">
-            <select className={inputClass} value={form.providerMode} onChange={(event) => setForm({ ...form, providerMode: event.target.value as AiWorkspaceSettings["providerMode"] })}>
-              <option value="deterministic">Deterministic</option>
-              <option value="openrouter">OpenRouter</option>
-            </select>
-          </Field>
           <Field label="Cost policy">
             <select className={inputClass} value={form.costMode} onChange={(event) => setForm({ ...form, costMode: event.target.value as AiWorkspaceSettings["costMode"] })}>
-              <option value="free">Free models only</option>
-              <option value="paid">Paid allowed</option>
-              <option value="premium">Premium allowed</option>
+              <option value="free">Lowest cost</option>
+              <option value="paid">Balanced</option>
+              <option value="premium">Best quality</option>
             </select>
           </Field>
           <Field label="Monthly budget INR"><input type="number" className={inputClass} value={form.monthlyBudgetInr} onChange={(event) => setForm({ ...form, monthlyBudgetInr: Number(event.target.value) })} /></Field>
           <Field label="Human review threshold"><input type="number" min="0" max="1" step="0.05" className={inputClass} value={form.humanReviewThreshold} onChange={(event) => setForm({ ...form, humanReviewThreshold: Number(event.target.value) })} /></Field>
-          <Field label="Remote AI">
+          <Field label="AI replies">
             <label className="flex h-10 items-center gap-2 rounded-[6px] border border-border bg-background px-3 text-sm">
               <input type="checkbox" checked={form.remoteAiEnabled} onChange={(event) => setForm({ ...form, remoteAiEnabled: event.target.checked })} />
-              Enable remote provider
+              Enable contextual AI replies
             </label>
           </Field>
           <Field label="Temperature"><input type="number" min="0" max="2" step="0.1" className={inputClass} value={form.temperature} onChange={(event) => setForm({ ...form, temperature: Number(event.target.value) })} /></Field>
@@ -298,19 +311,18 @@ function AiSettings({ initial }: { initial: AiWorkspaceSettings }) {
         </div>
 
         <div className="mt-6">
-          <div className="caption">Prompt templates</div>
+          <div className="caption">Reply behavior templates</div>
           <div className="mt-3 space-y-3">
             {taskRows.map(({ task, route, prompt }) => (
-              <div key={task} className="grid gap-3 rounded-[8px] border border-border p-3 lg:grid-cols-[180px_220px_1fr]">
+              <div key={task} className="grid gap-3 rounded-[8px] border border-border p-3 lg:grid-cols-[220px_1fr]">
                 <label className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
                     checked={route.enabled}
                     onChange={(event) => setForm({ ...form, taskRouting: { ...form.taskRouting, [task]: { ...route, enabled: event.target.checked } } })}
                   />
-                  {task}
+                  {aiTaskLabels[task]}
                 </label>
-                <input className={inputClass} value={route.model} onChange={(event) => setForm({ ...form, taskRouting: { ...form.taskRouting, [task]: { ...route, model: event.target.value } } })} />
                 <textarea className="min-h-16 rounded-[6px] border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary" value={prompt} onChange={(event) => setForm({ ...form, promptTemplates: { ...form.promptTemplates, [task]: event.target.value } })} />
               </div>
             ))}
@@ -326,7 +338,7 @@ function AiSettings({ initial }: { initial: AiWorkspaceSettings }) {
         </div>
         <div className="mt-4 grid gap-4 md:grid-cols-[220px_1fr_auto]">
           <select className={inputClass} value={testTask} onChange={(event) => setTestTask(event.target.value as AiWorkspaceTask)}>
-            {aiTasks.map((task) => <option key={task} value={task}>{task}</option>)}
+            {aiTasks.map((task) => <option key={task} value={task}>{aiTaskLabels[task]}</option>)}
           </select>
           <input className={inputClass} value={testPrompt} onChange={(event) => setTestPrompt(event.target.value)} />
           <button type="button" onClick={runTest} className="inline-flex h-10 items-center gap-2 rounded-[6px] border border-border bg-surface-2 px-3 text-sm hover:bg-surface-3">

@@ -20,7 +20,11 @@ async function main() {
     const settingsConsole = await readFile(join(root, "apps/web/src/components/settings-console.tsx"), "utf8");
     const settingsSurface = `${settingsPage}\n${settingsConsole}`;
     assert(settingsSurface.includes("Advanced AI Lab"), "AI settings should render an advanced lab, not a static card");
-    assert(settingsSurface.includes("Prompt templates"), "AI settings should expose prompt template controls");
+    assert(settingsSurface.includes("Lowest cost"), "AI settings should expose non-technical cost policy language");
+    assert(settingsSurface.includes("Best quality"), "AI settings should expose non-technical quality policy language");
+    assert(!settingsConsole.includes("OpenRouter"), "AI settings UI should not expose raw provider names");
+    assert(!settingsConsole.includes("openrouter/free"), "AI settings UI should not expose raw model names");
+    assert(!settingsConsole.includes("Provider mode"), "AI settings UI should not ask non-technical users to pick providers");
     assert(settingsSurface.includes("Notification preferences"), "notifications settings should expose editable preferences");
     assert(settingsSurface.includes("Quiet hours"), "notifications settings should expose quiet hours");
     assert(settingsSurface.includes("Operator knowledge base"), "profile settings should expose operator knowledge");

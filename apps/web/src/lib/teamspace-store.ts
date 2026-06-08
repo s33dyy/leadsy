@@ -68,9 +68,11 @@ type TeamspaceState = {
 };
 
 type CreateTeamMemberInput = Scope & {
+  id?: string;
   type: TeamMemberType;
   name: string;
   emailOrPhone?: string;
+  authUserId?: string;
   password?: string;
   role?: TeamMemberRole;
   pipelineStages?: string[];
@@ -99,6 +101,17 @@ type PostThreadInput = Scope & {
   body: string;
   eventType?: TeamThreadEventType;
   triggerId?: string;
+};
+
+export type TeamMemberCredentials = {
+  userId: string;
+  login: string;
+  temporaryPassword: string;
+};
+
+export type ProvisionedTeamMemberResult = {
+  member: TeamMember;
+  credentials?: TeamMemberCredentials;
 };
 
 function emptyState(): TeamspaceState {
@@ -183,13 +196,33 @@ function normalizeThreadMessage(message: TeamThreadMessage): TeamThreadMessage {
   };
 }
 
-function createHumanAuthUserId(input: CreateTeamMemberInput) {
-  const basis = `${input.tenantId}:${input.emailOrPhone ?? input.name}:${Date.now()}:${crypto.randomUUID()}`;
-  return `usr_${Buffer.from(basis).toString("base64url").slice(0, 12)}`;
-}
-
 function isDefaultQualificationAgent(member: Pick<TeamMember, "type" | "name">) {
   return member.type === "ai_agent_full" && member.name.trim().toLowerCase() === defaultQualificationAgentName.toLowerCase();
+}
+
+function slugForLogin(value: string) {
+  return (
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 36) || "agent"
+  );
+}
+
+function generatedAgentLogin(input: Pick<CreateTeamMemberInput, "name"> & { id: string }) {
+  return `ai+${slugForLogin(input.name)}-${input.id.replace(/^tm_/, "").slice(0, 8)}@leadsy.local`;
+}
+
+function generatedTemporaryPassword() {
+  return `leadsy-${crypto.randomUUID().replace(/-/g, "").slice(0, 18)}`;
+}
+
+function authRoleForTeamMember(role?: TeamMemberRole): "admin" | "manager" | "sdr" | "viewer" {
+  if (role === "owner" || role === "admin") return "admin";
+  if (role === "manager") return "manager";
+  return "sdr";
 }
 
 function randomDigits(length: number) {
@@ -269,13 +302,13 @@ export async function createTeamMember(input: CreateTeamMemberInput) {
     }
 
     const member: TeamMember = applyInitialSenderIdentity({
-      id: `tm_${crypto.randomUUID()}`,
+      id: input.id ?? `tm_${crypto.randomUUID()}`,
       tenantId: input.tenantId,
       ownerId: input.ownerId,
       type: input.type,
       name: input.name.trim(),
       emailOrPhone: cleanString(input.emailOrPhone),
-      authUserId: input.type === "human" ? createHumanAuthUserId(input) : undefined,
+      authUserId: cleanString(input.authUserId),
       role: input.role ?? (input.type === "human" ? "agent" : "agent"),
       status: input.type === "human" ? "active" : "active",
       pipelineStages: uniqueStrings(input.pipelineStages ?? (input.type === "ai_agent_full" ? ["new", "collecting"] : [])),
@@ -289,6 +322,47 @@ export async function createTeamMember(input: CreateTeamMemberInput) {
     });
     return { state: { ...state, members: [...state.members, member] }, result: member };
   });
+}
+
+export async function createProvisionedTeamMember(input: CreateTeamMemberInput): Promise<ProvisionedTeamMemberResult> {
+  if (isDefaultQualificationAgent({ type: input.type, name: input.name })) {
+    return { member: await createTeamMember(input) };
+  }
+
+  const memberId = input.id ?? `tm_${crypto.randomUUID()}`;
+  const login = cleanString(input.emailOrPhone) ?? (input.type === "human" ? undefined : generatedAgentLogin({ id: memberId, name: input.name }));
+  if (!login) {
+    throw new Error("team_member_login_required");
+  }
+
+  const temporaryPassword = cleanString(input.password) ?? generatedTemporaryPassword();
+  const { createTeamMemberAuthUser } = await import("./auth-store");
+  const authUser = await createTeamMemberAuthUser({
+    tenantId: input.tenantId,
+    teamMemberId: memberId,
+    name: input.name,
+    emailOrPhone: login,
+    password: temporaryPassword,
+    role: authRoleForTeamMember(input.role)
+  });
+  if (!authUser.ok) {
+    throw new Error("team_member_login_exists");
+  }
+
+  const member = await createTeamMember({
+    ...input,
+    id: memberId,
+    emailOrPhone: login,
+    authUserId: authUser.user.id
+  });
+  return {
+    member,
+    credentials: {
+      userId: authUser.user.id,
+      login,
+      temporaryPassword
+    }
+  };
 }
 
 export async function ensureDefaultQualificationAgent(scope: Scope) {

@@ -3,7 +3,8 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { leadsyDataDir } from "./data-dir";
 import { editLeadKnowledgeRecord, listLeadKnowledgeRecords, type LeadCrmStatus, type LeadKnowledgeRecord } from "./lead-knowledge-store";
-import { ensureDefaultQualificationAgent } from "./teamspace-store";
+import { ensureDefaultQualificationAgent, postTeamThreadMessage } from "./teamspace-store";
+import { createNotificationRecord } from "./user-settings-store";
 
 const crmFile = join(leadsyDataDir, "lead-crm.json");
 
@@ -122,6 +123,10 @@ function scopeMatches(scope: Scope, item: Scope) {
   return item.tenantId === scope.tenantId && item.ownerId === scope.ownerId;
 }
 
+function uniqueStrings(values: string[]) {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
 function defaultAssignmentRules(): CrmAssignmentRule[] {
   return [];
 }
@@ -224,6 +229,64 @@ async function recordAssignment(input: Scope & {
   return history;
 }
 
+export async function recordLeadAssignmentKnowledge(input: Scope & {
+  leadId: string;
+  toAssigneeId: string;
+  toAssigneeName: string;
+  fromAssigneeName?: string;
+  method: CrmAssignmentMethod;
+  assignedByName?: string;
+  reason?: string;
+  historyId?: string;
+  createdAt?: string;
+}) {
+  const leads = await listLeadKnowledgeRecords(input);
+  const lead = leadForAssignment(input, input.leadId, leads);
+  const assignedAt = input.createdAt ?? new Date().toISOString();
+  const actor = input.assignedByName?.trim() || "Leadsy";
+  const reason = input.reason?.trim();
+  const assignmentFact = `Assignment: assigned to ${input.toAssigneeName} by ${actor} using ${input.method}${reason ? ` because ${reason}` : ""}.`;
+  const updated = await editLeadKnowledgeRecord({
+    tenantId: input.tenantId,
+    ownerId: input.ownerId,
+    leadId: lead.id,
+    contact: lead.contact,
+    summary: lead.summary,
+    nextAction: lead.nextAction,
+    facts: uniqueStrings([...(lead.facts ?? []), assignmentFact]),
+    crmStatus: lead.crmStatus,
+    productPipelineStatus: lead.productPipelineStatus,
+    assigneeId: input.toAssigneeId,
+    assigneeName: input.toAssigneeName,
+    leadSource: lead.leadSource,
+    campaignId: lead.campaignId,
+    qualificationFields: lead.qualificationFields,
+    qualificationStage: lead.qualificationStage
+  });
+
+  await postTeamThreadMessage({
+    tenantId: input.tenantId,
+    ownerId: input.ownerId,
+    leadId: lead.id,
+    authorType: "system",
+    body: `${assignmentFact}${input.fromAssigneeName ? ` Previous owner: ${input.fromAssigneeName}.` : ""}`,
+    eventType: "handoff_summary",
+    triggerId: `assignment:${input.historyId ?? lead.id}:${input.toAssigneeId}:${assignedAt}`
+  });
+
+  await createNotificationRecord({
+    tenantId: input.tenantId,
+    ownerId: input.ownerId,
+    type: "assignedToMe",
+    title: `Lead assigned to ${input.toAssigneeName}`,
+    detail: `${lead.contact.displayName || "Lead"} assigned to ${input.toAssigneeName}${reason ? `: ${reason}` : "."}`,
+    href: `/app/leads?contact=${lead.id}`,
+    priority: "medium"
+  });
+
+  return updated;
+}
+
 export async function assignLeadOwner(input: Scope & {
   leadId: string;
   assigneeId: string;
@@ -240,7 +303,7 @@ export async function assignLeadOwner(input: Scope & {
   const assigneeId = input.assigneeId.trim();
   const assigneeName = input.assigneeName.trim();
   if (!assigneeId || !assigneeName) throw new Error("Assignee id and name are required.");
-  const updated = await editLeadKnowledgeRecord({
+  await editLeadKnowledgeRecord({
     tenantId: input.tenantId,
     ownerId: input.ownerId,
     leadId: input.leadId,
@@ -257,14 +320,26 @@ export async function assignLeadOwner(input: Scope & {
     qualificationFields: lead.qualificationFields,
     qualificationStage: lead.qualificationStage
   });
-  await recordAssignment({
+  const history = await recordAssignment({
     ...input,
     lead,
     method: input.method ?? "manual",
     assigneeId,
     assigneeName
   });
-  return updated;
+  return recordLeadAssignmentKnowledge({
+    tenantId: input.tenantId,
+    ownerId: input.ownerId,
+    leadId: input.leadId,
+    toAssigneeId: assigneeId,
+    toAssigneeName: assigneeName,
+    fromAssigneeName: lead.assigneeName,
+    method: input.method ?? "manual",
+    assignedByName: input.assignedByName,
+    reason: input.reason,
+    historyId: history.id,
+    createdAt: history.createdAt
+  });
 }
 
 export async function assignLeadToDefaultQualificationAgent(input: Scope & {

@@ -23,6 +23,8 @@ async function main() {
   assert(appShell.includes("CommandSearchModal"), "AppShell should render the command search modal");
   assert(appShell.includes("metaKey"), "AppShell should listen for Cmd+K");
   assert(appShell.includes("ctrlKey"), "AppShell should listen for Ctrl+K");
+  assert(appShell.includes("handleNewLeadShortcut"), "AppShell should listen for the N shortcut to open manual lead intake");
+  assert(appShell.includes("isEditableShortcutTarget"), "AppShell should ignore N while typing in editable fields");
   assert(!appShell.includes('href="/app/leads?q="'), "Quick search should not navigate to Leads when clicked");
   assert(appShell.includes('type="button"'), "Quick search should be a button trigger");
 

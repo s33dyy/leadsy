@@ -1,5 +1,6 @@
 import { appendTwilioOutboundMessage, editLeadKnowledgeRecord, listLeadKnowledgeRecords } from "./lead-knowledge-store";
 import { findCalendarFreeSlots } from "./calendar-store";
+import { listCrmAssignmentHistory, listCrmFollowUpTasks } from "./crm-store";
 import {
   findPipelineOwner,
   findPrimaryQualificationAgent,
@@ -8,6 +9,7 @@ import {
   postTeamThreadMessage,
   type TeamMember
 } from "./teamspace-store";
+import { getOperatorProfileSettings, getWorkspaceBusinessSettings } from "./user-settings-store";
 import { sendAndStoreWhatsAppMessage, type WhatsAppSendResult } from "./whatsapp-transport";
 
 type Scope = {
@@ -59,6 +61,19 @@ type AgentRunInput = Scope & {
 const coreQualificationFields = ["company", "need", "budget", "timeline", "authority"] as const;
 const hardEscalationPattern = /\b(human|manager|refund|legal|complaint|angry|stop|unsubscribe)\b/i;
 
+export type LeadAiContext = {
+  lead: Awaited<ReturnType<typeof listLeadKnowledgeRecords>>[number];
+  member?: TeamMember | null;
+  workspace: Awaited<ReturnType<typeof getWorkspaceBusinessSettings>>;
+  operator: Awaited<ReturnType<typeof getOperatorProfileSettings>>;
+  qualificationFields: Record<string, string | undefined>;
+  missingFields: string[];
+  recentMessages: Array<{ direction: string; body: string; sentAt: string }>;
+  internalNotes: string[];
+  assignmentHistory: Awaited<ReturnType<typeof listCrmAssignmentHistory>>;
+  openTasks: Awaited<ReturnType<typeof listCrmFollowUpTasks>>;
+};
+
 function formatTime(iso: string) {
   return new Intl.DateTimeFormat("en-GB", {
     timeZone: "Asia/Kolkata",
@@ -85,14 +100,55 @@ function escalationRequested(text: string, agent?: TeamMember | null) {
   return agent?.escalationKeywords.some((keyword) => new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text)) ?? false;
 }
 
-function qualificationQuestion(fields: Record<string, string | undefined>) {
-  const missing = missingQualificationFields(fields);
-  if (missing.includes("budget")) return "What budget range should we plan around, and who makes the final decision?";
-  if (missing.includes("company")) return "Thanks. Which company or business is this for, and what volume of WhatsApp leads do you handle today?";
-  if (missing.includes("need")) return "Got it. What goal should Leadsy help you achieve: faster qualification, follow-up, assignment, or bookings?";
-  if (missing.includes("timeline")) return "When would you like to start, and is there a specific launch date or campaign we should consider?";
-  if (missing.includes("authority")) return "Are you the decision maker for this, or should we include someone else before proposing the next step?";
-  return "Thanks. I have enough context to route this to the right owner for the next step.";
+function valueFromFacts(facts: string[], label: string) {
+  return facts
+    .flatMap((fact) => fact.split(/\r?\n/))
+    .map((fact) => fact.match(new RegExp(`^${label}\\s*:\\s*(.+)$`, "i"))?.[1]?.trim())
+    .find(Boolean);
+}
+
+function compactSentence(value?: string) {
+  return value?.trim().replace(/\s+/g, " ").replace(/[.?!]+$/, "");
+}
+
+function knownCompany(context: Pick<LeadAiContext, "qualificationFields" | "lead">) {
+  return compactSentence(context.qualificationFields.company || valueFromFacts(context.lead.facts, "Company"));
+}
+
+function knownNeed(context: Pick<LeadAiContext, "qualificationFields" | "lead">) {
+  return compactSentence(context.qualificationFields.need || valueFromFacts(context.lead.facts, "Need") || valueFromFacts(context.lead.facts, "Requirement"));
+}
+
+function contextLeadLabel(context: Pick<LeadAiContext, "lead">) {
+  return context.lead.contact.displayName?.trim().split(/\s+/)[0] || "there";
+}
+
+function oneQuestionForMissingField(field: string, context: LeadAiContext) {
+  const company = knownCompany(context);
+  const need = knownNeed(context);
+  if (field === "budget") return `What budget range should we plan around${company ? ` for ${company}` : ""}, and who will make the final decision?`;
+  if (field === "company") return need ? "Which company or business is this for so I can map the right WhatsApp follow-up plan?" : "Which company or business is this for?";
+  if (field === "need") return company ? `What should we improve first for ${company}: qualification, follow-up, assignment, or bookings?` : "What should we improve first: qualification, follow-up, assignment, or bookings?";
+  if (field === "timeline") return `When would you like to start${need ? ` with ${need}` : ""}?`;
+  if (field === "authority") return "Are you the decision maker for this, or should we include someone else before proposing the next step?";
+  return "What is the next detail I should know before routing this to the right owner?";
+}
+
+function qualificationQuestion(context: LeadAiContext) {
+  const missing = context.missingFields;
+  const nextMissing = missing.includes("budget")
+    ? "budget"
+    : missing.includes("company")
+      ? "company"
+      : missing.includes("need")
+        ? "need"
+        : missing.includes("timeline")
+          ? "timeline"
+          : missing.includes("authority")
+            ? "authority"
+            : undefined;
+  if (!nextMissing) return "Thanks. I have enough context to route this to the right owner for the next step.";
+  return oneQuestionForMissingField(nextMissing, context);
 }
 
 function whatsappAddressForLead(lead: Awaited<ReturnType<typeof listLeadKnowledgeRecords>>[number]) {
@@ -103,23 +159,70 @@ function whatsappAddressForLead(lead: Awaited<ReturnType<typeof listLeadKnowledg
   return `whatsapp:+${digits}`;
 }
 
-function firstNameForLead(lead: Awaited<ReturnType<typeof listLeadKnowledgeRecords>>[number]) {
-  return lead.contact.displayName?.trim().split(/\s+/)[0] || "there";
+export async function buildLeadAiContext(input: Scope & {
+  leadId: string;
+  conversationId?: string;
+  memberId?: string;
+}): Promise<LeadAiContext | null> {
+  const lead = (await listLeadKnowledgeRecords(input)).find((record) => record.id === input.leadId);
+  if (!lead) return null;
+  const member = input.memberId ? await getTeamMember({ ...input, memberId: input.memberId }) : null;
+  const [workspace, operator, assignmentHistory, openTasks, internalThread] = await Promise.all([
+    getWorkspaceBusinessSettings(input),
+    getOperatorProfileSettings(input),
+    listCrmAssignmentHistory(input, { leadId: lead.id }),
+    listCrmFollowUpTasks(input, { leadId: lead.id }),
+    listTeamThreadMessages({ ...input, leadId: lead.id })
+  ]);
+  const recentMessages = lead.messages
+    .filter((message) => !input.conversationId || message.conversationId === input.conversationId)
+    .filter((message) => message.direction === "inbound" || message.direction === "outbound")
+    .slice(-8)
+    .map((message) => ({ direction: message.direction, body: message.body, sentAt: message.sentAt }));
+  const qualificationFields = lead.qualificationFields as Record<string, string | undefined>;
+  return {
+    lead,
+    member,
+    workspace,
+    operator,
+    qualificationFields,
+    missingFields: missingQualificationFields(qualificationFields),
+    recentMessages,
+    internalNotes: internalThread.slice(-6).map((message) => message.body),
+    assignmentHistory,
+    openTasks
+  };
 }
 
-function initialAiOutboundBody(lead: Awaited<ReturnType<typeof listLeadKnowledgeRecords>>[number], member: TeamMember) {
-  const fields = lead.qualificationFields as Record<string, string | undefined>;
-  const greeting = `Hi ${firstNameForLead(lead)}, I am ${member.name} from Leadsy.`;
-  if (!fields.company) {
-    return `${greeting} Thanks for sharing your details. Which company or business is this for?`;
+export function generateContextualAiReply(
+  context: LeadAiContext,
+  purpose: "initial_outbound" | "qualification_reply" | "qualified_handoff",
+  options: { ownerName?: string; slotText?: string } = {}
+) {
+  const firstName = contextLeadLabel(context);
+  const agentName = context.member?.name || "Leadsy";
+  const company = knownCompany(context);
+  const need = knownNeed(context);
+  const style = compactSentence(context.operator.communicationStyle) || "concise and helpful";
+  const contextLine = company && need
+    ? `I saw ${company} is looking at ${need}.`
+    : company
+      ? `I saw this is for ${company}.`
+      : need
+        ? `I saw you are looking at ${need}.`
+        : "Thanks for sharing the details.";
+
+  if (purpose === "qualified_handoff") {
+    if (options.slotText) return `You look ready for the next step. ${options.ownerName ?? "Our owner"} is available at ${options.slotText}. Which time works for you?`;
+    return `You look ready for the next step. ${options.ownerName ?? "Our owner"} will share the next available meeting time shortly.`;
   }
-  if (!fields.need) {
-    return `${greeting} Thanks for reaching out about ${fields.company}. What are you hoping to improve with WhatsApp lead handling?`;
+
+  const question = qualificationQuestion(context);
+  if (purpose === "initial_outbound") {
+    return `Hi ${firstName}, I am ${agentName} from Leadsy. ${contextLine} To keep this ${style}, ${question}`;
   }
-  if (!fields.budget || !fields.authority) {
-    return `${greeting} I can help qualify this quickly. What budget range should we plan around, and who makes the final decision?`;
-  }
-  return `${greeting} I have the basics. When would you like to start, and should we book a short call?`;
+
+  return `${contextLine} ${question}`;
 }
 
 async function initialOutboundAlreadyHandled(input: Scope & { leadId: string; triggerId: string }) {
@@ -142,12 +245,13 @@ export async function sendInitialAiOutboundForLead(input: Scope & {
     return { action: "skipped_duplicate", memberId: member.id, leadId: input.leadId, reason: "Initial AI outbound was already handled for this trigger." };
   }
 
-  const lead = (await listLeadKnowledgeRecords(input)).find((record) => record.id === input.leadId);
-  if (!lead) {
+  const context = await buildLeadAiContext({ ...input, leadId: input.leadId, memberId: member.id });
+  if (!context) {
     return { action: "lead_not_found", memberId: member.id, leadId: input.leadId, reason: "Lead was not found." };
   }
+  const { lead } = context;
 
-  const body = initialAiOutboundBody(lead, member);
+  const body = generateContextualAiReply(context, "initial_outbound");
   if (member.type === "ai_agent_assisted" || !member.autoReplyEnabled) {
     await postTeamThreadMessage({
       ...input,
@@ -274,6 +378,8 @@ export async function runAgentForInboundLead(input: AgentRunInput): Promise<Agen
 
   const agent = await findPrimaryQualificationAgent(input);
   if (!agent) return { action: "no_agent_available", reason: "No active qualification AI agent is configured." };
+  const context = await buildLeadAiContext({ ...input, memberId: agent.id });
+  if (!context) return { action: "no_action", reason: "Lead context was not found." };
 
   await postTeamThreadMessage({
     ...input,
@@ -303,7 +409,7 @@ export async function runAgentForInboundLead(input: AgentRunInput): Promise<Agen
     return { action: "escalated_to_human", memberId: agent.id };
   }
 
-  const fields = lead.qualificationFields as Record<string, string | undefined>;
+  const fields = context.qualificationFields;
   const contactPhone = lead.contact.phone || lead.contact.waId;
   if (isQualified(fields)) {
     const owner = await findPipelineOwner(input, "qualified");
@@ -319,9 +425,7 @@ export async function runAgentForInboundLead(input: AgentRunInput): Promise<Agen
         })
       : [];
     const slotText = freeSlots.slice(0, 3).map((slot) => formatTime(slot.startAt)).join(", ");
-    const replyBody = slotText
-      ? `You look qualified for the next step. ${owner?.name ?? "Our owner"} is available at ${slotText}. Which time works for you?`
-      : `You look qualified for the next step. ${owner?.name ?? "Our owner"} will share the next available meeting time shortly.`;
+    const replyBody = generateContextualAiReply(context, "qualified_handoff", { ownerName: owner?.name, slotText });
     if (owner) {
       await editLeadKnowledgeRecord({
         ...input,
@@ -355,7 +459,7 @@ export async function runAgentForInboundLead(input: AgentRunInput): Promise<Agen
 
   if (!agent.autoReplyEnabled) return { action: "no_action", memberId: agent.id, reason: "Agent auto-reply is disabled." };
 
-  const replyBody = qualificationQuestion(fields);
+  const replyBody = generateContextualAiReply(context, "qualification_reply");
   await appendAgentReply({ ...input, leadId: input.leadId, to: contactPhone, body: replyBody, now });
   await editLeadKnowledgeRecord({
     ...input,

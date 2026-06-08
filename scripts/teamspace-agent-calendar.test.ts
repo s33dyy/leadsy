@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -9,6 +9,7 @@ async function main() {
 
   try {
     const {
+      createProvisionedTeamMember,
       createTeamMember,
       listTeamMembers,
       postTeamThreadMessage,
@@ -23,10 +24,11 @@ async function main() {
       listCalendarEvents,
       updateCalendarEvent
     } = await import("../apps/web/src/lib/calendar-store");
+    const { authenticateUser, getAuthUserById } = await import("../apps/web/src/lib/auth-store");
 
     const scope = { tenantId: "tenant_teamspace", ownerId: "owner_teamspace" };
 
-    const human = await createTeamMember({
+    const humanProvisioning = await createProvisionedTeamMember({
       ...scope,
       type: "human",
       name: "Nisha Manager",
@@ -36,9 +38,16 @@ async function main() {
       pipelineStages: ["qualified", "meeting"],
       autoReplyEnabled: false
     });
+    const human = humanProvisioning.member;
     assert.equal(human.type, "human");
     assert.equal(human.authUserId?.startsWith("usr_"), true);
     assert.equal(human.status, "active");
+    assert.equal(human.senderMode, "simulator");
+    assert.match(human.simulatorPhoneNumber ?? "", /^\+1555\d{7}$/);
+    assert.equal(humanProvisioning.credentials?.login, "nisha@example.com");
+    assert.equal(humanProvisioning.credentials?.temporaryPassword, "strong-password-1");
+    assert.equal((await getAuthUserById(human.authUserId ?? ""))?.role, "manager");
+    assert.equal((await authenticateUser("nisha@example.com", "strong-password-1"))?.id, human.authUserId);
 
     const qualificationAgent = await createTeamMember({
       ...scope,
@@ -62,6 +71,8 @@ async function main() {
       autoReplyEnabled: false
     });
     assert.equal(assistedAgent.type, "ai_agent_assisted");
+    assert.equal(assistedAgent.senderMode, "simulator");
+    assert.match(assistedAgent.simulatorPhoneNumber ?? "", /^\+1555\d{7}$/);
 
     const provisioned = await provisionTeamMemberSender({ ...scope, memberId: qualificationAgent.id });
     assert.equal(provisioned.sender.transportMode, "workspace");
@@ -152,6 +163,11 @@ async function main() {
     }
     assert(calendarPage.includes("calendar-month-grid"), "calendar page should render a literal month grid");
     assert(calendarPage.includes("New event"), "calendar page should expose create affordance");
+
+    const teamspaceConsole = await readFile(join(process.cwd(), "apps/web/src/components/teamspace-console.tsx"), "utf8");
+    assert(!teamspaceConsole.includes("stagesFromText"), "Teamspace should not parse comma-separated pipeline stage text");
+    assert(teamspaceConsole.includes("pipelineStageOptions"), "Teamspace should receive workspace pipeline stage options");
+    assert(teamspaceConsole.includes("toggleStage"), "Teamspace should use multi-select stage controls");
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

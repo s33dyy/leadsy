@@ -4,18 +4,20 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { createHash, randomBytes, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
 import { tenantId } from "@leadsy/domain";
+import type { Role } from "@leadsy/security";
 import { leadsyDataDir } from "./data-dir";
 
 const authFile = join(leadsyDataDir, "auth.json");
 const sessionTtlMs = 1000 * 60 * 60 * 24 * 14;
 const scryptOptions = { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 
-export type AuthRole = "owner" | "admin" | "client";
+export type AuthRole = Role;
 
 export type AuthUser = {
   id: string;
   tenantId: string;
   clientId?: string;
+  teamMemberId?: string;
   name: string;
   emailOrPhone: string;
   normalizedLogin: string;
@@ -50,6 +52,9 @@ type GoogleOwnerUserResult =
   | { ok: false; reason: "owner_exists" };
 type GoogleWorkspaceUserResult = { ok: true; user: AuthUser };
 type CreateClientUserResult =
+  | { ok: true; user: AuthUser }
+  | { ok: false; reason: "login_exists" };
+type CreateTeamMemberAuthUserResult =
   | { ok: true; user: AuthUser }
   | { ok: false; reason: "login_exists" };
 
@@ -292,6 +297,36 @@ export async function createClientUser(input: {
       normalizedLogin,
       passwordHash: await hashPassword(input.password),
       role: "client",
+      createdAt: new Date().toISOString()
+    };
+
+    return { state: { ...state, users: [...state.users, user] }, result: { ok: true as const, user } };
+  });
+}
+
+export async function createTeamMemberAuthUser(input: {
+  tenantId: string;
+  teamMemberId: string;
+  name: string;
+  emailOrPhone: string;
+  password: string;
+  role: Extract<AuthRole, "admin" | "manager" | "sdr" | "viewer">;
+}) {
+  return mutateAuthState<CreateTeamMemberAuthUserResult>(async (state) => {
+    const normalizedLogin = normalizeLogin(input.emailOrPhone);
+    if (state.users.some((user) => user.normalizedLogin === normalizedLogin)) {
+      return { result: { ok: false as const, reason: "login_exists" as const } };
+    }
+
+    const user: AuthUser = {
+      id: `usr_${crypto.randomUUID().slice(0, 12)}`,
+      tenantId: input.tenantId,
+      teamMemberId: input.teamMemberId,
+      name: input.name.trim(),
+      emailOrPhone: input.emailOrPhone.trim(),
+      normalizedLogin,
+      passwordHash: await hashPassword(input.password),
+      role: input.role,
       createdAt: new Date().toISOString()
     };
 

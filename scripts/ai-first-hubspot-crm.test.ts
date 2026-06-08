@@ -13,6 +13,7 @@ async function main() {
     const { appendManualLeadMessage, listLeadKnowledgeRecords } = await import("../apps/web/src/lib/lead-knowledge-store");
     const { assignLeadOwner } = await import("../apps/web/src/lib/crm-store");
     const { sendInitialAiOutboundForLead } = await import("../apps/web/src/lib/agent-runtime");
+    const { listNotificationRecords } = await import("../apps/web/src/lib/user-settings-store");
 
     const scope = { tenantId: "tenant_ai_first_crm", ownerId: "owner_ai_first_crm" };
     await ensureWorkspaceTwilioSimulator({ ...scope, businessName: "Helio" });
@@ -52,6 +53,9 @@ async function main() {
       assignedByName: "Workspace Owner",
       reason: "Manual intake owner"
     });
+    const assignedBeforeSend = (await listLeadKnowledgeRecords(scope)).find((lead) => lead.id === manualLead.id);
+    assert(assignedBeforeSend?.facts.some((fact) => /assigned to Qualification AI/i.test(fact)), "assignment should be recorded in lead knowledge facts");
+    assert((await listNotificationRecords(scope)).some((notification) => notification.type === "assignedToMe" && /Qualification AI/i.test(notification.detail)), "assignment should create a notification record");
 
     const firstAiSend = await sendInitialAiOutboundForLead({
       ...scope,
@@ -61,6 +65,8 @@ async function main() {
     });
     assert.equal(firstAiSend.action, "sent");
     assert.match(firstAiSend.body ?? "", /hi|hello|thanks|leadsy/i);
+    assert.match(firstAiSend.body ?? "", /LensMart|WhatsApp CRM follow-up/i, "AI initial outreach should use lead context instead of a generic template");
+    assert.doesNotMatch(firstAiSend.body ?? "", /Which company or business is this for\?$/i, "AI initial outreach should not ask for already provided context");
 
     const duplicateAiSend = await sendInitialAiOutboundForLead({
       ...scope,

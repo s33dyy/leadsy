@@ -7,6 +7,7 @@ import type { TeamMember, TeamMemberType } from "@/lib/teamspace-store";
 
 type TeamspaceConsoleProps = {
   initialMembers: TeamMember[];
+  pipelineStageOptions: string[];
 };
 
 const memberTypeLabels: Record<TeamMemberType, string> = {
@@ -15,26 +16,27 @@ const memberTypeLabels: Record<TeamMemberType, string> = {
   ai_agent_assisted: "User-handled AI agent"
 };
 
-function stagesFromText(value: string) {
-  return value
-    .split(",")
-    .map((stage) => stage.trim())
-    .filter(Boolean);
-}
-
 function badgeToneForMember(member: TeamMember) {
   if (member.type === "human") return "neutral" as const;
   return member.autoReplyEnabled ? "teal" as const : "amber" as const;
 }
 
-export function TeamspaceConsole({ initialMembers }: TeamspaceConsoleProps) {
+function defaultStagesForType(type: TeamMemberType, options: string[]) {
+  const preferred = type === "ai_agent_full" ? ["new", "collecting"] : ["qualified"];
+  const selected = preferred.filter((stage) => options.includes(stage));
+  return selected.length ? selected : options.slice(0, 1);
+}
+
+export function TeamspaceConsole({ initialMembers, pipelineStageOptions }: TeamspaceConsoleProps) {
+  const stageOptions = pipelineStageOptions.length ? pipelineStageOptions : ["new", "collecting", "qualified", "meeting", "won"];
   const [members, setMembers] = useState(initialMembers);
   const [type, setType] = useState<TeamMemberType>("ai_agent_full");
   const [name, setName] = useState("Qualification AI");
   const [emailOrPhone, setEmailOrPhone] = useState("");
-  const [pipelineStages, setPipelineStages] = useState("new, collecting");
+  const [selectedPipelineStages, setSelectedPipelineStages] = useState<string[]>(defaultStagesForType("ai_agent_full", stageOptions));
   const [autoReplyEnabled, setAutoReplyEnabled] = useState(true);
   const [notice, setNotice] = useState("");
+  const [credentialsNotice, setCredentialsNotice] = useState("");
   const [pendingAction, setPendingAction] = useState("");
 
   async function refreshMembers() {
@@ -43,9 +45,17 @@ export function TeamspaceConsole({ initialMembers }: TeamspaceConsoleProps) {
     if (response.ok && payload.members) setMembers(payload.members);
   }
 
+  function toggleStage(stage: string) {
+    setSelectedPipelineStages((current) => {
+      if (current.includes(stage)) return current.filter((candidate) => candidate !== stage);
+      return [...current, stage];
+    });
+  }
+
   async function createMember() {
     setPendingAction("create");
     setNotice("");
+    setCredentialsNotice("");
     try {
       const response = await fetch("/api/team/members", {
         method: "POST",
@@ -55,19 +65,22 @@ export function TeamspaceConsole({ initialMembers }: TeamspaceConsoleProps) {
           type,
           name,
           emailOrPhone: emailOrPhone || undefined,
-          pipelineStages: stagesFromText(pipelineStages),
+          pipelineStages: selectedPipelineStages,
           autoReplyEnabled: type !== "human" ? autoReplyEnabled : false,
           escalationKeywords: ["human", "manager", "refund", "legal", "stop"],
           behaviorInstructions: type === "human" ? undefined : "Qualify early-stage leads, keep replies concise, and stop after handoff."
         })
       });
-      const payload = (await response.json().catch(() => ({}))) as { error?: string; member?: TeamMember };
+      const payload = (await response.json().catch(() => ({}))) as { error?: string; member?: TeamMember; credentials?: { login: string; temporaryPassword: string } };
       if (!response.ok || !payload.member) {
         setNotice(payload.error || "Could not create team member.");
         return;
       }
       setMembers((current) => [...current, payload.member!]);
       setNotice(`${payload.member.name} added to Teamspace with ${payload.member.senderMode === "workspace" ? "the workspace sender" : payload.member.simulatorPhoneNumber ?? "a simulator sender"}.`);
+      if (payload.credentials) {
+        setCredentialsNotice(`Login: ${payload.credentials.login} · Temporary password: ${payload.credentials.temporaryPassword}`);
+      }
     } finally {
       setPendingAction("");
     }
@@ -132,6 +145,7 @@ export function TeamspaceConsole({ initialMembers }: TeamspaceConsoleProps) {
                 setType(nextType);
                 setName(nextType === "human" ? "Sales Owner" : nextType === "ai_agent_assisted" ? "Assisted Sales AI" : "Qualification AI");
                 setAutoReplyEnabled(nextType === "ai_agent_full");
+                setSelectedPipelineStages(defaultStagesForType(nextType, stageOptions));
               }}
               className="h-10 rounded-[6px] border border-border bg-background px-3 outline-none focus:border-primary"
             >
@@ -159,14 +173,27 @@ export function TeamspaceConsole({ initialMembers }: TeamspaceConsoleProps) {
               className="h-10 rounded-[6px] border border-border bg-background px-3 outline-none focus:border-primary"
             />
           </label>
-          <label className="grid gap-1.5 text-sm">
+          <div className="grid gap-1.5 text-sm">
             <span className="caption">Pipeline stages</span>
-            <input
-              value={pipelineStages}
-              onChange={(event) => setPipelineStages(event.target.value)}
-              className="h-10 rounded-[6px] border border-border bg-background px-3 outline-none focus:border-primary"
-            />
-          </label>
+            <div className="flex flex-wrap gap-2 rounded-[8px] border border-border bg-background p-2">
+              {stageOptions.map((stage) => {
+                const active = selectedPipelineStages.includes(stage);
+                return (
+                  <button
+                    key={stage}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => toggleStage(stage)}
+                    className={`rounded-full border px-3 py-1.5 text-xs ${
+                      active ? "border-primary bg-primary/15 text-primary" : "border-border text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {stage}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           {type !== "human" ? (
             <label className="flex items-center justify-between gap-3 rounded-[8px] border border-border bg-background p-3 text-sm">
               <span>Auto replies</span>
@@ -183,6 +210,7 @@ export function TeamspaceConsole({ initialMembers }: TeamspaceConsoleProps) {
             Add member
           </button>
           {notice ? <p className="text-sm text-muted-foreground">{notice}</p> : null}
+          {credentialsNotice ? <p className="rounded-[6px] border border-primary/25 bg-primary/10 p-2 font-mono text-xs text-primary">{credentialsNotice}</p> : null}
         </div>
       </section>
 
