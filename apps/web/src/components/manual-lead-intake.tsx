@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Bot, Link2, Loader2, Plus, X } from "lucide-react";
 import { useToast } from "@/components/toast-provider";
@@ -11,10 +11,22 @@ type RelatedLeadOption = {
   detail?: string;
 };
 
+type ManualLeadTeamMember = {
+  id: string;
+  name: string;
+  type: "human" | "ai_agent_full" | "ai_agent_assisted";
+  senderMode?: string;
+  autoReplyEnabled?: boolean;
+};
+
 type ManualLeadIntakeProps = {
   relatedLeads: RelatedLeadOption[];
+  teamMembers?: ManualLeadTeamMember[];
   endpoint?: string;
   buttonLabel?: string;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  hideTrigger?: boolean;
 };
 
 const channelOptions = [
@@ -28,22 +40,43 @@ function FieldLabel({ children }: { children: string }) {
   return <span className="text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)]">{children}</span>;
 }
 
-export function ManualLeadIntake({ relatedLeads, endpoint = "/api/leads/manual", buttonLabel = "Add Lead" }: ManualLeadIntakeProps) {
-  const [open, setOpen] = useState(false);
+export function ManualLeadIntake({
+  relatedLeads,
+  teamMembers = [],
+  endpoint = "/api/leads/manual",
+  buttonLabel = "Add Lead",
+  open,
+  onOpenChange,
+  hideTrigger = false
+}: ManualLeadIntakeProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const formRef = useRef<HTMLFormElement>(null);
   const router = useRouter();
   const { toast } = useToast();
+  const modalOpen = open ?? internalOpen;
+  const defaultAssigneeId =
+    teamMembers.find((member) => member.name.toLowerCase() === "qualification ai")?.id ??
+    teamMembers.find((member) => member.type.startsWith("ai_agent"))?.id ??
+    teamMembers[0]?.id ??
+    "";
+
+  const setOpen = useCallback((nextOpen: boolean) => {
+    if (open === undefined) {
+      setInternalOpen(nextOpen);
+    }
+    onOpenChange?.(nextOpen);
+  }, [onOpenChange, open]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!modalOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [open]);
+  }, [modalOpen, setOpen]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -63,11 +96,17 @@ export function ManualLeadIntake({ relatedLeads, endpoint = "/api/leads/manual",
         headers: { Accept: "application/json" },
         body: formData
       });
-      const payload = (await response.json().catch(() => ({}))) as { href?: string; message?: string };
+      const payload = (await response.json().catch(() => ({}))) as { href?: string; message?: string; aiAction?: { action?: string } };
       if (!response.ok) {
         throw new Error(payload.message || "The manual lead was not saved. Check the required fields and try again.");
       }
-      toast({ title: "Lead added", detail: "Manual intake was saved to the lead knowledge base.", tone: "success" });
+      const aiDetail =
+        payload.aiAction?.action === "sent"
+          ? "AI owner sent the first WhatsApp message."
+          : payload.aiAction?.action === "drafted_for_review"
+            ? "Assisted AI drafted the first message for review."
+            : "Manual intake was saved to the CRM.";
+      toast({ title: "Lead added", detail: aiDetail, tone: "success" });
       formRef.current?.reset();
       setOpen(false);
       router.push(payload.href || "/app/leads?notice=manual-lead-added");
@@ -83,16 +122,18 @@ export function ManualLeadIntake({ relatedLeads, endpoint = "/api/leads/manual",
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-[6px] border border-teal-300/30 bg-teal-300/[0.12] px-3 text-xs font-medium text-teal-100 hover:border-teal-200 hover:bg-teal-300/[0.18]"
-      >
-        <Plus size={15} />
-        {buttonLabel}
-      </button>
+      {hideTrigger ? null : (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-[6px] border border-teal-300/30 bg-teal-300/[0.12] px-3 text-xs font-medium text-teal-100 hover:border-teal-200 hover:bg-teal-300/[0.18]"
+        >
+          <Plus size={15} />
+          {buttonLabel}
+        </button>
+      )}
 
-      {open ? (
+      {modalOpen ? (
         <div className="fixed inset-0 z-[75] bg-black/70 p-0 backdrop-blur-md md:p-6" role="dialog" aria-modal="true" aria-labelledby="manual-lead-title">
           <div className="mx-auto flex h-full max-w-5xl flex-col overflow-hidden border border-[var(--line-strong)] bg-[var(--panel)] shadow-2xl md:h-[min(820px,calc(100vh-3rem))] md:rounded-[10px]">
             <div className="flex items-start justify-between gap-4 border-b border-[var(--line)] p-5">
@@ -165,6 +206,21 @@ export function ManualLeadIntake({ relatedLeads, endpoint = "/api/leads/manual",
                         <select name="leadStatus" defaultValue="lead" className="h-10 rounded-[6px] border border-[var(--line)] bg-black/30 px-3 text-sm text-white outline-none">
                           <option value="lead">Active lead</option>
                           <option value="excluded">Track only</option>
+                        </select>
+                      </label>
+                      <label className="grid gap-2 md:col-span-2">
+                        <FieldLabel>Owner</FieldLabel>
+                        <select
+                          name="assigneeId"
+                          defaultValue={defaultAssigneeId}
+                          className="h-10 rounded-[6px] border border-[var(--line)] bg-black/30 px-3 text-sm text-white outline-none"
+                        >
+                          {teamMembers.map((member) => (
+                            <option key={member.id} value={member.id}>
+                              {member.name} · {member.type === "human" ? "Human" : member.type === "ai_agent_full" ? "Full AI" : "Assisted AI"}
+                              {member.senderMode ? ` · ${member.senderMode}` : ""}
+                            </option>
+                          ))}
                         </select>
                       </label>
                     </div>
@@ -246,6 +302,7 @@ export function ManualLeadIntake({ relatedLeads, endpoint = "/api/leads/manual",
                       <input name="nextAction" placeholder="Optional operator follow-up" className="h-10 rounded-[6px] border border-[var(--line)] bg-black/30 px-3 text-sm text-white outline-none placeholder:text-[var(--muted)]" />
                     </label>
                     <input type="hidden" name="direction" value="note" />
+                    <input type="hidden" name="sendInitialAiMessage" value="true" />
                   </section>
                 </div>
               </div>

@@ -3,6 +3,7 @@ import { audit, rateLimit } from "@leadsy/security";
 import { requireApiSession } from "@/lib/api-auth";
 import { createCrmFollowUpTask, listCrmFollowUpTasks, type CrmFollowUpTask } from "@/lib/crm-store";
 import { urlForRequestHost } from "@/lib/request-url";
+import { getTeamMember } from "@/lib/teamspace-store";
 
 export const runtime = "nodejs";
 
@@ -52,6 +53,13 @@ export async function POST(request: NextRequest) {
   if (!leadId || !topic) {
     return NextResponse.json({ error: "invalid_follow_up_task" }, { status: 400 });
   }
+  const member = payload.assigneeId
+    ? await getTeamMember({
+        tenantId: auth.session.tenantId,
+        ownerId: auth.session.id,
+        memberId: payload.assigneeId
+      })
+    : null;
 
   const task = await createCrmFollowUpTask({
     tenantId: auth.session.tenantId,
@@ -61,7 +69,7 @@ export async function POST(request: NextRequest) {
     description: payload.description,
     priority: priorityFromValue(payload.priority),
     assigneeId: payload.assigneeId,
-    assigneeName: payload.assigneeName,
+    assigneeName: payload.assigneeName || member?.name,
     dueAt: payload.dueAt
   });
 
