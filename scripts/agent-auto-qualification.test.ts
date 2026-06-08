@@ -125,9 +125,9 @@ async function main() {
     const appShell = await readFile(join(process.cwd(), "apps/web/src/components/app-shell.tsx"), "utf8");
     assert.match(appShell, /\/app\/calendar/, "Primary navigation should include Calendar");
 
-    const calendarPage = await readFile(join(process.cwd(), "apps/web/src/app/app/calendar/page.tsx"), "utf8");
-    for (const label of ["Month", "Week", "Day", "List", "Availability", "Meetings"]) {
-      assert.match(calendarPage, new RegExp(label), `Calendar view should render ${label}`);
+    const calendarConsole = await readFile(join(process.cwd(), "apps/web/src/components/calendar-console.tsx"), "utf8");
+    for (const label of ["Month", "Week", "Day", "Year", "Availability", "Meeting"]) {
+      assert.match(calendarConsole, new RegExp(label), `Calendar view should render ${label}`);
     }
   } finally {
     await rm(tempDir, { recursive: true, force: true });
