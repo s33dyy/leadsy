@@ -250,7 +250,7 @@ function LeadHeader({
     id: message.id,
     label: `${message.direction} - ${message.channel}`,
     body: message.body,
-    meta: relativeTime(message.sentAt)
+    detail: relativeTime(message.sentAt)
   }));
   return (
     <header className="border-b border-border pb-5">

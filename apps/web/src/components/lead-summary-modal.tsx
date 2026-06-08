@@ -7,7 +7,7 @@ export type LeadSummaryMessage = {
   id: string;
   label: string;
   body: string;
-  meta?: string;
+  detail?: string;
 };
 
 export type LeadSummaryModalProps = {
@@ -142,7 +142,7 @@ function SummaryList({ title, empty, items }: { title: string; empty: string; it
         <div className="mt-2 space-y-2">
           {items.map((item) => (
             <div key={item.id} className="rounded-[6px] border border-border bg-background p-2">
-              <div className="font-mono text-[10px] text-muted-foreground">{item.label}{item.meta ? ` - ${item.meta}` : ""}</div>
+              <div className="font-mono text-[10px] text-muted-foreground">{item.label}{item.detail ? ` - ${item.detail}` : ""}</div>
               <p className="mt-1 text-sm leading-6">{item.body}</p>
             </div>
           ))}

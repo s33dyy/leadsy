@@ -219,7 +219,7 @@ export function CommunicationsConsole({
     id: message.id,
     label: `${message.from === "us" ? "Leadsy" : "Lead"} - ${message.time}`,
     body: message.text,
-    meta: message.deliveryStatus
+    detail: message.deliveryStatus
   }));
   const summaryInternalNotes: LeadSummaryMessage[] = internalThread.slice(-5).map((message) => ({
     id: message.id,
@@ -230,7 +230,7 @@ export function CommunicationsConsole({
     id: event.id,
     label: event.status,
     body: event.title,
-    meta: formatEventTime(event.startAt)
+    detail: formatEventTime(event.startAt)
   }));
   const missingFields = contextLead
     ? Object.entries(contextLead.qualificationFields)
