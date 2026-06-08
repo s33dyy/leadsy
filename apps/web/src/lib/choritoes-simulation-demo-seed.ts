@@ -276,7 +276,7 @@ function modelForSeed() {
     process.env.OPENROUTER_DEFAULT_MODEL?.trim(),
     "openai/gpt-4o-mini"
   ].filter(Boolean) as string[];
-  return candidates.find((model) => !/(^openrouter\/free$|[:/_-]free($|[:/_-]))/i.test(model)) ?? "openai/gpt-4o-mini";
+  return candidates.find((model) => !/(^openrouter\/(free|auto)$|[:/_-]free($|[:/_-]))/i.test(model)) ?? "openai/gpt-4o-mini";
 }
 
 function memberLogin(scope: Scope, key: string) {
