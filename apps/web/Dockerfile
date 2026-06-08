@@ -38,4 +38,4 @@ COPY --from=builder /app/packages ./packages
 RUN mkdir -p /data/leadsy && chown -R node:node /data
 USER node
 EXPOSE 3000
-CMD ["npm", "--workspace", "@leadsy/web", "run", "start"]
+CMD ["sh", "-lc", "cd apps/web && exec ./node_modules/.bin/next start -H 0.0.0.0 -p ${PORT:-3000}"]
