@@ -274,9 +274,12 @@ function modelForSeed() {
     process.env.LEADSY_ROUTINE_MODEL?.trim(),
     process.env.AI_DEFAULT_MODEL?.trim(),
     process.env.OPENROUTER_DEFAULT_MODEL?.trim(),
-    "openai/gpt-4o-mini"
+    "google/gemini-2.5-flash"
   ].filter(Boolean) as string[];
-  return candidates.find((model) => !/(^openrouter\/(free|auto)$|[:/_-]free($|[:/_-]))/i.test(model)) ?? "openai/gpt-4o-mini";
+  return (
+    candidates.find((model) => !/(^openrouter\/(free|auto)$|[:/_-]free($|[:/_-])|gpt-5|claude-4|opus|o1|o3|o4|reasoning)/i.test(model)) ??
+    "google/gemini-2.5-flash"
+  );
 }
 
 function memberLogin(scope: Scope, key: string) {

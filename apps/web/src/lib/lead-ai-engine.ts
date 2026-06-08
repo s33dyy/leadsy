@@ -512,7 +512,19 @@ export async function generateLeadAiReply(input: Scope & {
     }
     if (!response.ok) throw new Error(text.slice(0, 300) || `OpenRouter failed with ${response.status}`);
     const payload = JSON.parse(text) as OpenRouterResponse;
-    const parsed = resultFromUnknown(parseJsonFromText(payload.choices?.[0]?.message?.content ?? ""));
+    const content = clean(payload.choices?.[0]?.message?.content ?? "");
+    const parsed =
+      resultFromUnknown(parseJsonFromText(content)) ??
+      (strictRemoteAi && content
+        ? {
+            reply: content,
+            extractedFields: {},
+            crmNote: `OpenRouter generated a non-JSON lead reply for ${context.lead.contact.displayName || context.lead.id}.`,
+            nextMissingField: nextMissingField(context) ?? "",
+            shouldEscalate: false,
+            confidence: 0.62
+          }
+        : undefined);
     if (!parsed) {
       if (strictRemoteAi) throw new Error("OpenRouter returned an unparseable lead reply.");
       return fallback;
