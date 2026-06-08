@@ -784,6 +784,175 @@ function buildSettings(scope: Scope) {
   };
 }
 
+function openRouterCost(input: {
+  generationId: string;
+  stage: string;
+  model: string;
+  promptTokens: number;
+  completionTokens: number;
+  costUsd: number;
+  createdAt: string;
+}) {
+  const fxRate = 83;
+  return {
+    provider: "openrouter",
+    stage: input.stage,
+    model: input.model,
+    generationId: input.generationId,
+    finishReason: "stop",
+    promptTokens: input.promptTokens,
+    completionTokens: input.completionTokens,
+    totalTokens: input.promptTokens + input.completionTokens,
+    costUsd: input.costUsd,
+    costInr: Math.round(input.costUsd * fxRate * 1_000_000) / 1_000_000,
+    fx: {
+      base: "USD",
+      quote: "INR",
+      rate: fxRate,
+      source: "default",
+      fetchedAt: input.createdAt
+    },
+    createdAt: input.createdAt
+  };
+}
+
+function buildLeadMagnetStress(scope: Scope) {
+  const agentRuns = [
+    {
+      id: "stress_airun_qualification_batch",
+      tenantId: scope.tenantId,
+      ownerId: scope.ownerId,
+      agent: "qualification-ai",
+      provider: "openrouter",
+      inputSummary: "Reviewed 25 simulator WhatsApp threads, current qualification facts, and missing fields.",
+      outputSummary: "Generated qualification next questions, lead summaries, and routing notes for active leads.",
+      displayTitle: "Qualification AI simulator review",
+      displaySummary: "AI qualification pass across the seeded WhatsApp simulator inbox.",
+      status: "completed",
+      cost: openRouterCost({
+        generationId: "stress_gen_qualification_batch",
+        stage: "qualification-reply",
+        model: "leadsy-lowest-cost-router",
+        promptTokens: 9200,
+        completionTokens: 2400,
+        costUsd: 0.184,
+        createdAt: isoDateOffset(0, 10, 5)
+      }),
+      createdAt: isoDateOffset(0, 10, 5)
+    },
+    {
+      id: "stress_airun_reply_drafts",
+      tenantId: scope.tenantId,
+      ownerId: scope.ownerId,
+      agent: "message-drafter",
+      provider: "openrouter",
+      inputSummary: "Used lead details, WhatsApp history, owner profile, and workspace context to draft replies.",
+      outputSummary: "Prepared contextual outbound reply drafts for high-intent and needs-reply leads.",
+      displayTitle: "Contextual WhatsApp reply drafts",
+      displaySummary: "Human-like reply drafting for simulator conversations.",
+      status: "completed",
+      cost: openRouterCost({
+        generationId: "stress_gen_reply_drafts",
+        stage: "message-draft",
+        model: "leadsy-lowest-cost-router",
+        promptTokens: 7200,
+        completionTokens: 1800,
+        costUsd: 0.136,
+        createdAt: isoDateOffset(0, 10, 14)
+      }),
+      createdAt: isoDateOffset(0, 10, 14)
+    },
+    {
+      id: "stress_airun_calendar_slots",
+      tenantId: scope.tenantId,
+      ownerId: scope.ownerId,
+      agent: "calendar-ai",
+      provider: "openrouter",
+      inputSummary: "Checked seeded calendar availability and busy blocks before drafting meeting proposals.",
+      outputSummary: "Created calendar-backed slot suggestions for school, corporate, and field-visit leads.",
+      displayTitle: "Calendar AI slot proposals",
+      displaySummary: "Meeting suggestions grounded in Leadsy calendar records.",
+      status: "completed",
+      cost: openRouterCost({
+        generationId: "stress_gen_calendar_slots",
+        stage: "calendar-reply",
+        model: "leadsy-lowest-cost-router",
+        promptTokens: 4300,
+        completionTokens: 1100,
+        costUsd: 0.081,
+        createdAt: isoDateOffset(0, 10, 22)
+      }),
+      createdAt: isoDateOffset(0, 10, 22)
+    },
+    {
+      id: "stress_airun_pricing_reviews",
+      tenantId: scope.tenantId,
+      ownerId: scope.ownerId,
+      agent: "pricing-assistant-ai",
+      provider: "openrouter",
+      inputSummary: "Reviewed proposal-stage leads, budget ranges, services, and approval constraints.",
+      outputSummary: "Prepared pricing review tasks for assisted AI approval queue.",
+      displayTitle: "Pricing Assistant AI approval prep",
+      displaySummary: "Quote review and approval-prep work for proposal-stage leads.",
+      status: "completed",
+      cost: openRouterCost({
+        generationId: "stress_gen_pricing_reviews",
+        stage: "approval-draft",
+        model: "leadsy-balanced-router",
+        promptTokens: 5100,
+        completionTokens: 1500,
+        costUsd: 0.109,
+        createdAt: isoDateOffset(0, 10, 31)
+      }),
+      createdAt: isoDateOffset(0, 10, 31)
+    }
+  ];
+
+  const runs = [
+    {
+      id: "stress_research_run_optical_market",
+      tenantId: scope.tenantId,
+      ownerId: scope.ownerId,
+      status: "completed",
+      sourcesRequested: ["crm-context", "conversation-history"],
+      sourcesUsed: ["crm-context", "conversation-history"],
+      found: 25,
+      qualified: 14,
+      needsReview: 3,
+      blocked: 0,
+      events: [
+        { id: "stress_receipt_event_1", type: "cost-recorded", message: "AI utilization recorded for stress demo receipt.", createdAt: isoDateOffset(0, 10, 40) }
+      ],
+      cost: openRouterCost({
+        generationId: "stress_gen_research_summary",
+        stage: "lead-dossier",
+        model: "leadsy-lowest-cost-router",
+        promptTokens: 3600,
+        completionTokens: 900,
+        costUsd: 0.064,
+        createdAt: isoDateOffset(0, 10, 40)
+      }),
+      scenarioLabel: "Optical CRM stress-demo summary",
+      ownerSummary: "Summarized seeded optical CRM leads, routing status, and queue health for the receipt modal.",
+      recommendation: "Use simulator traffic for UX validation and count only AI utilization as incurred spend.",
+      connectionMessages: [],
+      startedAt: isoDateOffset(0, 10, 36),
+      completedAt: isoDateOffset(0, 10, 40)
+    }
+  ];
+
+  return {
+    briefs: [],
+    briefHistory: [],
+    leads: [],
+    runs,
+    drafts: [],
+    agentRuns,
+    searchSessions: [],
+    ownerSearchMemory: []
+  };
+}
+
 function buildSender(scope: Scope) {
   return {
     tenantId: scope.tenantId,
@@ -846,6 +1015,7 @@ export async function seedAccountStressDemo(input: SeedInput) {
   const calendarEvents = buildCalendar(scope);
   const settings = buildSettings(scope);
   const sender = buildSender(scope);
+  const leadMagnetStress = buildLeadMagnetStress(scope);
 
   const deletedTeamUserIds = new Set(
     auth.users
@@ -921,14 +1091,14 @@ export async function seedAccountStressDemo(input: SeedInput) {
 
   const leadMagnet = await readJson<JsonObject>(dataDir, "lead-magnet.json", {});
   await writeJson(dataDir, "lead-magnet.json", {
-    briefs: keepNonTargetLeadMagnetItems(leadMagnet.briefs as JsonObject[], scope),
-    briefHistory: keepNonTargetLeadMagnetItems(leadMagnet.briefHistory as JsonObject[], scope),
-    leads: keepNonTargetLeadMagnetItems(leadMagnet.leads as JsonObject[], scope),
-    runs: keepNonTargetLeadMagnetItems(leadMagnet.runs as JsonObject[], scope),
-    drafts: keepNonTargetLeadMagnetItems(leadMagnet.drafts as JsonObject[], scope),
-    agentRuns: keepNonTargetLeadMagnetItems(leadMagnet.agentRuns as JsonObject[], scope),
-    searchSessions: keepNonTargetLeadMagnetItems(leadMagnet.searchSessions as JsonObject[], scope),
-    ownerSearchMemory: keepNonTargetLeadMagnetItems(leadMagnet.ownerSearchMemory as JsonObject[], scope)
+    briefs: [...keepNonTargetLeadMagnetItems(leadMagnet.briefs as JsonObject[], scope), ...leadMagnetStress.briefs],
+    briefHistory: [...keepNonTargetLeadMagnetItems(leadMagnet.briefHistory as JsonObject[], scope), ...leadMagnetStress.briefHistory],
+    leads: [...keepNonTargetLeadMagnetItems(leadMagnet.leads as JsonObject[], scope), ...leadMagnetStress.leads],
+    runs: [...keepNonTargetLeadMagnetItems(leadMagnet.runs as JsonObject[], scope), ...leadMagnetStress.runs],
+    drafts: [...keepNonTargetLeadMagnetItems(leadMagnet.drafts as JsonObject[], scope), ...leadMagnetStress.drafts],
+    agentRuns: [...keepNonTargetLeadMagnetItems(leadMagnet.agentRuns as JsonObject[], scope), ...leadMagnetStress.agentRuns],
+    searchSessions: [...keepNonTargetLeadMagnetItems(leadMagnet.searchSessions as JsonObject[], scope), ...leadMagnetStress.searchSessions],
+    ownerSearchMemory: [...keepNonTargetLeadMagnetItems(leadMagnet.ownerSearchMemory as JsonObject[], scope), ...leadMagnetStress.ownerSearchMemory]
   });
 
   return {
