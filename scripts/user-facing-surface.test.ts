@@ -13,9 +13,10 @@ async function read(path: string) {
 
 async function main() {
   const shell = await read("apps/web/src/components/app-shell.tsx");
-  for (const route of ["/app", "/app/leads", "/app/communications", "/app/worker", "/app/team", "/app/settings", "/app/calendar"]) {
+  for (const route of ["/app", "/app/leads", "/app/communications", "/app/team", "/app/settings", "/app/calendar"]) {
     assert(shell.includes(route), `shell should include ${route}`);
   }
+  assert(!shell.includes("/app/worker"), "shell should not expose the retired Automations route");
 
   const landing = await read("apps/web/src/app/page.tsx");
   assert(landing.includes("AI team handoff"), "landing page should explain AI handoff");
@@ -34,8 +35,8 @@ async function main() {
   assert(team.includes("Repair sender"), "Teamspace should keep a sender repair action");
   assert(team.includes("Toggle auto-reply"), "Teamspace should expose auto-reply controls");
 
-  const calendar = await read("apps/web/src/app/app/calendar/page.tsx");
-  for (const label of ["Month", "Week", "Day", "List", "Availability", "Meetings"]) {
+  const calendar = await read("apps/web/src/components/calendar-console.tsx");
+  for (const label of ["Month", "Week", "Day", "Year", "Availability", "Meeting"]) {
     assert(calendar.includes(label), `calendar page should include ${label}`);
   }
 

@@ -79,7 +79,7 @@ export default async function ApprovalsPage() {
         <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border bg-background px-3 text-[12px]">
           <input type="checkbox" aria-label="Select all approvals" className="h-3.5 w-3.5 accent-primary" />
           <span className="text-muted-foreground">{approvals.length} pending - select to act in bulk</span>
-          <Link href="/app/worker?tab=pending" className="ml-auto inline-flex h-7 items-center gap-1.5 rounded-[5px] bg-primary px-2.5 text-[12px] font-medium text-primary-foreground hover:bg-primary/90">
+          <Link href="/app/team" className="ml-auto inline-flex h-7 items-center gap-1.5 rounded-[5px] bg-primary px-2.5 text-[12px] font-medium text-primary-foreground hover:bg-primary/90">
             <Check className="h-3 w-3" /> Review queue
           </Link>
         </div>
@@ -134,7 +134,7 @@ export default async function ApprovalsPage() {
                 <Link href={active.href} className="inline-flex h-7 items-center gap-1.5 rounded-[5px] border border-border bg-surface-2 px-2.5 text-[12px] hover:bg-surface-3">
                   <Pencil className="h-3 w-3" /> Edit
                 </Link>
-                <Link href="/app/worker" className="inline-flex h-7 items-center gap-1.5 rounded-[5px] border border-border bg-surface-2 px-2.5 text-[12px] hover:bg-surface-3">
+                <Link href="/app/team" className="inline-flex h-7 items-center gap-1.5 rounded-[5px] border border-border bg-surface-2 px-2.5 text-[12px] hover:bg-surface-3">
                   <ArrowUpRight className="h-3 w-3" /> Escalate
                 </Link>
                 <span className="ml-auto inline-flex h-7 items-center gap-1.5 rounded-[5px] px-2.5 text-[12px] text-muted-foreground">

@@ -26,7 +26,7 @@ async function main() {
     "Dashboard",
     "Leads",
     "Inbox",
-    "Automations",
+    "Calendar",
     "Team",
     "Analytics",
     "Settings"
@@ -34,7 +34,7 @@ async function main() {
   for (const label of expectedNavLabels) {
     assert(appShell.includes(`label: "${label}"`), `global sidebar should include ${label}`);
   }
-  for (const legacyPrimaryLabel of ['label: "CRM"', 'label: "Workers"', 'label: "Communications"']) {
+  for (const legacyPrimaryLabel of ['label: "CRM"', 'label: "Workers"', 'label: "Communications"', 'label: "Automations"']) {
     assert(!appShell.includes(legacyPrimaryLabel), `global sidebar primary nav should not include ${legacyPrimaryLabel}`);
   }
   for (const fakeCounter of ['count: "142"', 'count: "3"', 'count: "12"', 'count: "38"', 'count: "24"', "4 workers running", "queue {82 + pendingApprovalCount}"]) {

@@ -41,11 +41,11 @@ export default async function IntegrationsPage() {
 
   const items: IntegrationItem[] = [
     {
-      name: "Twilio WhatsApp",
-      desc: "Leadsy-assigned WhatsApp sender infrastructure for inbound lead messages and human or AI replies. Clients do not connect their own Twilio account.",
+      name: "Leadsy WhatsApp",
+      desc: "Workspace WhatsApp channel for inbound lead messages and human or AI replies. Transport details stay internal to Leadsy.",
       status: sender?.status === "approved" ? "Leadsy managed" : "Platform pending",
       scope: sender?.assignedPhoneNumber || sender?.statusReason || twilio.whatsappNumber || "Leadsy platform config pending",
-      href: "/app/settings?section=twilio"
+      href: "/simulate-twilio"
     },
     {
       name: "OpenRouter",
@@ -60,13 +60,6 @@ export default async function IntegrationsPage() {
       status: emailConfigured ? "Connected" : "Available",
       scope: emailConfig?.detail || (emailConfigured ? "Web service configured" : "Add SMTP, Resend, or Postmark config"),
       href: "/app/settings"
-    },
-    {
-      name: "Leadsy automation APIs",
-      desc: "Native endpoints for automation health, workflow definitions, and execution audit.",
-      status: "Available",
-      scope: "/api/infrastructure/automation/*",
-      href: "/app/worker"
     }
   ];
 
@@ -81,9 +74,7 @@ export default async function IntegrationsPage() {
               Configure systems Leadsy uses while keeping CRM state in the app database.
             </p>
           </div>
-          <Badge tone={serviceTone(infrastructure.automation.health)}>
-            Automation: {infrastructure.automation.health}
-          </Badge>
+          <Badge tone={serviceTone(openRouter?.status ?? "unknown")}>AI: {openRouter?.status ?? "unknown"}</Badge>
         </div>
 
         <div className="mt-6 grid grid-cols-1 gap-px overflow-hidden rounded-[8px] border border-border bg-border md:grid-cols-2">

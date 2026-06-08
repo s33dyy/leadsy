@@ -20,6 +20,8 @@ export type CalendarEvent = {
   eventType: CalendarEventType;
   status: CalendarEventStatus;
   attendees: string[];
+  notes?: string;
+  location?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -49,6 +51,8 @@ type CreateCalendarEventInput = Scope & {
   eventType: CalendarEventType;
   status?: CalendarEventStatus;
   attendees?: string[];
+  notes?: string;
+  location?: string;
 };
 
 type UpdateCalendarEventInput = Scope & {
@@ -62,6 +66,8 @@ type UpdateCalendarEventInput = Scope & {
   eventType?: CalendarEventType;
   status?: CalendarEventStatus;
   attendees?: string[];
+  notes?: string;
+  location?: string;
 };
 
 type FindFreeSlotsInput = Scope & {
@@ -98,7 +104,9 @@ function normalizeEvent(event: CalendarEvent): CalendarEvent {
     ...event,
     eventType: event.eventType ?? "meeting",
     status: event.status ?? (event.eventType === "availability" ? "available" : "confirmed"),
-    attendees: uniqueStrings(event.attendees ?? [])
+    attendees: uniqueStrings(event.attendees ?? []),
+    notes: event.notes,
+    location: event.location
   };
 }
 
@@ -158,6 +166,8 @@ export async function createCalendarEvent(input: CreateCalendarEventInput) {
       eventType: input.eventType,
       status: input.status ?? (input.eventType === "availability" ? "available" : "confirmed"),
       attendees: uniqueStrings(input.attendees ?? []),
+      notes: input.notes?.trim() || undefined,
+      location: input.location?.trim() || undefined,
       createdAt: now,
       updatedAt: now
     };
@@ -181,12 +191,25 @@ export async function updateCalendarEvent(input: UpdateCalendarEventInput) {
       eventType: input.eventType ?? existing.eventType,
       status: input.status ?? existing.status,
       attendees: input.attendees ? uniqueStrings(input.attendees) : existing.attendees,
+      notes: input.notes !== undefined ? input.notes.trim() || undefined : existing.notes,
+      location: input.location !== undefined ? input.location.trim() || undefined : existing.location,
       updatedAt: nowIso()
     });
     assertTimeRange(updated.startAt, updated.endAt);
     return {
       state: { events: state.events.map((event) => (event.id === existing.id ? updated : event)) },
       result: updated
+    };
+  });
+}
+
+export async function deleteCalendarEvent(input: Scope & { eventId: string }) {
+  return mutateState((state) => {
+    const existing = state.events.find((event) => event.id === input.eventId && scopeMatches(input, event));
+    if (!existing) return { result: false };
+    return {
+      state: { events: state.events.filter((event) => event.id !== existing.id) },
+      result: true
     };
   });
 }
