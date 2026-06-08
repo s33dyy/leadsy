@@ -151,7 +151,7 @@ async function main() {
     assert.equal(sourceInboxItem.needsReply, true);
     assert.equal(manualInboxItem?.assignedToMe, true);
 
-    const communicationsSource = await readFile(join(process.cwd(), "apps/web/src/app/app/communications/page.tsx"), "utf8");
+    const communicationsSource = await readFile(join(process.cwd(), "apps/web/src/components/communications-console.tsx"), "utf8");
     for (const requiredLabel of ["Unread", "Needs Reply", "Assigned To Me", "All Conversations", "Last Message", "Owner", "Qualification", "Last Activity"]) {
       assert.match(communicationsSource, new RegExp(requiredLabel), `Inbox surface should include ${requiredLabel}`);
     }

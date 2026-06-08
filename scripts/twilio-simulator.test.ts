@@ -163,7 +163,11 @@ async function main() {
     assert.match(simulatorConsoleSource, /Pricing estimator/);
     assert.match(simulatorConsoleSource, /Simulation Inbox/, "Simulator page should include an inline Inbox for simulated conversations");
     assert.match(simulatorConsoleSource, /selectedConversation/, "Simulator Inbox should let users select a simulated conversation");
-    assert.match(simulatorConsoleSource, /\/api\/whatsapp\/messages/, "Simulator Inbox replies should use the generic WhatsApp endpoint");
+    assert.match(simulatorConsoleSource, /\/api\/simulate-twilio\/inbound/, "Simulator Inbox should insert inbound lead-side messages");
+    assert.doesNotMatch(simulatorConsoleSource, /\/api\/whatsapp\/messages/, "Simulator Inbox must not send outbound replies from the lead-side simulator");
+    assert.match(simulatorConsoleSource, /EventSource\("\/api\/simulate-twilio\/stream"\)/, "Simulator Inbox should subscribe to live simulator updates");
+    assert.doesNotMatch(simulatorConsoleSource, /router\.refresh\(\)/, "Simulator Inbox should update without a page refresh");
+    assert.match(simulatorConsoleSource, /Add inbound message/, "Simulator Inbox composer should use inbound lead-side language");
     assert.match(simulatorConsoleSource, /workspaceCount: 1,/, "Pricing defaults should start at one workspace, not a scaled agency scenario");
     assert.match(simulatorConsoleSource, /inboundMessages: 100,/, "Pricing defaults should use a modest starter inbound volume");
     assert.match(simulatorConsoleSource, /outboundFreeformMessages: 100,/, "Pricing defaults should use a modest starter outbound volume");
@@ -177,6 +181,17 @@ async function main() {
     const inboundRouteSource = await readFile(join(process.cwd(), "apps/web/src/app/api/simulate-twilio/inbound/route.ts"), "utf8");
     assert.match(inboundRouteSource, /requireApiSession\(request, "crm:write"\)/);
     assert.match(inboundRouteSource, /saveSimulatedTwilioInboundMessage/);
+    assert.match(inboundRouteSource, /snapshot/, "Simulator inbound route should return the updated simulator snapshot");
+
+    const simulatorStreamRouteSource = await readFile(join(process.cwd(), "apps/web/src/app/api/simulate-twilio/stream/route.ts"), "utf8");
+    assert.match(simulatorStreamRouteSource, /requireApiSession\(request, "crm:read"\)/);
+    assert.match(simulatorStreamRouteSource, /text\/event-stream/);
+    assert.match(simulatorStreamRouteSource, /ReadableStream/);
+
+    const conversationsStreamRouteSource = await readFile(join(process.cwd(), "apps/web/src/app/api/conversations/stream/route.ts"), "utf8");
+    assert.match(conversationsStreamRouteSource, /requireApiSession\(request, "crm:read"\)/);
+    assert.match(conversationsStreamRouteSource, /text\/event-stream/);
+    assert.match(conversationsStreamRouteSource, /ReadableStream/);
 
     const genericRouteSource = await readFile(join(process.cwd(), "apps/web/src/app/api/whatsapp/messages/route.ts"), "utf8");
     assert.match(genericRouteSource, /sendAndStoreWhatsAppMessage/);
@@ -185,6 +200,10 @@ async function main() {
     const composerSource = await readFile(join(process.cwd(), "apps/web/src/components/inbox-reply-composer.tsx"), "utf8");
     assert.match(composerSource, /\/api\/whatsapp\/messages/);
     assert.match(composerSource, /Simulation mode: no external WhatsApp delivery/);
+    assert.doesNotMatch(composerSource, /router\.refresh\(\)/, "Inbox replies should update through the live conversations stream");
+
+    const communicationsConsoleSource = await readFile(join(process.cwd(), "apps/web/src/components/communications-console.tsx"), "utf8");
+    assert.match(communicationsConsoleSource, /EventSource\("\/api\/conversations\/stream"\)/, "Communications UI should subscribe to live conversation updates");
 
     console.log("twilio simulator regression passed");
   } finally {

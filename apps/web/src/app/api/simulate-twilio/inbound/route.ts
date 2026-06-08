@@ -7,6 +7,7 @@ import {
   saveSimulatedTwilioInboundMessage
 } from "@/lib/twilio-simulator";
 import { runAgentForInboundLead } from "@/lib/agent-runtime";
+import { buildSimulatorSnapshot } from "@/lib/live-conversation-snapshots";
 
 export const runtime = "nodejs";
 
@@ -74,6 +75,7 @@ export async function POST(request: NextRequest) {
       agentAction: agent.action
     }
   });
+  const snapshot = await buildSimulatorSnapshot({ tenantId: auth.session.tenantId, ownerId: auth.session.id });
 
   return NextResponse.json({
     ok: true,
@@ -83,6 +85,7 @@ export async function POST(request: NextRequest) {
     providerMessageSid: message?.providerMessageSid,
     deliveryStatus: message?.deliveryStatus ?? "received",
     transportMode: "simulator",
-    agent
+    agent,
+    snapshot
   });
 }

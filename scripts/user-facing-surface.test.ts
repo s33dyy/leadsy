@@ -22,8 +22,10 @@ async function main() {
   assert(landing.includes("Leadsy-managed WhatsApp"), "landing page should position WhatsApp as Leadsy-managed");
 
   const simulator = await read("apps/web/src/components/twilio-simulator-console.tsx");
-  assert(simulator.includes("Simulation Inbox"), "simulator should provide an Inbox-like reply surface");
-  assert(simulator.includes("/api/whatsapp/messages"), "simulator replies should use the generic WhatsApp send endpoint");
+  assert(simulator.includes("Simulation Inbox"), "simulator should provide an Inbox-like lead-side chat surface");
+  assert(simulator.includes("/api/simulate-twilio/inbound"), "simulator chat should insert inbound lead messages");
+  assert(!simulator.includes("/api/whatsapp/messages"), "simulator chat should not send outbound WhatsApp replies");
+  assert(simulator.includes("EventSource(\"/api/simulate-twilio/stream\")"), "simulator should live-update without refresh");
 
   const team = await read("apps/web/src/components/teamspace-console.tsx");
   assert(team.includes("Full AI agent"), "Teamspace should support full AI agents");

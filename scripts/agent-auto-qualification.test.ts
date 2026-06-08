@@ -117,10 +117,10 @@ async function main() {
     });
     assert.equal(escalation.action, "escalated_to_human");
 
-    const communicationsPage = await readFile(join(process.cwd(), "apps/web/src/app/app/communications/page.tsx"), "utf8");
-    assert.match(communicationsPage, /conversation=/, "Inbox rows should route by conversation query param");
-    assert.match(communicationsPage, /Internal team thread/, "Inbox should expose the internal team thread");
-    assert.match(communicationsPage, /Auto-reply/, "Inbox should show auto-reply state");
+    const communicationsConsole = await readFile(join(process.cwd(), "apps/web/src/components/communications-console.tsx"), "utf8");
+    assert.match(communicationsConsole, /conversation=/, "Inbox rows should route by conversation query param");
+    assert.match(communicationsConsole, /Internal team thread/, "Inbox should expose the internal team thread");
+    assert.match(communicationsConsole, /Auto-reply/, "Inbox should show auto-reply state");
 
     const appShell = await readFile(join(process.cwd(), "apps/web/src/components/app-shell.tsx"), "utf8");
     assert.match(appShell, /\/app\/calendar/, "Primary navigation should include Calendar");
