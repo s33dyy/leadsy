@@ -10,7 +10,7 @@ type Scope = {
   ownerId: string;
 };
 
-export type CostReceiptCategory = "twilio" | "conversation" | "openrouter";
+export type CostReceiptCategory = "twilio" | "twilio_simulated" | "conversation" | "openrouter";
 
 export type CostReceiptLineItem = {
   id: string;
@@ -44,7 +44,10 @@ export type CostReceipt = {
       billableMessages: number;
       inboundMessages: number;
       outboundMessages: number;
+      projectedSimulatorMessages: number;
       messageFeeUsd: number;
+      projectedSimulatorUsd: number;
+      projectedSimulatorInr: number;
       totalUsd: number;
       totalInr: number;
     };
@@ -200,13 +203,52 @@ export async function getCostReceipt(scope: Scope): Promise<CostReceipt> {
     });
   }
 
+  const simulatorInboundMessages = simulatorMessages.filter((message) => message.direction === "inbound");
+  const simulatorOutboundMessages = simulatorMessages.filter((message) => message.direction === "outbound");
+  const simulatorProjectedAmountUsd = simulatorMessages.length * messageFeeUsd;
+  const simulatorProjectedAmountInr = simulatorProjectedAmountUsd * fx.rate;
+
+  if (simulatorInboundMessages.length) {
+    const amountUsd = simulatorInboundMessages.length * messageFeeUsd;
+    lineItems.push({
+      id: "simulator_whatsapp_inbound_projected",
+      category: "twilio_simulated",
+      provider: "Twilio-equivalent simulator",
+      label: "Simulated inbound WhatsApp messages",
+      detail: "Projected Twilio-equivalent burn for inbound simulator messages. These were not externally delivered or charged.",
+      quantity: simulatorInboundMessages.length,
+      unitLabel: "message",
+      unitCostUsd: messageFeeUsd,
+      amountUsd: roundMoney(amountUsd),
+      amountInr: roundMoney(amountUsd * fx.rate),
+      occurredAt: latestTimestamp(simulatorInboundMessages, checkedAt)
+    });
+  }
+
+  if (simulatorOutboundMessages.length) {
+    const amountUsd = simulatorOutboundMessages.length * messageFeeUsd;
+    lineItems.push({
+      id: "simulator_whatsapp_outbound_projected",
+      category: "twilio_simulated",
+      provider: "Twilio-equivalent simulator",
+      label: "Simulated outbound WhatsApp replies",
+      detail: "Projected Twilio-equivalent burn for outbound simulator replies. These were not externally delivered or charged.",
+      quantity: simulatorOutboundMessages.length,
+      unitLabel: "message",
+      unitCostUsd: messageFeeUsd,
+      amountUsd: roundMoney(amountUsd),
+      amountInr: roundMoney(amountUsd * fx.rate),
+      occurredAt: latestTimestamp(simulatorOutboundMessages, checkedAt)
+    });
+  }
+
   if (simulatorMessages.length) {
     lineItems.push({
       id: "simulator_whatsapp_messages",
       category: "conversation",
       provider: "Leadsy Simulator",
-      label: "Simulated WhatsApp messages",
-      detail: "Internal simulator messages stored in Leadsy with no external WhatsApp delivery.",
+      label: "Simulator conversation records",
+      detail: "Internal simulator messages stored in Leadsy. Transport rows above show projected Twilio-equivalent burn only.",
       quantity: simulatorMessages.length,
       unitLabel: "message",
       unitCostUsd: 0,
@@ -260,8 +302,8 @@ export async function getCostReceipt(scope: Scope): Promise<CostReceipt> {
     );
   }
 
-  const twilioTotalUsd = roundMoney(lineItems.filter((item) => item.category === "twilio").reduce((total, item) => total + item.amountUsd, 0));
-  const twilioTotalInr = roundMoney(lineItems.filter((item) => item.category === "twilio").reduce((total, item) => total + item.amountInr, 0));
+  const twilioTotalUsd = roundMoney(lineItems.filter((item) => item.category === "twilio" || item.category === "twilio_simulated").reduce((total, item) => total + item.amountUsd, 0));
+  const twilioTotalInr = roundMoney(lineItems.filter((item) => item.category === "twilio" || item.category === "twilio_simulated").reduce((total, item) => total + item.amountInr, 0));
   const openRouterItems = lineItems.filter((item) => item.category === "openrouter");
   const openRouterTotalUsd = roundMoney(openRouterItems.reduce((total, item) => total + item.amountUsd, 0));
   const openRouterTotalInr = roundMoney(openRouterItems.reduce((total, item) => total + item.amountInr, 0));
@@ -273,8 +315,9 @@ export async function getCostReceipt(scope: Scope): Promise<CostReceipt> {
     fxSource: fx.source,
     assumptions: [
       `Twilio WhatsApp message fee is ${messageFeeUsd.toFixed(3)} USD per inbound or outbound real WhatsApp message.`,
-      "Simulator WhatsApp messages are internal Leadsy test records and have no external delivery charge.",
-      "Conversation records, internal notes, and tasks are CRM state; only real transport messages and AI provider usage are included as incurred cost.",
+      "Simulator WhatsApp transport is projected at the Twilio-equivalent message fee so the burn total shows what the same flow would cost if externally delivered.",
+      "Simulator WhatsApp messages are internal Leadsy test records and are not externally delivered or charged by Twilio.",
+      "Conversation records, internal notes, and tasks are CRM state; real transport, projected simulator transport, and AI provider usage are shown separately in the receipt.",
       `USD to INR uses ${fx.source === "env" ? "USD_INR_RATE" : "the default fallback"} at ${fx.rate}.`
     ],
     summary: {
@@ -284,7 +327,10 @@ export async function getCostReceipt(scope: Scope): Promise<CostReceipt> {
         billableMessages: billableMessages.length,
         inboundMessages: inboundMessages.length,
         outboundMessages: outboundMessages.length,
+        projectedSimulatorMessages: simulatorMessages.length,
         messageFeeUsd,
+        projectedSimulatorUsd: roundMoney(simulatorProjectedAmountUsd),
+        projectedSimulatorInr: roundMoney(simulatorProjectedAmountInr),
         totalUsd: twilioTotalUsd,
         totalInr: twilioTotalInr
       },

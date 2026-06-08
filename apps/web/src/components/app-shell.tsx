@@ -11,6 +11,7 @@ import {
   ChevronDown,
   ChevronsUpDown,
   Command,
+  Keyboard,
   LayoutDashboard,
   ListChecks,
   LogOut,
@@ -19,6 +20,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
+  BookOpen,
   Search,
   Settings as SettingsIcon,
   UserRound,
@@ -78,6 +80,11 @@ const workflowNav: ShellLink[] = [
 const supportingNav: ShellLink[] = [
   { href: "/app/approvals", label: "Approval queue", icon: CheckSquare, accent: true },
   { href: "/app/tasks", label: "Follow-up tasks", icon: ListChecks }
+];
+
+const tutorialNav: ShellLink[] = [
+  { href: "/app/shortcuts", label: "Shortcut keys", icon: Keyboard },
+  { href: "/app/tutorials", label: "Tutorials", icon: BookOpen }
 ];
 
 type SearchParamsLike = Pick<URLSearchParams, "get">;
@@ -152,6 +159,8 @@ function pageTitle(pathname: string, searchParams: SearchParamsLike) {
   if (pathname.startsWith("/app/team")) return "Team";
   if (pathname.startsWith("/app/settings") && searchParams.get("panel") === "team") return "Team";
   if (pathname.startsWith("/app/settings")) return "Settings";
+  if (pathname.startsWith("/app/shortcuts")) return "Shortcut keys";
+  if (pathname.startsWith("/app/tutorials")) return "Tutorials";
   if (pathname.startsWith("/app/connect")) return "Integrations";
   return "App";
 }
@@ -242,6 +251,54 @@ export function AppShell({
       window.clearInterval(timer);
     };
   }, []);
+
+  useEffect(() => {
+    function handleGlobalNavigationShortcuts(event: KeyboardEvent) {
+      const key = event.key.toLowerCase();
+      const modifier = event.metaKey || event.ctrlKey;
+
+      if (modifier && event.shiftKey && key === "q") {
+        event.preventDefault();
+        router.push("/app/tasks");
+        setNotificationsOpen(false);
+        setUserMenuOpen(false);
+        setCommandSearchOpen(false);
+        return;
+      }
+
+      if (modifier && !event.shiftKey && key === "t") {
+        event.preventDefault();
+        router.push("/app/team");
+        setNotificationsOpen(false);
+        setUserMenuOpen(false);
+        setCommandSearchOpen(false);
+        return;
+      }
+
+      if (modifier || event.altKey || event.shiftKey) return;
+      if (isEditableShortcutTarget(event.target)) return;
+      if (pathname.startsWith("/app/communications") && key === "t") return;
+
+      const routes: Record<string, string> = {
+        i: "/app",
+        l: "/app/leads",
+        c: "/app/calendar",
+        g: "/app/team-chat",
+        t: "/app/communications",
+        q: "/app/approvals"
+      };
+      const href = routes[key];
+      if (!href) return;
+      event.preventDefault();
+      router.push(href);
+      setNotificationsOpen(false);
+      setUserMenuOpen(false);
+      setCommandSearchOpen(false);
+    }
+
+    window.addEventListener("keydown", handleGlobalNavigationShortcuts);
+    return () => window.removeEventListener("keydown", handleGlobalNavigationShortcuts);
+  }, [pathname, router]);
 
   useEffect(() => {
     function handleNewLeadShortcut(event: KeyboardEvent) {
@@ -370,7 +427,6 @@ export function AppShell({
         );
       })}
 
-      {!collapsed ? <div className="caption mt-4 px-2 pb-1">Supporting routes</div> : null}
       {supportingNav.map((link) => {
         const count = link.label === "Approval queue" && pendingApprovalCount ? String(pendingApprovalCount) : undefined;
         return (
@@ -384,6 +440,17 @@ export function AppShell({
           />
         );
       })}
+
+      {!collapsed ? <div className="caption mt-4 px-2 pb-1">Tutorials</div> : null}
+      {tutorialNav.map((link) => (
+        <SidebarLink
+          key={`${link.label}-${link.href}`}
+          link={link}
+          active={isActiveLink(pathname, searchParams, link)}
+          collapsed={collapsed}
+          onClick={() => setMobileOpen(false)}
+        />
+      ))}
     </nav>
   );
 

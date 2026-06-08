@@ -9,12 +9,13 @@ async function read(path: string) {
 }
 
 async function main() {
-  const [communications, calendar, appShell, teamPage, packageJson] = await Promise.all([
+  const [communications, calendar, appShell, teamPage, packageJson, leadsPage] = await Promise.all([
     read("apps/web/src/components/communications-console.tsx"),
     read("apps/web/src/components/calendar-console.tsx"),
     read("apps/web/src/components/app-shell.tsx"),
     read("apps/web/src/app/app/team/page.tsx"),
-    read("package.json")
+    read("package.json"),
+    read("apps/web/src/app/app/leads/page.tsx")
   ]);
 
   assert(packageJson.includes("test:shortcut-calendar-summary"), "package should expose the focused shortcut/calendar regression");
@@ -43,10 +44,25 @@ async function main() {
 
   assert(appShell.includes("event.key !== \",\""), "AppShell should listen for Cmd/Ctrl+,");
   assert(appShell.includes('router.push("/app/settings")'), "Cmd/Ctrl+, should open settings");
+  assert(appShell.includes("handleGlobalNavigationShortcuts"), "AppShell should centralize global app navigation shortcuts");
+  for (const route of ['"/app"', '"/app/leads"', '"/app/calendar"', '"/app/team-chat"', '"/app/communications"', '"/app/approvals"', '"/app/team"', '"/app/tasks"']) {
+    assert(appShell.includes(route), `global shortcuts should route to ${route}`);
+  }
+  assert(appShell.includes("event.shiftKey"), "Follow-up tasks should use a shifted modifier shortcut instead of Cmd/Ctrl+Q");
+  assert(!appShell.includes("Supporting routes"), "AppShell should remove the Supporting routes divider");
+  assert(appShell.includes("Tutorials"), "AppShell should include a Tutorials divider");
+  assert(appShell.includes("/app/shortcuts"), "AppShell should link to shortcut keys");
+  assert(appShell.includes("/app/tutorials"), "AppShell should link to tutorials");
 
   assert(!teamPage.includes("Humans, AI agents, routing, and handoffs"), "Teamspace explanatory header should be removed");
   assert(!teamPage.includes("AI qualification"), "Teamspace should not show the removed AI qualification badge");
   assert(teamPage.includes("TeamspaceConsole"), "Teamspace should keep the editable console");
+
+  assert(leadsPage.includes("LeadsConsole"), "Leads should use a client console for dynamic search");
+  const leadsConsole = await read("apps/web/src/components/leads-console.tsx");
+  assert(leadsConsole.includes("leadSearchRef"), "Leads page should expose a focusable search ref");
+  assert(leadsConsole.includes("handleLeadsShortcut"), "Leads page should focus search with the / shortcut");
+  assert(leadsConsole.includes("filteredLeads"), "Leads search should filter dynamically without navigation");
 }
 
 main().catch((error) => {

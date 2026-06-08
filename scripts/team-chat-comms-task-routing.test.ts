@@ -184,9 +184,27 @@ async function main() {
 
     const approvalsSource = await readFile(join(process.cwd(), "apps/web/src/app/app/approvals/page.tsx"), "utf8");
     assert.match(approvalsSource, /ai_approvals/, "Approval queue should include AI-routed tasks");
+    assert.match(approvalsSource, /ApprovalsConsole/, "Approval queue should use a client console for live search and filters");
+    const approvalsConsoleSource = await readFile(join(process.cwd(), "apps/web/src/components/approvals-console.tsx"), "utf8");
+    assert.match(approvalsConsoleSource, /approvalSearchRef/, "Approval queue should expose a focusable search ref");
+    assert.match(approvalsConsoleSource, /handleApprovalsShortcut/, "Approval queue should focus search with the / shortcut");
+    assert.match(approvalsConsoleSource, /selectedKind/, "Approval queue tabs should filter by approval kind");
+    assert.match(approvalsConsoleSource, /groupBy/, "Approval queue grouping should be wired");
 
     const tasksSource = await readFile(join(process.cwd(), "apps/web/src/app/app/tasks/page.tsx"), "utf8");
     assert.match(tasksSource, /human_tasks/, "Tasks page should filter to human-routed tasks");
+    assert.match(tasksSource, /TasksConsole/, "Tasks page should use a client console for live search and grouping");
+    const tasksConsoleSource = await readFile(join(process.cwd(), "apps/web/src/components/tasks-console.tsx"), "utf8");
+    assert.match(tasksConsoleSource, /taskSearchRef/, "Tasks page should expose a focusable search ref");
+    assert.match(tasksConsoleSource, /handleTasksShortcut/, "Tasks page should focus search with the / shortcut");
+    assert.match(tasksConsoleSource, /groupBy/, "Tasks grouping by status, priority, and owner should be wired");
+
+    const teamChatSource = await readFile(join(process.cwd(), "apps/web/src/components/team-chat-console.tsx"), "utf8");
+    assert.match(teamChatSource, /mentionQuery/, "Team chat should open an inline @ mention picker");
+    assert.match(teamChatSource, /suggestedMembers/, "Team chat should suggest members while typing @");
+    assert.match(teamChatSource, /insertMention/, "Team chat should insert exact @Member mentions");
+    assert.match(teamChatSource, /assignment_changed/, "Team chat should render assignment events distinctly");
+    assert.match(teamChatSource, /whatsapp-chat-bubble/, "Team chat should render WhatsApp-style chat bubbles");
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

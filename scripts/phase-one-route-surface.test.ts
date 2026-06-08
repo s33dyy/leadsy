@@ -42,7 +42,10 @@ async function main() {
   assert(!appShell.includes('href: "/app?view=analytics"'), "global sidebar should not include duplicate Analytics dashboard route");
   assert(appShell.includes("Quick search"), "app shell should include quick search");
   assert(appShell.includes("Conversion workflow"), "app shell should group primary navigation by conversion workflow");
-  assert(appShell.includes("Supporting routes"), "app shell should keep secondary app routes visible");
+  assert(!appShell.includes("Supporting routes"), "app shell should remove the old Supporting routes divider");
+  assert(appShell.includes("Tutorials"), "app shell should expose the Tutorials divider");
+  assert(appShell.includes("/app/shortcuts"), "app shell should expose shortcut keys");
+  assert(appShell.includes("/app/tutorials"), "app shell should expose tutorials");
 
   const workspaceIndex = await read("apps/web/src/app/app/page.tsx");
   assert(workspaceIndex.includes("listLeadKnowledgeRecords"), "Dashboard should render live lead intelligence");

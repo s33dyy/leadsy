@@ -139,15 +139,17 @@ async function main() {
     const receipt = await getCostReceipt(scope);
     assert.equal(receipt.summary.twilio.billableMessages, 2);
     assert.equal(receipt.summary.conversations.simulatedMessages, 1);
-    closeTo(receipt.summary.twilio.totalUsd, 0.01);
-    closeTo(receipt.summary.twilio.totalInr, 0.8);
+    assert.equal(receipt.summary.twilio.projectedSimulatorMessages, 1);
+    closeTo(receipt.summary.twilio.totalUsd, 0.015);
+    closeTo(receipt.summary.twilio.totalInr, 1.2);
+    closeTo(receipt.summary.twilio.projectedSimulatorUsd, 0.005);
     closeTo(receipt.summary.openrouter.totalUsd, 0.35);
     closeTo(receipt.summary.openrouter.totalInr, 28);
-    closeTo(receipt.summary.totalUsd, 0.36);
-    closeTo(receipt.summary.totalInr, 28.8);
+    closeTo(receipt.summary.totalUsd, 0.365);
+    closeTo(receipt.summary.totalInr, 29.2);
     assert.equal(receipt.lineItems.filter((item) => item.category === "openrouter").length, 2);
-    assert(receipt.lineItems.some((item) => item.category === "conversation" && item.amountUsd === 0));
-    assert(receipt.assumptions.some((item) => item.includes("Simulator")), "receipt should explain simulator messages are not externally delivered");
+    assert(receipt.lineItems.some((item) => item.category === "twilio_simulated" && item.amountUsd === 0.005));
+    assert(receipt.assumptions.some((item) => item.includes("projected")), "receipt should explain simulator messages are projected and not externally delivered");
 
     const teamMemberReceipt = await getCostReceipt({ tenantId: scope.tenantId, ownerId: "team_member_cost_receipt" });
     assert.equal(teamMemberReceipt.summary.twilio.billableMessages, 2);

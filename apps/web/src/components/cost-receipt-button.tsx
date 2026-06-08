@@ -37,6 +37,7 @@ function formatDateTime(value: string) {
 
 function categoryTone(category: string) {
   if (category === "twilio") return "border-primary/35 bg-primary/10 text-primary";
+  if (category === "twilio_simulated") return "border-amber-300/35 bg-amber-300/10 text-amber-200";
   if (category === "openrouter") return "border-info/35 bg-info/10 text-info";
   return "border-border bg-surface-2 text-muted-foreground";
 }
@@ -152,14 +153,16 @@ export function CostReceiptButton() {
                 <>
                   <div className="grid gap-3 md:grid-cols-4">
                     <div className="rounded-[6px] border border-border bg-background p-3 md:col-span-1">
-                      <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Total incurred</div>
+                      <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Burn total</div>
                       <div className="mt-2 text-2xl font-semibold text-foreground">{formatInr(receipt.summary.totalInr)}</div>
                       <div className="mt-1 font-mono text-[11px] text-muted-foreground">{formatUsd(receipt.summary.totalUsd)}</div>
                     </div>
                     <div className="rounded-[6px] border border-border bg-background p-3">
                       <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Twilio</div>
                       <div className="mt-2 text-lg font-semibold text-foreground">{formatInr(receipt.summary.twilio.totalInr)}</div>
-                      <div className="mt-1 text-xs text-muted-foreground">{receipt.summary.twilio.billableMessages} billable WhatsApp messages</div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {receipt.summary.twilio.billableMessages} real · {receipt.summary.twilio.projectedSimulatorMessages} simulated
+                      </div>
                     </div>
                     <div className="rounded-[6px] border border-border bg-background p-3">
                       <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">AI / OpenRouter</div>
@@ -169,7 +172,9 @@ export function CostReceiptButton() {
                     <div className="rounded-[6px] border border-border bg-background p-3">
                       <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Conversations</div>
                       <div className="mt-2 text-lg font-semibold text-foreground">{receipt.summary.conversations.trackedConversations}</div>
-                      <div className="mt-1 text-xs text-muted-foreground">{receipt.summary.conversations.simulatedMessages} simulator messages at {formatInr(0)}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {receipt.summary.conversations.simulatedMessages} simulator messages · {formatInr(receipt.summary.twilio.projectedSimulatorInr)} projected
+                      </div>
                     </div>
                   </div>
 

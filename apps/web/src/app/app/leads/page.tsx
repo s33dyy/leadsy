@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { Mail, MessageSquare, Phone, Search } from "lucide-react";
 import { LeadSummaryAction, type LeadSummaryMessage } from "@/components/lead-summary-modal";
+import { LeadsConsole } from "@/components/leads-console";
 import { Badge } from "@/components/ui";
 import { getCurrentSession } from "@/lib/auth";
 import {
@@ -77,12 +77,6 @@ function relativeTime(value?: string) {
   return `${Math.round(hours / 24)}d`;
 }
 
-function channelIcon(channel?: string) {
-  if (channel === "email") return Mail;
-  if (channel === "call") return Phone;
-  return MessageSquare;
-}
-
 function memberTypeLabel(member?: TeamMember) {
   if (!member) return "No member record";
   if (member.type === "human") return "Human";
@@ -143,47 +137,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
   return (
     <div className="grid h-full min-h-0 grid-cols-12 gap-px bg-border">
       <section className="col-span-12 flex min-h-0 flex-col bg-background md:col-span-4 xl:col-span-3">
-        <div className="border-b border-border p-3">
-          <form className="flex h-8 items-center gap-2 rounded-[5px] border border-border bg-surface-2 px-2">
-            <Search className="h-3 w-3 text-muted-foreground" />
-            <input name="q" defaultValue={query} placeholder="Search leads..." className="min-w-0 flex-1 bg-transparent text-[12px] outline-none placeholder:text-muted-foreground" />
-          </form>
-          <div className="mt-3 grid grid-cols-3 gap-1 text-center">
-            <Metric label="Leads" value={allLeads.length} />
-            <Metric label="Needs reply" value={allLeads.filter((lead) => lead.crmStatus === "needs_reply").length} />
-            <Metric label="Review" value={allLeads.filter((lead) => lead.crmStatus === "human_review").length} />
-          </div>
-        </div>
-        <ul className="min-h-0 flex-1 overflow-y-auto">
-          {leads.length ? (
-            leads.map((lead) => {
-              const latestConversation = lead.conversations[0];
-              const Icon = channelIcon(latestConversation?.channel);
-              const selected = active?.id === lead.id;
-              const pipeline = productPipelineStatusForLead(lead);
-              return (
-                <li key={lead.id} className={`border-b border-border/70 px-3 py-2.5 hover:bg-surface-2 ${selected ? "bg-surface-2" : ""}`}>
-                  <Link href={leadHref(lead.id, activeTab)} className="flex flex-col gap-1">
-                    <div className="flex items-center gap-2">
-                      <Icon className="h-3 w-3 text-muted-foreground" />
-                      <span className="flex-1 truncate text-[12.5px] font-medium">{leadName(lead)}</span>
-                      <span className="font-mono text-[10.5px] text-muted-foreground">{relativeTime(lead.lastMessageAt)}</span>
-                    </div>
-                    <div className="pl-5 text-[11.5px] text-muted-foreground">{lead.lastMessagePreview || lead.summary || "No message yet"}</div>
-                    <div className="flex flex-wrap gap-1 pl-5">
-                      <Badge tone={lead.crmStatus === "human_review" ? "amber" : lead.crmStatus === "needs_reply" ? "teal" : "neutral"}>{lead.crmStatus.replace(/_/g, " ")}</Badge>
-                      <Badge tone="neutral">{productPipelineStatusLabel(pipeline)}</Badge>
-                    </div>
-                  </Link>
-                </li>
-              );
-            })
-          ) : (
-            <li className="flex h-48 items-center justify-center px-8 text-center text-[12.5px] text-muted-foreground">
-              No leads match this view.
-            </li>
-          )}
-        </ul>
+        <LeadsConsole allLeads={allLeads} activeLeadId={active?.id} activeTab={activeTab} initialQuery={query} />
       </section>
 
       <section className="col-span-12 min-h-0 overflow-y-auto bg-background md:col-span-8 xl:col-span-9">
@@ -527,15 +481,6 @@ function TasksTab({ active, members, tasks }: { active: LeadKnowledgeRecord; mem
           Create task
         </button>
       </form>
-    </div>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-[5px] border border-border bg-background p-2">
-      <div className="font-mono text-[10px] text-muted-foreground">{label}</div>
-      <div className="mt-1 text-lg font-semibold">{value}</div>
     </div>
   );
 }
