@@ -269,12 +269,14 @@ export async function resetAccountWorkspaceData(scope: Scope, preserveOwner = tr
 }
 
 function modelForSeed() {
-  return (
-    process.env.AI_DEFAULT_MODEL?.trim() ||
-    process.env.LEADSY_ROUTINE_MODEL?.trim() ||
-    process.env.OPENROUTER_DEFAULT_MODEL?.trim() ||
-    "openrouter/auto"
-  );
+  const candidates = [
+    process.env.LEADSY_CHORITOES_SEED_MODEL?.trim(),
+    process.env.LEADSY_ROUTINE_MODEL?.trim(),
+    process.env.AI_DEFAULT_MODEL?.trim(),
+    process.env.OPENROUTER_DEFAULT_MODEL?.trim(),
+    "openai/gpt-4o-mini"
+  ].filter(Boolean) as string[];
+  return candidates.find((model) => !/(^openrouter\/free$|[:/_-]free($|[:/_-]))/i.test(model)) ?? "openai/gpt-4o-mini";
 }
 
 function memberLogin(scope: Scope, key: string) {
