@@ -1,8 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Calculator, Inbox, Loader2, MessageSquarePlus, SendHorizonal, ShieldAlert } from "lucide-react";
 import {
   calculateTwilioPricingEstimate,
@@ -10,6 +9,7 @@ import {
   type WhatsAppPricingEstimateInput
 } from "@/lib/whatsapp-pricing-estimator";
 import type { WorkspaceWhatsAppSender } from "@/lib/workspace-whatsapp-sender-store";
+import type { SimulatorSnapshot } from "@/lib/live-conversation-snapshots";
 
 type RecentSimulatorEvent = {
   id: string;
@@ -77,22 +77,48 @@ function shortTime(value?: string) {
 }
 
 export function TwilioSimulatorConsole({ sender, recentEvents, simulatedConversations }: TwilioSimulatorConsoleProps) {
-  const router = useRouter();
+  const [liveSender, setLiveSender] = useState(sender);
+  const [liveRecentEvents, setLiveRecentEvents] = useState(recentEvents);
+  const [liveSimulatedConversations, setLiveSimulatedConversations] = useState(simulatedConversations);
   const [leadName, setLeadName] = useState("Asha Buyer");
   const [phone, setPhone] = useState("+919000000001");
   const [body, setBody] = useState("Company: LensMart\nNeed: WhatsApp CRM follow-up\nTimeline: today");
   const [submitting, setSubmitting] = useState(false);
-  const [replying, setReplying] = useState(false);
+  const [addingInbound, setAddingInbound] = useState(false);
   const [notice, setNotice] = useState("");
   const [inboxNotice, setInboxNotice] = useState("");
-  const [replyBody, setReplyBody] = useState("Thanks, we can help with this. Can you share your preferred demo time?");
+  const [inboxInboundBody, setInboxInboundBody] = useState("I would like to book a demo. What times are available?");
   const [selectedConversationId, setSelectedConversationId] = useState(simulatedConversations[0]?.leadId ?? "");
   const [pricing, setPricing] = useState(defaultPricing);
   const estimate = useMemo(() => calculateTwilioPricingEstimate(pricing), [pricing]);
   const selectedConversation = useMemo(
-    () => simulatedConversations.find((conversation) => conversation.leadId === selectedConversationId) ?? simulatedConversations[0],
-    [selectedConversationId, simulatedConversations]
+    () => liveSimulatedConversations.find((conversation) => conversation.leadId === selectedConversationId) ?? liveSimulatedConversations[0],
+    [selectedConversationId, liveSimulatedConversations]
   );
+
+  const applySnapshot = useCallback((snapshot?: SimulatorSnapshot) => {
+    if (!snapshot) return;
+    setLiveSender(snapshot.sender);
+    setLiveRecentEvents(snapshot.recentEvents);
+    setLiveSimulatedConversations(snapshot.simulatedConversations);
+    setSelectedConversationId((current) =>
+      snapshot.simulatedConversations.some((conversation) => conversation.leadId === current)
+        ? current
+        : snapshot.simulatedConversations[0]?.leadId ?? ""
+    );
+  }, []);
+
+  useEffect(() => {
+    const stream = new EventSource("/api/simulate-twilio/stream");
+    stream.addEventListener("snapshot", (event) => {
+      const snapshot = JSON.parse((event as MessageEvent).data) as SimulatorSnapshot;
+      applySnapshot(snapshot);
+    });
+    stream.addEventListener("error", () => {
+      setInboxNotice("Live simulator updates paused. New messages still save through the form.");
+    });
+    return () => stream.close();
+  }, [applySnapshot]);
 
   async function submitInbound() {
     if (submitting) return;
@@ -109,13 +135,13 @@ export function TwilioSimulatorConsole({ sender, recentEvents, simulatedConversa
           body
         })
       });
-      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      const payload = (await response.json().catch(() => ({}))) as { error?: string; snapshot?: SimulatorSnapshot };
       if (!response.ok) {
         setNotice(payload.error || "Could not create the simulated inbound message.");
         return;
       }
       setNotice("Simulated WhatsApp lead message created in Leadsy.");
-      router.refresh();
+      applySnapshot(payload.snapshot);
     } finally {
       setSubmitting(false);
     }
@@ -125,31 +151,32 @@ export function TwilioSimulatorConsole({ sender, recentEvents, simulatedConversa
     setPricing((current) => ({ ...current, [key]: numberValue(value) }));
   }
 
-  async function sendSimulatedInboxReply() {
-    if (!selectedConversation?.to || !replyBody.trim() || replying) return;
-    setReplying(true);
+  async function addSimulatedInboxInbound() {
+    const from = selectedConversation?.to || selectedConversation?.phone;
+    if (!from || !inboxInboundBody.trim() || addingInbound) return;
+    setAddingInbound(true);
     setInboxNotice("");
     try {
-      const response = await fetch("/api/whatsapp/messages", {
+      const response = await fetch("/api/simulate-twilio/inbound", {
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          leadId: selectedConversation.leadId,
-          to: selectedConversation.to,
-          body: replyBody.trim()
+          leadName: selectedConversation?.lead,
+          phone: from,
+          body: inboxInboundBody.trim()
         })
       });
-      const payload = (await response.json().catch(() => ({}))) as { error?: string; deliveryStatus?: string };
+      const payload = (await response.json().catch(() => ({}))) as { error?: string; snapshot?: SimulatorSnapshot };
       if (!response.ok) {
-        setInboxNotice(payload.error || "Could not save the simulated reply.");
+        setInboxNotice(payload.error || "Could not add the inbound lead message.");
         return;
       }
-      setReplyBody("");
-      setInboxNotice(`Simulated reply saved with status ${payload.deliveryStatus || "simulated_delivered"}.`);
-      router.refresh();
+      setInboxInboundBody("");
+      setInboxNotice("Inbound lead message added to the simulated WhatsApp thread.");
+      applySnapshot(payload.snapshot);
     } finally {
-      setReplying(false);
+      setAddingInbound(false);
     }
   }
 
@@ -174,10 +201,10 @@ export function TwilioSimulatorConsole({ sender, recentEvents, simulatedConversa
           <div className="flex items-start gap-3">
             <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
             <div>
-              <div className="text-sm font-semibold">Simulator transport is {sender?.status ?? "pending"}</div>
+              <div className="text-sm font-semibold">Simulator transport is {liveSender?.status ?? "pending"}</div>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                {sender?.transportMode === "simulator"
-                  ? sender.statusReason || "Leadsy will save simulated WhatsApp messages without contacting Twilio."
+                {liveSender?.transportMode === "simulator"
+                  ? liveSender.statusReason || "Leadsy will save simulated WhatsApp messages without contacting Twilio."
                   : "Submit one inbound message to activate the workspace simulator transport."}
               </p>
             </div>
@@ -224,7 +251,7 @@ export function TwilioSimulatorConsole({ sender, recentEvents, simulatedConversa
               <h2 className="text-lg font-semibold">Recent simulated events</h2>
             </div>
             <div className="mt-4 overflow-hidden rounded-[6px] border border-border">
-              {recentEvents.length ? (
+              {liveRecentEvents.length ? (
                 <table className="w-full text-left text-sm">
                   <thead className="bg-surface-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
                     <tr>
@@ -234,7 +261,7 @@ export function TwilioSimulatorConsole({ sender, recentEvents, simulatedConversa
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {recentEvents.map((event) => (
+                    {liveRecentEvents.map((event) => (
                       <tr key={event.id}>
                         <td className="px-3 py-2">
                           <div className="font-medium">{event.lead}</div>
@@ -260,7 +287,7 @@ export function TwilioSimulatorConsole({ sender, recentEvents, simulatedConversa
                 <Inbox className="h-4 w-4 text-primary" />
                 <h2 className="text-lg font-semibold">Simulation Inbox</h2>
               </div>
-              <p className="mt-1 text-sm leading-6 text-muted-foreground">Read and reply to simulated WhatsApp conversations without leaving this page.</p>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">Act as the lead and add inbound WhatsApp messages without leaving this page.</p>
             </div>
             <Link href="/app/communications" className="inline-flex h-8 items-center gap-2 rounded-[6px] border border-border bg-surface-2 px-3 text-sm hover:bg-surface-3">
               Open full Inbox
@@ -269,9 +296,9 @@ export function TwilioSimulatorConsole({ sender, recentEvents, simulatedConversa
 
           <div className="mt-4 grid min-h-[360px] overflow-hidden rounded-[8px] border border-border lg:grid-cols-[320px_1fr]">
             <div className="border-b border-border bg-background lg:border-b-0 lg:border-r">
-              {simulatedConversations.length ? (
+              {liveSimulatedConversations.length ? (
                 <div className="divide-y divide-border">
-                  {simulatedConversations.map((conversation) => (
+                  {liveSimulatedConversations.map((conversation) => (
                     <button
                       key={conversation.leadId}
                       type="button"
@@ -319,22 +346,22 @@ export function TwilioSimulatorConsole({ sender, recentEvents, simulatedConversa
                   </div>
                   <div className="border-t border-border p-3">
                     <textarea
-                      value={replyBody}
-                      onChange={(event) => setReplyBody(event.target.value)}
-                      disabled={!selectedConversation.to || replying}
-                      placeholder={selectedConversation.to ? "Reply in simulation..." : "This simulated lead needs a WhatsApp phone before replying."}
+                      value={inboxInboundBody}
+                      onChange={(event) => setInboxInboundBody(event.target.value)}
+                      disabled={!(selectedConversation.to || selectedConversation.phone) || addingInbound}
+                      placeholder={selectedConversation.to || selectedConversation.phone ? "Add an inbound lead message..." : "This simulated lead needs a WhatsApp phone before adding inbound messages."}
                       className="h-20 w-full resize-none rounded-[6px] border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary disabled:cursor-not-allowed disabled:opacity-60"
                     />
                     <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                      <span className="font-mono text-[10.5px] text-muted-foreground">Simulation mode: no external WhatsApp delivery</span>
+                      <span className="font-mono text-[10.5px] text-muted-foreground">Lead-side simulator: adds inbound WhatsApp messages only</span>
                       <button
                         type="button"
-                        disabled={!selectedConversation.to || !replyBody.trim() || replying}
-                        onClick={sendSimulatedInboxReply}
+                        disabled={!(selectedConversation.to || selectedConversation.phone) || !inboxInboundBody.trim() || addingInbound}
+                        onClick={addSimulatedInboxInbound}
                         className="inline-flex h-8 items-center gap-2 rounded-[6px] bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        {replying ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizonal className="h-4 w-4" />}
-                        Send simulated reply
+                        {addingInbound ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizonal className="h-4 w-4" />}
+                        Add inbound message
                       </button>
                     </div>
                     {inboxNotice ? <div className="mt-2 text-sm text-muted-foreground">{inboxNotice}</div> : null}

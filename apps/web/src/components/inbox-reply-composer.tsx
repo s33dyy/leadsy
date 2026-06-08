@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Loader2, Send, ShieldAlert } from "lucide-react";
 import { useToast } from "@/components/toast-provider";
 
@@ -24,7 +23,6 @@ function sendBlockedReason(props: InboxReplyComposerProps) {
 }
 
 export function InboxReplyComposer(props: InboxReplyComposerProps) {
-  const router = useRouter();
   const { toast } = useToast();
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
@@ -55,7 +53,6 @@ export function InboxReplyComposer(props: InboxReplyComposerProps) {
         detail: `Delivery status: ${payload.deliveryStatus || "queued"}.`,
         tone: "success"
       });
-      router.refresh();
     } finally {
       setSending(false);
     }

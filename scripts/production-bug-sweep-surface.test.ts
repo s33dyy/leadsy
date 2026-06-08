@@ -19,10 +19,10 @@ async function main() {
   assert(teamPage.includes("Teamspace"), "team page should be Teamspace, not read-only user inventory");
   assert(teamPage.includes("TeamspaceConsole"), "team page should include management controls");
 
-  const communicationsPage = await read("apps/web/src/app/app/communications/page.tsx");
-  assert(communicationsPage.includes("conversation="), "conversation rows should open the conversation view");
-  assert(communicationsPage.includes("Internal team thread"), "Inbox should expose internal lead team thread");
-  assert(communicationsPage.includes("Calendar proposals"), "Inbox should expose calendar proposals");
+  const communicationsConsole = await read("apps/web/src/components/communications-console.tsx");
+  assert(communicationsConsole.includes("conversation="), "conversation rows should open the conversation view");
+  assert(communicationsConsole.includes("Internal team thread"), "Inbox should expose internal lead team thread");
+  assert(communicationsConsole.includes("Calendar proposals"), "Inbox should expose calendar proposals");
 
   const healthRoute = await read("apps/web/src/app/api/health/route.ts");
   assert(healthRoute.includes("summarizeTeamspaceHealth"), "health route should include teamspace counts");
