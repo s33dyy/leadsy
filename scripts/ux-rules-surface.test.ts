@@ -55,24 +55,22 @@ async function main() {
   assert(loginForm.includes("disabled={loading}"), "auth submit should disable while loading");
   assert(loginForm.includes("Loader2"), "auth submit should show a loading spinner");
 
-  const leadMagnetLab = await read("apps/web/src/components/lead-magnet-lab.tsx");
-  for (const fn of ["saveBrief", "importLeads", "draftMessage", "saveLeadEdit", "confirmDeleteLead"]) {
-    const start = leadMagnetLab.indexOf(`async function ${fn}`);
+  const manualLeadIntake = await read("apps/web/src/components/manual-lead-intake.tsx");
+  for (const fn of ["onSubmit"]) {
+    const start = manualLeadIntake.indexOf(`async function ${fn}`);
     assert(start >= 0, `${fn} should exist as a mutation path`);
-    const nextFunction = leadMagnetLab.indexOf("\n  async function ", start + 1);
-    const nextPlainFunction = leadMagnetLab.indexOf("\n  function ", start + 1);
+    const nextFunction = manualLeadIntake.indexOf("\n  async function ", start + 1);
+    const nextPlainFunction = manualLeadIntake.indexOf("\n  function ", start + 1);
     const endCandidates = [nextFunction, nextPlainFunction].filter((index) => index > start);
-    const end = endCandidates.length ? Math.min(...endCandidates) : leadMagnetLab.length;
-    const body = leadMagnetLab.slice(start, end);
+    const end = endCandidates.length ? Math.min(...endCandidates) : manualLeadIntake.length;
+    const body = manualLeadIntake.slice(start, end);
     assert(body.includes("toast({"), `${fn} should acknowledge mutation outcomes with toasts`);
-    assert(body.includes("setLoading("), `${fn} should set a loading state`);
+    assert(body.includes("setSaving("), `${fn} should set a loading state`);
     assert(body.includes("catch"), `${fn} should show specific API errors`);
   }
 
-  assert(leadMagnetLab.includes("requestDeleteLead"), "destructive lead actions should request confirmation first");
-  assert(leadMagnetLab.includes("ConfirmationModal"), "destructive lead actions should use the confirmation modal");
-  assert(leadMagnetLab.includes('role="dialog"'), "lead add/edit/view data entry should stay modal-based");
-  assert(leadMagnetLab.includes("disabled={busy}"), "lead mutation buttons should disable during API work");
+  assert(manualLeadIntake.includes('role="dialog"'), "lead add/edit data entry should stay modal-based");
+  assert(manualLeadIntake.includes("disabled={saving}"), "lead mutation buttons should disable during API work");
 }
 
 main().catch((error) => {

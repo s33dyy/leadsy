@@ -77,9 +77,10 @@ async function main() {
   assert(confirmationModal.includes("Confirm"), "confirmation modal should expose an explicit confirm action");
   assert(confirmationModal.includes("Cancel"), "confirmation modal should expose an explicit cancel action");
 
-  const leadMagnetLab = await read("apps/web/src/components/lead-magnet-lab.tsx");
-  assert(leadMagnetLab.includes("ConfirmationModal"), "lead deletion should use the reusable confirmation modal");
-  assert(leadMagnetLab.includes("useToast"), "lead mutations should be able to acknowledge with global toasts");
+  const manualLeadIntake = await read("apps/web/src/components/manual-lead-intake.tsx");
+  assert(manualLeadIntake.includes("useToast"), "lead mutations should acknowledge outcomes with global toasts");
+  assert(manualLeadIntake.includes('role="dialog"'), "lead creation should stay modal-based");
+  assert(manualLeadIntake.includes("disabled={saving}"), "lead mutation actions should disable during API work");
 
   const sourceFiles = (await walk("apps/web/src")).filter((path) => /\.(tsx?|jsx?)$/.test(path));
   for (const path of sourceFiles) {

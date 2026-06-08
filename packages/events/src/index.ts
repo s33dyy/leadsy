@@ -3,8 +3,6 @@ export type RevenueEventName =
   | "meta.lead.ingested"
   | "qualification.scored"
   | "whatsapp.reply.generated"
-  | "leadmagnet.discovery.completed"
-  | "leadmagnet.outreach.queued"
   | "lead.enriched"
   | "lead.routed"
   | "sequence.started"

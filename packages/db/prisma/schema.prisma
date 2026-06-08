@@ -43,8 +43,6 @@ model Tenant {
   users     User[]
   accounts  Account[]
   clients   AgencyClient[]
-  leadMagnetSources LeadMagnetSource[]
-  discoveredLeads   DiscoveredLead[]
   auditLogs AuditLog[]
 }
 
@@ -224,64 +222,11 @@ model AgencyClient {
   owner              String
   portalUsers        User[] @relation("ClientPortalUsers")
   metaLeads          MetaLead[]
-  leadMagnetSources  LeadMagnetSource[]
-  discoveredLeads    DiscoveredLead[]
   whatsappConversations WhatsAppConversation[]
 
   @@index([tenantId, status])
   @@unique([tenantId, inviteCode])
   @@unique([tenantId, name])
-}
-
-model LeadMagnetSource {
-  id              String   @id @default(cuid())
-  tenantId        String
-  clientId        String
-  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  client          AgencyClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  name            String
-  type            String
-  status          String
-  dailyLimit      Int
-  foundToday      Int      @default(0)
-  qualifiedToday  Int      @default(0)
-  complianceMode  String
-  discoveredLeads DiscoveredLead[]
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  @@index([tenantId, clientId, status])
-}
-
-model DiscoveredLead {
-  id               String   @id @default(cuid())
-  tenantId         String
-  clientId         String
-  sourceId         String
-  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  client           AgencyClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  source           LeadMagnetSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
-  name             String
-  businessName     String?
-  phone            String?
-  instagramHandle  String?
-  city             String
-  segment          String
-  discoveredFrom   String
-  reason           String
-  score            Int
-  fit              Int
-  urgency          Int
-  consentStatus    String
-  outreachStatus   String
-  suggestedMessage String
-  nextAction       String
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-
-  @@index([tenantId, clientId, score, outreachStatus])
-  @@index([tenantId, phone])
-  @@index([tenantId, instagramHandle])
 }
 
 model MetaLead {

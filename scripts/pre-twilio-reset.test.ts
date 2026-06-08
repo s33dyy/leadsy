@@ -18,7 +18,6 @@ async function main() {
   await writeFile(join(dataDir, "auth.json"), JSON.stringify({ users: [{ id: "usr_owner" }], sessions: [{ id: "sess_owner" }] }, null, 2));
   await writeFile(join(dataDir, "lead-knowledge.json"), JSON.stringify({ leads: [{ id: "lead_delete" }], conversations: [{ id: "conv_delete" }], messages: [{ id: "msg_delete" }] }, null, 2));
   await writeFile(join(dataDir, "lead-crm.json"), JSON.stringify({ assignmentRules: [{ id: "rule_keep" }], assignmentHistory: [{ id: "assignment_delete" }], followUpTasks: [{ id: "task_delete" }], qualificationProfiles: [{ id: "profile_keep" }] }, null, 2));
-  await writeFile(join(dataDir, "lead-magnet.json"), JSON.stringify({ briefs: [{ id: "brief_delete" }], briefHistory: [{ id: "brief_history_delete" }], leads: [{ id: "lead_capture_delete" }], runs: [{ id: "run_delete" }], drafts: [{ id: "draft_delete" }], agentRuns: [{ id: "agent_run_delete" }], searchSessions: [{ id: "search_delete" }], ownerSearchMemory: [{ id: "memory_delete" }] }, null, 2));
   await writeFile(join(dataDir, "workspace-whatsapp-senders.json"), JSON.stringify({ senders: [{ id: "sender_keep" }] }, null, 2));
   await writeFile(join(dataDir, "teamspace.json"), JSON.stringify({ members: [{ id: "member_delete" }], threadMessages: [{ id: "thread_delete" }] }, null, 2));
   await writeFile(join(dataDir, "calendar.json"), JSON.stringify({ events: [{ id: "event_delete" }] }, null, 2));

@@ -202,19 +202,6 @@ export type FollowUpTask = {
   status: "queued" | "done" | "blocked";
 };
 
-export type LeadMagnetSource = {
-  id: string;
-  tenantId: TenantId;
-  clientId: string;
-  name: string;
-  type: "google-maps" | "instagram" | "meta-audience" | "website-directory" | "referral-list";
-  status: "active" | "paused" | "needs-review";
-  dailyLimit: number;
-  foundToday: number;
-  qualifiedToday: number;
-  complianceMode: "opt-in-only" | "business-context" | "manual-review";
-};
-
 export type LeadResearchSourceType =
   | "openrouter-web-search"
   | "directory-osint"
@@ -782,28 +769,6 @@ export type AgentRunLog = {
   createdAt: string;
 };
 
-export type DiscoveredLead = {
-  id: string;
-  tenantId: TenantId;
-  clientId: string;
-  sourceId: string;
-  name: string;
-  businessName?: string;
-  phone?: string;
-  instagramHandle?: string;
-  city: string;
-  segment: string;
-  discoveredFrom: string;
-  reason: string;
-  score: number;
-  fit: number;
-  urgency: number;
-  consentStatus: "unknown" | "opted-in" | "business-context" | "business-public" | "do-not-contact";
-  outreachStatus: "not-contacted" | "queued" | "contacted" | "replied" | "qualified" | "blocked";
-  suggestedMessage: string;
-  nextAction: string;
-};
-
 export type Activity = {
   id: string;
   tenantId: TenantId;
@@ -873,14 +838,6 @@ export const qualificationSnapshots: QualificationSnapshot[] = [];
 export const whatsappConversations: WhatsAppConversation[] = [];
 
 export const followUpTasks: FollowUpTask[] = [];
-
-export const leadMagnetSources: LeadMagnetSource[] = [];
-
-export const discoveredLeads: DiscoveredLead[] = [];
-
-export function getDiscoveredLeadById(leadId: string) {
-  return discoveredLeads.find((lead) => lead.id === leadId);
-}
 
 export const accounts: Account[] = [];
 

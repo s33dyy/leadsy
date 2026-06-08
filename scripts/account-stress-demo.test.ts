@@ -99,14 +99,9 @@ async function main() {
   await writeJson(join(dataDir, "user-settings.json"), {
     workspaces: [{ tenantId: targetOwner.tenantId, ownerId: targetOwner.id, notificationRecords: [{ id: "old_notif" }] }]
   });
-  await writeJson(join(dataDir, "lead-magnet.json"), {
-    briefs: [{ id: "old_brief", tenantId: targetOwner.tenantId, ownerId: targetOwner.id }],
-    leads: [{ id: "old_magnet_lead", tenantId: targetOwner.tenantId, ownerId: targetOwner.id }],
+  await writeJson(join(dataDir, "ai-usage.json"), {
     runs: [],
-    drafts: [],
-    agentRuns: [],
-    searchSessions: [],
-    ownerSearchMemory: []
+    agentRuns: []
   });
 
   const seed = await import("../apps/web/src/lib/account-stress-demo-seed");

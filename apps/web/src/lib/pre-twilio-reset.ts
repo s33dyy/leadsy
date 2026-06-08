@@ -26,12 +26,6 @@ const appDataStores = [
     resetBehavior: "Clear CRM execution data; profile presets may be preserved by app-data-only reset."
   },
   {
-    file: "lead-magnet.json",
-    store: "Archived lead capture drafts and runs",
-    classification: "SAFE_TO_DELETE",
-    resetBehavior: "Clear archived capture data after backup."
-  },
-  {
     file: "agency-clients.json",
     store: "Agency and client workspace records",
     classification: "SHOULD_BACKUP",
@@ -90,7 +84,6 @@ export type ResetStoreSummary = {
   auth: { users: number; sessions: number };
   leadKnowledge: { leads: number; conversations: number; messages: number };
   leadCrm: { assignmentRules: number; assignmentHistory: number; followUpTasks: number; qualificationProfiles: number };
-  leadMagnet: { briefs: number; briefHistory: number; leads: number; runs: number; drafts: number; agentRuns: number; searchSessions: number; ownerSearchMemory: number };
   agencyClients: { clients: number };
   workspaceSenders: { senders: number };
   twilioIntegration: { entries: number };
@@ -111,7 +104,6 @@ export type PreTwilioResetResult = {
     messages: number;
     crmAssignmentHistory: number;
     crmFollowUpTasks: number;
-    archivedCaptureRecords: number;
     teamMembers: number;
     internalMessages: number;
     calendarEvents: number;
@@ -136,7 +128,6 @@ export type FullProductResetResult = {
     crmAssignmentHistory: number;
     crmFollowUpTasks: number;
     qualificationProfiles: number;
-    archivedCaptureRecords: number;
     agencyClients: number;
     workspaceSenders: number;
     twilioStatusEntries: number;
@@ -181,25 +172,11 @@ function objectEntryCount(value: unknown) {
   return Object.keys(objectValue(value)).length;
 }
 
-function archivedCaptureCount(value: Record<string, unknown>) {
-  return (
-    arrayCount(value.briefs) +
-    arrayCount(value.briefHistory) +
-    arrayCount(value.leads) +
-    arrayCount(value.runs) +
-    arrayCount(value.drafts) +
-    arrayCount(value.agentRuns) +
-    arrayCount(value.searchSessions) +
-    arrayCount(value.ownerSearchMemory)
-  );
-}
-
 export async function summarizePreTwilioResetStores(input: { dataDir?: string } = {}): Promise<ResetStoreSummary> {
   const dataDir = input.dataDir ?? leadsyDataDir;
   const auth = objectValue(await readJsonFile(dataDir, "auth.json"));
   const leadKnowledge = objectValue(await readJsonFile(dataDir, "lead-knowledge.json"));
   const leadCrm = objectValue(await readJsonFile(dataDir, "lead-crm.json"));
-  const leadMagnet = objectValue(await readJsonFile(dataDir, "lead-magnet.json"));
   const workspaceSenders = objectValue(await readJsonFile(dataDir, "workspace-whatsapp-senders.json"));
   const teamspace = objectValue(await readJsonFile(dataDir, "teamspace.json"));
   const calendar = objectValue(await readJsonFile(dataDir, "calendar.json"));
@@ -219,16 +196,6 @@ export async function summarizePreTwilioResetStores(input: { dataDir?: string } 
       assignmentHistory: arrayCount(leadCrm.assignmentHistory),
       followUpTasks: arrayCount(leadCrm.followUpTasks),
       qualificationProfiles: arrayCount(leadCrm.qualificationProfiles)
-    },
-    leadMagnet: {
-      briefs: arrayCount(leadMagnet.briefs),
-      briefHistory: arrayCount(leadMagnet.briefHistory),
-      leads: arrayCount(leadMagnet.leads),
-      runs: arrayCount(leadMagnet.runs),
-      drafts: arrayCount(leadMagnet.drafts),
-      agentRuns: arrayCount(leadMagnet.agentRuns),
-      searchSessions: arrayCount(leadMagnet.searchSessions),
-      ownerSearchMemory: arrayCount(leadMagnet.ownerSearchMemory)
     },
     agencyClients: {
       clients: arrayCount(await readJsonFile(dataDir, "agency-clients.json"))
@@ -334,16 +301,6 @@ export async function resetLocalCrmForTwilio(input: {
     followUpTasks: [],
     qualificationProfiles: arrayValue(leadCrm.qualificationProfiles)
   });
-  await writeJsonFile(dataDir, "lead-magnet.json", {
-    briefs: [],
-    briefHistory: [],
-    leads: [],
-    runs: [],
-    drafts: [],
-    agentRuns: [],
-    searchSessions: [],
-    ownerSearchMemory: []
-  });
   await writeJsonFile(dataDir, "teamspace.json", { members: [], threadMessages: [] });
   await writeJsonFile(dataDir, "calendar.json", { events: [] });
   await writeJsonFile(dataDir, "twilio-integration.json", {});
@@ -358,7 +315,6 @@ export async function resetLocalCrmForTwilio(input: {
       messages: before.leadKnowledge.messages,
       crmAssignmentHistory: before.leadCrm.assignmentHistory,
       crmFollowUpTasks: before.leadCrm.followUpTasks,
-      archivedCaptureRecords: archivedCaptureCount(before.leadMagnet),
       teamMembers: before.teamspace.members,
       internalMessages: before.teamspace.threadMessages,
       calendarEvents: before.calendar.events
@@ -389,16 +345,6 @@ export async function resetFullProductData(input: {
     followUpTasks: [],
     qualificationProfiles: []
   });
-  await writeJsonFile(dataDir, "lead-magnet.json", {
-    briefs: [],
-    briefHistory: [],
-    leads: [],
-    runs: [],
-    drafts: [],
-    agentRuns: [],
-    searchSessions: [],
-    ownerSearchMemory: []
-  });
   await writeJsonFile(dataDir, "agency-clients.json", []);
   await writeJsonFile(dataDir, "workspace-whatsapp-senders.json", { senders: [] });
   await writeJsonFile(dataDir, "twilio-integration.json", {});
@@ -416,7 +362,6 @@ export async function resetFullProductData(input: {
       crmAssignmentHistory: before.leadCrm.assignmentHistory,
       crmFollowUpTasks: before.leadCrm.followUpTasks,
       qualificationProfiles: before.leadCrm.qualificationProfiles,
-      archivedCaptureRecords: archivedCaptureCount(before.leadMagnet),
       agencyClients: before.agencyClients.clients,
       workspaceSenders: before.workspaceSenders.senders,
       twilioStatusEntries: before.twilioIntegration.entries,

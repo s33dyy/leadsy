@@ -1,8 +1,8 @@
 import "server-only";
 
 import type { OpenRouterUsageCost } from "@leadsy/domain";
+import { listAiUsageRuns } from "./ai-usage-store";
 import { listLeadKnowledgeRecords, type LeadKnowledgeMessage } from "./lead-knowledge-store";
-import { getLeadMagnetWorkspace } from "./lead-magnet-store";
 import { twilioWhatsAppMessageFeeUsd } from "./whatsapp-pricing-estimator";
 
 type Scope = {
@@ -157,7 +157,7 @@ export async function getCostReceipt(scope: Scope): Promise<CostReceipt> {
   const fx = getFxSnapshot();
   const messageFeeUsd = twilioMessageFeeUsd();
   const records = await listLeadKnowledgeRecords(scope);
-  const workspace = await getLeadMagnetWorkspace(scope.tenantId, scope.ownerId);
+  const aiUsage = await listAiUsageRuns(scope);
   const messages = records.flatMap((record) => record.messages);
   const billableMessages = messages.filter(isExternalWhatsAppMessage);
   const simulatorMessages = messages.filter(isSimulatorWhatsAppMessage);
@@ -233,27 +233,27 @@ export async function getCostReceipt(scope: Scope): Promise<CostReceipt> {
   }
 
   const seenGenerationIds = new Set<string>();
-  for (const run of workspace.agentRuns) {
+  for (const run of aiUsage.agentRuns) {
     if (!run.cost || run.cost.provider !== "openrouter") continue;
     if (!shouldIncludeOpenRouterCost(run.cost, `agent:${run.id}`, seenGenerationIds)) continue;
     lineItems.push(
       openRouterLineItem({
         id: `openrouter_agent_${run.id}`,
         label: run.displayTitle || `${run.agent.replace(/-/g, " ")} AI run`,
-        detail: run.displaySummary || run.outputSummary || run.inputSummary,
+        detail: run.displaySummary || run.outputSummary || run.inputSummary || "AI usage recorded by Leadsy.",
         cost: run.cost,
         fxRateInr: fx.rate
       })
     );
   }
-  for (const run of workspace.runs) {
+  for (const run of aiUsage.runs) {
     if (!run.cost || run.cost.provider !== "openrouter") continue;
     if (!shouldIncludeOpenRouterCost(run.cost, `run:${run.id}`, seenGenerationIds)) continue;
     lineItems.push(
       openRouterLineItem({
         id: `openrouter_run_${run.id}`,
         label: run.scenarioLabel || run.runLabel || "Lead research AI run",
-        detail: run.ownerSummary || run.recommendation,
+        detail: run.ownerSummary || run.recommendation || "AI usage recorded by Leadsy.",
         cost: run.cost,
         fxRateInr: fx.rate
       })

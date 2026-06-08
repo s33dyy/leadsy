@@ -2,9 +2,7 @@ import { NextResponse } from "next/server";
 import {
   accounts,
   campaigns,
-  deals,
-  discoveredLeads,
-  leadMagnetSources
+  deals
 } from "@leadsy/domain";
 import { listAgencyClients } from "@/lib/agency-client-store";
 import { summarizeAuthHealth } from "@/lib/auth-store";
@@ -35,8 +33,6 @@ export async function GET() {
       leads: leadKnowledge.records,
       campaigns: campaigns.length,
       agencyClients: agencyClients.length,
-      leadMagnetSources: leadMagnetSources.length,
-      discoveredLeads: discoveredLeads.length,
       whatsappConversations: leadKnowledge.conversations,
       crmFollowUpTasks: crm.followUpTasks,
       authUsers: auth.users,

@@ -5,9 +5,7 @@ import {
   campaigns,
   contacts,
   deals,
-  discoveredLeads,
   followUpTasks,
-  leadMagnetSources,
   leads,
   metaLeads,
   whatsappConversations
@@ -26,8 +24,6 @@ console.log(
         campaigns: campaigns.length,
         agencyClients: agencyClients.length,
         metaLeads: metaLeads.length,
-        leadMagnetSources: leadMagnetSources.length,
-        discoveredLeads: discoveredLeads.length,
         whatsappConversations: whatsappConversations.length,
         followUpTasks: followUpTasks.length
       }

@@ -5,13 +5,11 @@ import {
   campaigns,
   contacts,
   deals,
-  discoveredLeads,
   formatCurrency,
   formatInr,
   getAccountById,
   getAgencyClientById,
   getContactById,
-  getDiscoveredLeadById,
   getMetaLeadById,
   getQualificationByLeadId,
   leads,
@@ -25,7 +23,6 @@ import {
 	  type AgentQuestion,
 	  type AgentQuestionCategory,
 	  type AgentRunLog,
-	  type DiscoveredLead,
 	  type EvidenceUrl,
 	  type FxRateSnapshot,
 	  type Lead,
@@ -77,7 +74,6 @@ export type CopilotIntent =
   | "qualification"
   | "whatsapp"
   | "agency"
-  | "lead-magnet"
   | "general";
 
 export type CopilotRequest = {
@@ -193,23 +189,6 @@ export type ExtensionReplyInput = {
   messages: ExtensionReplyMessage[];
   knowledge?: ExtensionLeadKnowledgeContext;
   existingSummary?: string;
-};
-
-export type LeadMagnetDiscoveryResult = {
-  runId: string;
-  found: number;
-  qualified: number;
-  blocked: number;
-  leads: DiscoveredLead[];
-  recommendation: string;
-};
-
-export type LeadMagnetOutreachResult = {
-  leadId: string;
-  status: "queued" | "blocked";
-  message: string;
-  reason: string;
-  nextAction: string;
 };
 
 export type LeadResearchResult = {
@@ -5740,8 +5719,8 @@ function inferIntent(prompt: string): CopilotIntent {
   if (normalized.includes("whatsapp") || normalized.includes("reply") || normalized.includes("conversation")) {
     return "whatsapp";
   }
-  if (normalized.includes("find lead") || normalized.includes("lead magnet") || normalized.includes("prospect")) {
-    return "lead-magnet";
+  if (normalized.includes("find lead") || normalized.includes("prospect")) {
+    return "filter";
   }
   if (normalized.includes("meta") || normalized.includes("instagram") || normalized.includes("facebook")) {
     return "qualification";
@@ -5819,9 +5798,9 @@ export class DeterministicRevenueModel implements RevenueAIModel {
         return {
           intent,
           answer:
-            "No outreach audience exists yet. Import contacts, connect approved lead sources, or let Lead Magnet discover prospects before generating sequences.",
+            "No outreach audience exists yet. Import contacts, add a manual lead, or receive WhatsApp conversations before generating sequences.",
           actions: [
-            { label: "Open Lead Magnet", command: "leadMagnet.open" },
+            { label: "Add lead", command: "lead.create" },
             { label: "Import contacts", command: "contacts.import" }
           ],
           citations: ["empty-workspace"]
@@ -5847,7 +5826,7 @@ export class DeterministicRevenueModel implements RevenueAIModel {
             "There are no Meta leads in this workspace yet. Once the Meta webhook is connected, I can qualify budget, location, timeline, language, urgency, and spam risk instantly.",
           actions: [
             { label: "Connect Meta webhook", command: "integrations.meta.connect" },
-            { label: "Open Lead Magnet", command: "leadMagnet.open" }
+            { label: "Add manual lead", command: "lead.create" }
           ],
           citations: ["empty-meta-leads"]
         };
@@ -5919,31 +5898,6 @@ export class DeterministicRevenueModel implements RevenueAIModel {
       };
     }
 
-    if (intent === "lead-magnet") {
-      const bestLead = discoveredLeads[0];
-      if (!bestLead) {
-        return {
-          intent,
-          answer:
-            "Lead Magnet is clean. Add approved discovery sources first; then I can find prospects, score fit and urgency, draft outreach, and block anything that needs consent review.",
-          actions: [
-            { label: "Add discovery source", command: "leadMagnet.source.create" },
-            { label: "Connect Instagram", command: "integrations.instagram.connect" }
-          ],
-          citations: ["empty-lead-magnet"]
-        };
-      }
-      return {
-        intent,
-        answer: `Lead Magnet found ${discoveredLeads.length} prospects. Best lead: ${bestLead.name}, score ${bestLead.score}, because ${bestLead.reason}. I would queue outreach only when consent/context is acceptable, and otherwise add the prospect to retargeting or manual review.`,
-        actions: [
-          { label: "Run discovery", command: "leadMagnet.discover", payload: { source: "active" } },
-          { label: "Queue approved outreach", command: "leadMagnet.queueOutreach", payload: { leadId: bestLead.id } }
-        ],
-        citations: ["discovered-leads", "lead-magnet-sources", "compliance-guardrails"]
-      };
-    }
-
     if (intent === "workflow") {
       return {
         intent,
@@ -5962,7 +5916,7 @@ export class DeterministicRevenueModel implements RevenueAIModel {
         return {
           intent,
           answer:
-            "There are no records to filter yet. Connect CRM, Meta, WhatsApp, or Lead Magnet sources and I will build segments from real records.",
+            "There are no records to filter yet. Add CRM leads or receive WhatsApp conversations and I will build segments from real records.",
           actions: [{ label: "Open integrations", command: "integrations.open" }],
           citations: ["empty-workspace"]
         };
@@ -6089,57 +6043,6 @@ export async function generateWhatsAppReply(conversationId: string): Promise<Wha
     tone: shouldEscalate ? "premium" : conversation.qualification.sentiment === "hesitant" ? "recovery" : "warm",
     shouldEscalate,
     nextAction: conversation.qualification.nextBestAction
-  };
-}
-
-export async function runLeadMagnetDiscovery(): Promise<LeadMagnetDiscoveryResult> {
-  const qualified = discoveredLeads.filter(
-    (lead) => lead.score >= 70 && (lead.consentStatus === "opted-in" || lead.consentStatus === "business-context")
-  );
-  const blocked = discoveredLeads.filter(
-    (lead) => lead.consentStatus === "unknown" || lead.outreachStatus === "blocked" || lead.consentStatus === "do-not-contact"
-  );
-
-  return {
-    runId: crypto.randomUUID(),
-    found: discoveredLeads.length,
-    qualified: qualified.length,
-    blocked: blocked.length,
-    leads: discoveredLeads,
-    recommendation:
-      "Use AI aggressively for research, scoring, personalization, and follow-up planning. Auto-message only when the source and consent path are approved; otherwise send to manual review or retargeting."
-  };
-}
-
-export async function queueLeadMagnetOutreach(leadId: string): Promise<LeadMagnetOutreachResult> {
-  const lead = getDiscoveredLeadById(leadId);
-  if (!lead) {
-    return {
-      leadId,
-      status: "blocked",
-      message: "",
-      reason: "No discovered lead was found. Add approved sources and run discovery first.",
-      nextAction: "Create or connect a Lead Magnet source."
-    };
-  }
-  const allowed = lead.consentStatus === "opted-in" || lead.consentStatus === "business-context";
-
-  if (!allowed) {
-    return {
-      leadId: lead.id,
-      status: "blocked",
-      message: lead.suggestedMessage,
-      reason: `Consent status is ${lead.consentStatus}. Keep this out of automated messaging until reviewed.`,
-      nextAction: lead.nextAction
-    };
-  }
-
-  return {
-    leadId: lead.id,
-    status: "queued",
-    message: lead.suggestedMessage,
-    reason: `Lead score ${lead.score}; ${lead.reason}`,
-    nextAction: "Queue first touch, wait for reply/read signal, then move to WhatsApp qualification if phone is available."
   };
 }
 

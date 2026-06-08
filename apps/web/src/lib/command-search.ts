@@ -93,6 +93,7 @@ const retiredTermParts = [
   ["n", "8", "n"],
   ["infra", "structure"]
 ];
+const retiredExactTerms = ["lead magnet"];
 
 function normalize(value?: string) {
   return (value ?? "").trim().toLowerCase();
@@ -120,6 +121,7 @@ function scoreResult(result: CommandSearchResult, query: string) {
 function visibleResult(result: CommandSearchResult, query: string) {
   const searchable = normalize(`${result.title} ${result.subtitle} ${result.href}`);
   if (retiredTermParts.some((parts) => new RegExp(`\\b${parts.join("")}\\b`, "i").test(searchable))) return false;
+  if (retiredExactTerms.some((term) => searchable.includes(term))) return false;
   return !query || scoreResult(result, query) > 0;
 }
 

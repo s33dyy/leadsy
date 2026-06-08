@@ -43,7 +43,7 @@ const touchedStores = [
   "workspace-whatsapp-senders.json",
   "twilio-integration.json",
   "user-settings.json",
-  "lead-magnet.json"
+  "ai-usage.json"
 ];
 
 const scryptOptions = { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
@@ -152,10 +152,6 @@ function scopeMatches(scope: Scope, item: JsonObject) {
 
 function withoutScope<T extends JsonObject>(items: T[] | undefined, scope: Scope) {
   return (Array.isArray(items) ? items : []).filter((item) => !scopeMatches(scope, item));
-}
-
-function keepNonTargetLeadMagnetItems<T extends JsonObject>(items: T[] | undefined, scope: Scope) {
-  return (Array.isArray(items) ? items : []).filter((item) => item.tenantId !== scope.tenantId || item.ownerId !== scope.ownerId);
 }
 
 const memberSpecs = [
@@ -816,7 +812,7 @@ function openRouterCost(input: {
   };
 }
 
-function buildLeadMagnetStress(scope: Scope) {
+function buildAiUsageStress(scope: Scope) {
   const agentRuns = [
     {
       id: "stress_airun_qualification_batch",
@@ -942,14 +938,8 @@ function buildLeadMagnetStress(scope: Scope) {
   ];
 
   return {
-    briefs: [],
-    briefHistory: [],
-    leads: [],
     runs,
-    drafts: [],
-    agentRuns,
-    searchSessions: [],
-    ownerSearchMemory: []
+    agentRuns
   };
 }
 
@@ -1015,7 +1005,7 @@ export async function seedAccountStressDemo(input: SeedInput) {
   const calendarEvents = buildCalendar(scope);
   const settings = buildSettings(scope);
   const sender = buildSender(scope);
-  const leadMagnetStress = buildLeadMagnetStress(scope);
+  const aiUsageStress = buildAiUsageStress(scope);
 
   const deletedTeamUserIds = new Set(
     auth.users
@@ -1089,16 +1079,10 @@ export async function seedAccountStressDemo(input: SeedInput) {
     workspaces: [...withoutScope(userSettings.workspaces, scope), settings]
   });
 
-  const leadMagnet = await readJson<JsonObject>(dataDir, "lead-magnet.json", {});
-  await writeJson(dataDir, "lead-magnet.json", {
-    briefs: [...keepNonTargetLeadMagnetItems(leadMagnet.briefs as JsonObject[], scope), ...leadMagnetStress.briefs],
-    briefHistory: [...keepNonTargetLeadMagnetItems(leadMagnet.briefHistory as JsonObject[], scope), ...leadMagnetStress.briefHistory],
-    leads: [...keepNonTargetLeadMagnetItems(leadMagnet.leads as JsonObject[], scope), ...leadMagnetStress.leads],
-    runs: [...keepNonTargetLeadMagnetItems(leadMagnet.runs as JsonObject[], scope), ...leadMagnetStress.runs],
-    drafts: [...keepNonTargetLeadMagnetItems(leadMagnet.drafts as JsonObject[], scope), ...leadMagnetStress.drafts],
-    agentRuns: [...keepNonTargetLeadMagnetItems(leadMagnet.agentRuns as JsonObject[], scope), ...leadMagnetStress.agentRuns],
-    searchSessions: [...keepNonTargetLeadMagnetItems(leadMagnet.searchSessions as JsonObject[], scope), ...leadMagnetStress.searchSessions],
-    ownerSearchMemory: [...keepNonTargetLeadMagnetItems(leadMagnet.ownerSearchMemory as JsonObject[], scope), ...leadMagnetStress.ownerSearchMemory]
+  const aiUsage = await readJson<{ runs: JsonObject[]; agentRuns: JsonObject[] }>(dataDir, "ai-usage.json", { runs: [], agentRuns: [] });
+  await writeJson(dataDir, "ai-usage.json", {
+    runs: [...withoutScope(aiUsage.runs, scope), ...aiUsageStress.runs],
+    agentRuns: [...withoutScope(aiUsage.agentRuns, scope), ...aiUsageStress.agentRuns]
   });
 
   return {

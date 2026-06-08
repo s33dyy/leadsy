@@ -110,7 +110,7 @@ export async function runWorkflow(
               ? `Sent instant WhatsApp opener to ${metaLead.fullName} within 38 seconds.`
               : "Escalated hot buyer for booking while AI follow-up remains active."
       : !lead
-        ? "No lead context supplied. Connect CRM, Meta, WhatsApp, or Lead Magnet sources."
+        ? "No lead context supplied. Add CRM leads or receive WhatsApp conversations first."
         : node.type === "trigger"
           ? `Matched lead ${lead.id} from ${lead.source}.`
         : node.type === "enrichment"

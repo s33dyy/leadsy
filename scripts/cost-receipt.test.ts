@@ -81,12 +81,9 @@ async function main() {
       createdAt: "2026-06-07T08:04:00.000Z"
     });
     await writeFile(
-      join(tempDir, "lead-magnet.json"),
+      join(tempDir, "ai-usage.json"),
       JSON.stringify(
         {
-          briefs: [],
-          briefHistory: [],
-          leads: [],
           runs: [
             {
               id: "run_duplicate_cost",
@@ -107,7 +104,6 @@ async function main() {
               completedAt: "2026-06-07T08:03:00.000Z"
             }
           ],
-          drafts: [],
           agentRuns: [
             {
               id: "agent_duplicate_cost",
@@ -133,9 +129,7 @@ async function main() {
               cost: secondCost,
               createdAt: "2026-06-07T08:04:00.000Z"
             }
-          ],
-          searchSessions: [],
-          ownerSearchMemory: []
+          ]
         },
         null,
         2
