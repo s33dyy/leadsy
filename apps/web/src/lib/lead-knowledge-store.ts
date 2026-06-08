@@ -177,7 +177,7 @@ const qualificationQuestions: Partial<Record<LeadQualificationFieldKey, string>>
   name: "Ask for the buyer's name before continuing qualification.",
   phone: "Confirm the preferred phone number for follow-up.",
   company: "Ask for the business or company name.",
-  need: "Ask what they want to achieve with Leadsy or WhatsApp automation.",
+  need: "Ask what business outcome or service they need help with.",
   teamOrQueryVolume: "Ask how many queries, leads, or messages they handle each day.",
   budget: "Ask for budget range if the conversation is warm enough.",
   timeline: "Ask when they want to start or book the next conversation.",
@@ -417,13 +417,67 @@ function firstMatch(text: string, patterns: RegExp[]) {
   return undefined;
 }
 
+function cleanBusinessName(value?: string) {
+  return value
+    ?.trim()
+    .split(/[.\n]/)[0]
+    .replace(/^(?:the|our|my)\s+/i, "")
+    .replace(/\s+(?:team|company|brand|business)$/i, "")
+    .replace(/[?.!,;:]+$/, "")
+    .trim();
+}
+
+function inferCompanyFromText(text: string) {
+  const explicit = valueAfterLabel(text, ["Company", "Business", "Business name", "Company name"]);
+  if (explicit) return cleanBusinessName(explicit);
+  return cleanBusinessName(firstMatch(text, [
+    /\b(?:i['’]m|i am|this is|my name is)\s+[A-Z][A-Za-z.'-]*\s+(?:from|at|with)\s+([A-Z][A-Za-z0-9&' -]{1,60})(?=[,.\n]|$|\s+(?:and|we|need|want|looking|budget|our)\b)/,
+    /\b(?:from|at|with)\s+([A-Z][A-Za-z0-9&' -]{1,60})(?=[,.\n]|$|\s+(?:and|we|need|want|looking|budget|our)\b)/,
+    /\b(?:our\s+(?:company|brand|business)\s+is|we\s+(?:run|own|operate))\s+([A-Z][A-Za-z0-9&' -]{1,60})(?=[,.\n]|$|\s+(?:and|we|need|want|looking|budget|our)\b)/
+  ]));
+}
+
 function inferNeedFromText(text: string) {
   const explicit = valueAfterLabel(text, ["Need", "Reason", "Requirement", "Use case", "Goal"]);
   if (explicit) return explicit;
   return firstMatch(text, [
     /\b(?:i\s+want|want|need|looking\s+for|interested\s+in)\s+(?:a\s+|an\s+|to\s+)?([^.\n?]+?)(?:\s+for\s+\d|\s+this\s+week|$|[?.!])/i,
+    /\b((?:\d+\s+)?SEO\s+blogs?(?:[^.\n?]*LinkedIn[^.\n?]*)?)/i,
+    /\b(LinkedIn\s+(?:posts?|ghostwriting|content)[^.\n?]*)/i,
+    /\b(content\s+(?:calendar|marketing|retainer|strategy)[^.\n?]*)/i,
     /\b(whatsapp\s+(?:crm|automation|ai|follow[- ]?up)[^.\n?]*)/i
   ]);
+}
+
+function inferBudgetFromText(text: string) {
+  return (
+    valueAfterLabel(text, ["Budget", "Estimated budget"]) ||
+    firstMatch(text, [
+      /\b(?:budget|spend|retainer|investment|price\s+range)\s*(?:can\s+be|is|around|of|:)?\s*(?:(?:around|approx(?:imately)?)\s*)?((?:₹|rs\.?|inr|\$)?\s*[\d,.]+(?:\s*(?:k|l|lac|lakh|lakhs|cr|crore|inr|rs|usd))?(?:\s*(?:monthly|per\s+month|\/month|a\s+month))?)/i,
+      /\b((?:₹|rs\.?|inr|\$)\s*[\d,.]+(?:\s*(?:k|l|lac|lakh|lakhs|cr|crore|inr|rs|usd))?(?:\s*(?:monthly|per\s+month|\/month|a\s+month))?)/i
+    ])
+  );
+}
+
+function inferTimelineFromText(text: string) {
+  return (
+    valueAfterLabel(text, ["Timeline", "Start date"]) ||
+    firstMatch(text, [
+      /\b(this week|next week|tomorrow|today|this month|next month|this quarter|next quarter|as soon as possible|\d+\s*(?:days?|weeks?|months?))\b/i,
+      /\b(?:start|launch|go live|begin)\s+(?:by|from|in)?\s*([A-Z][a-z]+\s+\d{1,2}|[A-Z][a-z]+|this month|next month|\d+\s*(?:days?|weeks?|months?))/i
+    ])
+  );
+}
+
+function inferAuthorityFromText(text: string) {
+  return (
+    valueAfterLabel(text, ["Authority", "Decision maker", "Approver"]) ||
+    firstMatch(text, [
+      /\b(final\s+approval\s+is\s+with\s+(?:our|my|the)?\s*(?:owner|founder|manager|director|ceo)[^.\n]*)/i,
+      /\b((?:owner|founder|manager|director|ceo)\s+(?:will|needs? to|must)\s+(?:approve|decide|sign off)[^.\n]*)/i,
+      /\b(i\s+(?:am\s+(?:the\s+)?(?:owner|founder|decision maker|approver)|approve|own|manage|decide)[^.\n]*(?:approval|spends?|budget|content spends?|decision)?)\b/i
+    ])
+  );
 }
 
 function inferQualificationFields(input: {
@@ -443,7 +497,7 @@ function inferQualificationFields(input: {
 
   fields.name = fields.name || (displayName && !businessLikeName(displayName) ? displayName : undefined);
   fields.phone = fields.phone || input.contact.phone || input.contact.waId;
-  fields.company = fields.company || valueAfterLabel(text, ["Company", "Business", "Business name", "Company name"]);
+  fields.company = fields.company || inferCompanyFromText(text);
   fields.need = fields.need || inferNeedFromText(text);
   fields.teamOrQueryVolume =
     fields.teamOrQueryVolume ||
@@ -453,12 +507,9 @@ function inferQualificationFields(input: {
       /\b(more\s+than\s+\d+\s*(?:queries|messages|leads)?)/i,
       /\b(\d+\s*(?:queries|messages|leads)\s+(?:per\s+day|daily))/i
     ]);
-  fields.budget = fields.budget || valueAfterLabel(text, ["Budget", "Estimated budget"]) || firstMatch(text, [/\b(?:budget|price range)\s*(?:is|:)?\s*([₹$]?\s*[\d,]+(?:\s*(?:inr|rs|usd))?)/i]);
-  fields.timeline = fields.timeline || valueAfterLabel(text, ["Timeline", "Start date"]) || firstMatch(text, [/\b(this week|next week|tomorrow|today|next month|as soon as possible|\d+\s*days?)\b/i]);
-  fields.authority =
-    fields.authority ||
-    valueAfterLabel(text, ["Authority", "Decision maker", "Approver"]) ||
-    firstMatch(text, [/\b(i am (?:the )?(?:owner|founder|decision maker|approver))\b/i, /\b((?:owner|founder|manager|director)\s+will\s+approve)\b/i]);
+  fields.budget = fields.budget || inferBudgetFromText(text);
+  fields.timeline = fields.timeline || inferTimelineFromText(text);
+  fields.authority = fields.authority || inferAuthorityFromText(text);
   fields.location = fields.location || valueAfterLabel(text, ["Location", "City", "Market"]) || firstMatch(text, [/\bin\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)(?:\s|$|[.,!?])/]);
   fields.serviceInterest = fields.serviceInterest || valueAfterLabel(text, ["Service Interest", "Service", "Package", "Plan"]) || fields.need;
   fields.intent =
@@ -1203,9 +1254,9 @@ export async function editLeadKnowledgeRecord(input: Scope & {
       .filter((conversation) => conversation.leadId === lead.id && scopeMatches(input, conversation))
       .flatMap((conversation) => identityKeysForContact(conversation.channel, contact))
   ]);
-  lead.summary = input.summary?.trim() || undefined;
-  lead.nextAction = input.nextAction?.trim() || undefined;
-  lead.facts = uniqueStrings(input.facts ?? []).slice(0, 30);
+  lead.summary = input.summary?.trim() || lead.summary;
+  lead.nextAction = input.nextAction?.trim() || lead.nextAction;
+  lead.facts = input.facts === undefined ? lead.facts : uniqueStrings(input.facts).slice(0, 30);
   lead.leadSource = input.leadSource?.trim() || lead.leadSource;
   lead.campaignId = input.campaignId?.trim() || lead.campaignId;
   const defaultAssignee = defaultAssigneeForLeadSource();

@@ -556,7 +556,7 @@ export type FxRateSnapshot = {
 
 export type OpenRouterUsageCost = {
   provider: "openrouter";
-  stage?: "planner" | "dossier-builder" | "message-drafter";
+  stage?: "planner" | "dossier-builder" | "message-drafter" | "qualification-reply" | "qualification-extractor" | "initial-outreach";
   model?: string;
   generationId?: string;
   finishReason?: string;

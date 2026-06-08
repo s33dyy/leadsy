@@ -69,8 +69,40 @@ async function main() {
     assert.equal(manual.conversations[0].channel, "whatsapp");
     assert.equal(manual.messages.length, 1);
 
+    const naturalContentLead = await saveTwilioInboundMessage({
+      ...scope,
+      messageSid: "SIMINNATURALCONTENT",
+      from: "whatsapp:+919000000003",
+      to: "whatsapp:leadsy-simulator",
+      profileName: "Rohan",
+      body:
+        "Hi, I’m Rohan from NovaFit. We need 12 SEO blogs and LinkedIn posts every month. Budget is around ₹80k monthly and I approve content spends. Want to start this month.",
+      source: "twilio_simulator",
+      receivedAt: "2026-06-07T11:00:00.000Z"
+    });
+    assert.equal(naturalContentLead.lead.qualificationFields.company, "NovaFit");
+    assert.match(naturalContentLead.lead.qualificationFields.need ?? "", /SEO blogs|LinkedIn/i);
+    assert.match(naturalContentLead.lead.qualificationFields.budget ?? "", /80k/i);
+    assert.match(naturalContentLead.lead.qualificationFields.authority ?? "", /approve|Rohan/i);
+    assert.match(naturalContentLead.lead.qualificationFields.timeline ?? "", /this month/i);
+
+    const followUp = await saveTwilioInboundMessage({
+      ...scope,
+      messageSid: "SIMINNATURALFOLLOWUP",
+      from: "whatsapp:+919000000004",
+      to: "whatsapp:leadsy-simulator",
+      profileName: "Maya",
+      body:
+        "I handle marketing at BloomNest. Budget can be around ₹1.2L, but final approval is with our founder. Need a content calendar and LinkedIn ghostwriting.",
+      source: "twilio_simulator",
+      receivedAt: "2026-06-07T11:10:00.000Z"
+    });
+    assert.equal(followUp.lead.qualificationFields.company, "BloomNest");
+    assert.match(followUp.lead.qualificationFields.budget ?? "", /1.2L/i);
+    assert.match(followUp.lead.qualificationFields.authority ?? "", /founder/i);
+
     const records = await listLeadKnowledgeRecords(scope);
-    assert.equal(records.length, 2);
+    assert.equal(records.length, 4);
     const asha = records.find((record) => record.contact.displayName === "Asha Buyer");
     assert(asha);
     const audit = buildQualificationInputAudit(asha);
@@ -78,9 +110,9 @@ async function main() {
     assert.equal(audit.fields.find((field) => field.field === "need")?.state, "Collected");
 
     const health = await summarizeLeadKnowledgeHealth();
-    assert.equal(health.records, 2);
-    assert.equal(health.whatsappSourced, 2);
-    assert.equal(health.messages, 3);
+    assert.equal(health.records, 4);
+    assert.equal(health.whatsappSourced, 4);
+    assert.equal(health.messages, 5);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

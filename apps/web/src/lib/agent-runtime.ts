@@ -9,6 +9,8 @@ import {
   postTeamThreadMessage,
   type TeamMember
 } from "./teamspace-store";
+import { generateLeadAiReply, type LeadAiReplyResult } from "./lead-ai-engine";
+import { ensureWorkspaceTwilioSimulator } from "./twilio-simulator";
 import { getOperatorProfileSettings, getWorkspaceBusinessSettings } from "./user-settings-store";
 import { sendAndStoreWhatsAppMessage, type WhatsAppSendResult } from "./whatsapp-transport";
 
@@ -40,7 +42,8 @@ export type InitialAiOutboundAction =
   | "not_ai_member"
   | "lead_not_found"
   | "no_whatsapp_phone"
-  | "skipped_duplicate";
+  | "skipped_duplicate"
+  | "blocked_transport";
 
 export type InitialAiOutboundResult = {
   action: InitialAiOutboundAction;
@@ -100,57 +103,6 @@ function escalationRequested(text: string, agent?: TeamMember | null) {
   return agent?.escalationKeywords.some((keyword) => new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text)) ?? false;
 }
 
-function valueFromFacts(facts: string[], label: string) {
-  return facts
-    .flatMap((fact) => fact.split(/\r?\n/))
-    .map((fact) => fact.match(new RegExp(`^${label}\\s*:\\s*(.+)$`, "i"))?.[1]?.trim())
-    .find(Boolean);
-}
-
-function compactSentence(value?: string) {
-  return value?.trim().replace(/\s+/g, " ").replace(/[.?!]+$/, "");
-}
-
-function knownCompany(context: Pick<LeadAiContext, "qualificationFields" | "lead">) {
-  return compactSentence(context.qualificationFields.company || valueFromFacts(context.lead.facts, "Company"));
-}
-
-function knownNeed(context: Pick<LeadAiContext, "qualificationFields" | "lead">) {
-  return compactSentence(context.qualificationFields.need || valueFromFacts(context.lead.facts, "Need") || valueFromFacts(context.lead.facts, "Requirement"));
-}
-
-function contextLeadLabel(context: Pick<LeadAiContext, "lead">) {
-  return context.lead.contact.displayName?.trim().split(/\s+/)[0] || "there";
-}
-
-function oneQuestionForMissingField(field: string, context: LeadAiContext) {
-  const company = knownCompany(context);
-  const need = knownNeed(context);
-  if (field === "budget") return `What budget range should we plan around${company ? ` for ${company}` : ""}, and who will make the final decision?`;
-  if (field === "company") return need ? "Which company or business is this for so I can map the right WhatsApp follow-up plan?" : "Which company or business is this for?";
-  if (field === "need") return company ? `What should we improve first for ${company}: qualification, follow-up, assignment, or bookings?` : "What should we improve first: qualification, follow-up, assignment, or bookings?";
-  if (field === "timeline") return `When would you like to start${need ? ` with ${need}` : ""}?`;
-  if (field === "authority") return "Are you the decision maker for this, or should we include someone else before proposing the next step?";
-  return "What is the next detail I should know before routing this to the right owner?";
-}
-
-function qualificationQuestion(context: LeadAiContext) {
-  const missing = context.missingFields;
-  const nextMissing = missing.includes("budget")
-    ? "budget"
-    : missing.includes("company")
-      ? "company"
-      : missing.includes("need")
-        ? "need"
-        : missing.includes("timeline")
-          ? "timeline"
-          : missing.includes("authority")
-            ? "authority"
-            : undefined;
-  if (!nextMissing) return "Thanks. I have enough context to route this to the right owner for the next step.";
-  return oneQuestionForMissingField(nextMissing, context);
-}
-
 function whatsappAddressForLead(lead: Awaited<ReturnType<typeof listLeadKnowledgeRecords>>[number]) {
   const phone = lead.contact.waId || lead.contact.phone;
   if (!phone?.trim()) return undefined;
@@ -194,35 +146,57 @@ export async function buildLeadAiContext(input: Scope & {
   };
 }
 
-export function generateContextualAiReply(
-  context: LeadAiContext,
-  purpose: "initial_outbound" | "qualification_reply" | "qualified_handoff",
-  options: { ownerName?: string; slotText?: string } = {}
-) {
-  const firstName = contextLeadLabel(context);
-  const agentName = context.member?.name || "Leadsy";
-  const company = knownCompany(context);
-  const need = knownNeed(context);
-  const style = compactSentence(context.operator.communicationStyle) || "concise and helpful";
-  const contextLine = company && need
-    ? `I saw ${company} is looking at ${need}.`
-    : company
-      ? `I saw this is for ${company}.`
-      : need
-        ? `I saw you are looking at ${need}.`
-        : "Thanks for sharing the details.";
+function mergedQualificationFields(context: LeadAiContext, ai: LeadAiReplyResult) {
+  return {
+    ...context.qualificationFields,
+    ...Object.fromEntries(Object.entries(ai.extractedFields).filter(([, value]) => value?.trim()))
+  };
+}
 
-  if (purpose === "qualified_handoff") {
-    if (options.slotText) return `You look ready for the next step. ${options.ownerName ?? "Our owner"} is available at ${options.slotText}. Which time works for you?`;
-    return `You look ready for the next step. ${options.ownerName ?? "Our owner"} will share the next available meeting time shortly.`;
+async function applyAiResultToLead(input: Scope & { leadId: string }, context: LeadAiContext, ai: LeadAiReplyResult, nextAction?: string) {
+  const hasFields = Object.keys(ai.extractedFields).some((key) => ai.extractedFields[key]?.trim());
+  const hasNote = Boolean(ai.crmNote?.trim());
+  if (!hasFields && !hasNote && !nextAction) return context.lead;
+  const facts = [
+    ...context.lead.facts,
+    hasNote ? `AI note: ${ai.crmNote}` : undefined
+  ].filter(Boolean) as string[];
+  return editLeadKnowledgeRecord({
+    ...input,
+    contact: context.lead.contact,
+    summary: context.lead.summary,
+    nextAction: nextAction || context.lead.nextAction,
+    facts,
+    crmStatus: context.lead.crmStatus,
+    productPipelineStatus: context.lead.productPipelineStatus,
+    leadSource: context.lead.leadSource,
+    campaignId: context.lead.campaignId,
+    assigneeId: context.lead.assigneeId,
+    assigneeName: context.lead.assigneeName,
+    qualificationFields: mergedQualificationFields(context, ai),
+    qualificationStage: context.lead.qualificationStage
+  });
+}
+
+async function sendWithSimulatorFallback(input: Scope & {
+  leadId: string;
+  to: string;
+  body: string;
+  contact: LeadAiContext["lead"]["contact"];
+  businessName?: string;
+}) {
+  try {
+    return await sendAndStoreWhatsAppMessage(input);
+  } catch (error) {
+    const code = (error as { code?: string }).code;
+    if (code !== "workspace_whatsapp_sender_required" && code !== "workspace_whatsapp_sender_not_approved") throw error;
+    await ensureWorkspaceTwilioSimulator({
+      tenantId: input.tenantId,
+      ownerId: input.ownerId,
+      businessName: input.businessName
+    });
+    return sendAndStoreWhatsAppMessage(input);
   }
-
-  const question = qualificationQuestion(context);
-  if (purpose === "initial_outbound") {
-    return `Hi ${firstName}, I am ${agentName} from Leadsy. ${contextLine} To keep this ${style}, ${question}`;
-  }
-
-  return `${contextLine} ${question}`;
 }
 
 async function initialOutboundAlreadyHandled(input: Scope & { leadId: string; triggerId: string }) {
@@ -249,9 +223,13 @@ export async function sendInitialAiOutboundForLead(input: Scope & {
   if (!context) {
     return { action: "lead_not_found", memberId: member.id, leadId: input.leadId, reason: "Lead was not found." };
   }
-  const { lead } = context;
-
-  const body = generateContextualAiReply(context, "initial_outbound");
+  const ai = await generateLeadAiReply({
+    ...input,
+    context,
+    purpose: "initial_outbound"
+  });
+  const body = ai.reply;
+  const lead = await applyAiResultToLead(input, context, ai, "Initial AI outreach prepared.");
   if (member.type === "ai_agent_assisted" || !member.autoReplyEnabled) {
     await postTeamThreadMessage({
       ...input,
@@ -300,13 +278,25 @@ export async function sendInitialAiOutboundForLead(input: Scope & {
     return { action: "no_whatsapp_phone", memberId: member.id, leadId: lead.id, body };
   }
 
-  const transport = await sendAndStoreWhatsAppMessage({
-    ...input,
-    leadId: lead.id,
-    to,
-    body,
-    contact: lead.contact
-  });
+  let transport: WhatsAppSendResult;
+  try {
+    transport = await sendWithSimulatorFallback({
+      ...input,
+      leadId: lead.id,
+      to,
+      body,
+      contact: lead.contact,
+      businessName: context.workspace.businessName
+    });
+  } catch (error) {
+    return {
+      action: "blocked_transport",
+      memberId: member.id,
+      leadId: lead.id,
+      body,
+      reason: (error as Error).message
+    };
+  }
 
   await postTeamThreadMessage({
     ...input,
@@ -433,7 +423,15 @@ export async function runAgentForInboundLead(input: AgentRunInput): Promise<Agen
         })
       : [];
     const slotText = freeSlots.slice(0, 3).map((slot) => formatTime(slot.startAt)).join(", ");
-    const replyBody = generateContextualAiReply(context, "qualified_handoff", { ownerName: owner?.name, slotText });
+    const ai = await generateLeadAiReply({
+      ...input,
+      context,
+      purpose: "qualified_handoff",
+      ownerName: owner?.name,
+      slotText
+    });
+    const replyBody = ai.reply;
+    await applyAiResultToLead(input, context, ai, "Qualified lead ready for handoff.");
     if (owner) {
       await editLeadKnowledgeRecord({
         ...input,
@@ -485,7 +483,63 @@ export async function runAgentForInboundLead(input: AgentRunInput): Promise<Agen
 
   if (!agent.autoReplyEnabled) return { action: "no_action", memberId: agent.id, reason: "Agent auto-reply is disabled." };
 
-  const replyBody = generateContextualAiReply(context, "qualification_reply");
+  const ai = await generateLeadAiReply({
+    ...input,
+    context,
+    purpose: "qualification_reply"
+  });
+  await applyAiResultToLead(input, context, ai, "AI qualification reply sent. Wait for the lead response.");
+  const updatedContext = await buildLeadAiContext({ ...input, memberId: agent.id });
+  const effectiveFields = updatedContext?.qualificationFields ?? mergedQualificationFields(context, ai);
+  const replyBody = ai.reply;
+  if (isQualified(effectiveFields)) {
+    const owner = await findPipelineOwner(input, "qualified");
+    if (owner) {
+      await editLeadKnowledgeRecord({
+        ...input,
+        leadId: input.leadId,
+        crmStatus: "interested",
+        qualificationStage: "qualified",
+        productPipelineStatus: "qualified",
+        assigneeId: owner.id,
+        assigneeName: owner.name,
+        nextAction: "Qualified lead assigned to pipeline owner."
+      });
+      await assignLeadOwner({
+        ...input,
+        leadId: input.leadId,
+        assigneeId: owner.id,
+        assigneeName: owner.name,
+        method: "source_based",
+        assignedById: agent.id,
+        assignedByName: agent.name,
+        reason: "Qualification threshold reached."
+      });
+    }
+    await appendAgentReply({ ...input, leadId: input.leadId, to: contactPhone, body: replyBody, now });
+    await postTeamThreadMessage({
+      ...input,
+      authorMemberId: agent.id,
+      authorType: "ai_agent",
+      body: owner ? `Qualified lead assigned to ${owner.name}.` : "Qualified lead, but no pipeline owner was configured.",
+      eventType: "handoff_summary",
+      triggerId: `${input.triggerMessageId}:qualified`
+    });
+    await routeCrmEventToTasks({
+      ...input,
+      eventType: "qualification_completed",
+      leadId: input.leadId,
+      assigneeId: owner?.id,
+      source: "agent_runtime",
+      reason: owner ? `Qualified lead assigned to ${owner.name}.` : "Qualified lead has no configured pipeline owner."
+    });
+    return {
+      action: "assigned_to_pipeline_owner",
+      memberId: agent.id,
+      assignedMemberId: owner?.id,
+      replyBody
+    };
+  }
   await appendAgentReply({ ...input, leadId: input.leadId, to: contactPhone, body: replyBody, now });
   await editLeadKnowledgeRecord({
     ...input,

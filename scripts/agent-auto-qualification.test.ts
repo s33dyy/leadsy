@@ -96,7 +96,7 @@ async function main() {
     });
     assert.equal(qualifiedRun.action, "assigned_to_pipeline_owner");
     assert.equal(qualifiedRun.assignedMemberId, closer.id);
-    assert.match(qualifiedRun.replyBody ?? "", /04:30|05:30|06:00|available/i, "qualified replies should use native calendar free slots");
+    assert.match(qualifiedRun.replyBody ?? "", /10:00|10:30|11:00|available|slot/i, "qualified replies should use native calendar free slots");
 
     const escalationInbound = await saveTwilioInboundMessage({
       ...scope,

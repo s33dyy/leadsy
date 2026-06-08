@@ -1,6 +1,7 @@
 import "server-only";
 
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import { join } from "node:path";
 import type { OpenRouterUsageCost } from "@leadsy/domain";
 import { leadsyDataDir } from "./data-dir";
@@ -51,6 +52,29 @@ async function readState(): Promise<AiUsageState> {
   }
 }
 
+async function writeState(state: AiUsageState) {
+  await mkdir(dirname(dataFile), { recursive: true });
+  const tempFile = `${dataFile}.${crypto.randomUUID()}.tmp`;
+  await writeFile(tempFile, `${JSON.stringify(state, null, 2)}\n`);
+  await rename(tempFile, dataFile);
+}
+
+let usageMutationQueue = Promise.resolve();
+
+async function mutateState<T>(updater: (state: AiUsageState) => Promise<{ result: T; state?: AiUsageState }> | { result: T; state?: AiUsageState }) {
+  const operation = usageMutationQueue.then(async () => {
+    const state = await readState();
+    const next = await updater(state);
+    if (next.state) await writeState(next.state);
+    return next.result;
+  });
+  usageMutationQueue = operation.then(
+    () => undefined,
+    () => undefined
+  );
+  return operation;
+}
+
 function scopeMatches(scope: Scope, item: { tenantId: string; ownerId: string }) {
   return item.tenantId === scope.tenantId && item.ownerId === scope.ownerId;
 }
@@ -73,4 +97,20 @@ export async function listTenantAiUsageRuns(tenantId: string) {
     runs: (Array.isArray(state.runs) ? state.runs : []).filter((run) => tenantMatches(tenantId, run)),
     agentRuns: (Array.isArray(state.agentRuns) ? state.agentRuns : []).filter((run) => tenantMatches(tenantId, run))
   };
+}
+
+export async function appendAiUsageAgentRun(input: AiUsageAgentRun) {
+  return mutateState((state) => {
+    const agentRuns = Array.isArray(state.agentRuns) ? state.agentRuns : [];
+    const nextRuns = agentRuns.some((run) => run.id === input.id)
+      ? agentRuns.map((run) => (run.id === input.id ? input : run))
+      : [...agentRuns, input];
+    return {
+      result: input,
+      state: {
+        runs: Array.isArray(state.runs) ? state.runs : [],
+        agentRuns: nextRuns
+      }
+    };
+  });
 }
