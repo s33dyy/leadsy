@@ -97,8 +97,8 @@ function usdInrRate() {
 
 function openRouterCostFromResponse(response: OpenRouterResponse, stage: OpenRouterUsageCost["stage"]): OpenRouterUsageCost | undefined {
   const usage = response.usage;
-  if (!usage) return undefined;
-  const costUsd = parseNumber(usage.cost) ?? parseNumber(usage.total_cost) ?? 0;
+  if (!usage && !response.id && !response.model) return undefined;
+  const costUsd = parseNumber(usage?.cost) ?? parseNumber(usage?.total_cost) ?? 0;
   if (costUsd < 0) return undefined;
   const fx = usdInrRate();
   return {
@@ -107,9 +107,9 @@ function openRouterCostFromResponse(response: OpenRouterResponse, stage: OpenRou
     model: response.model,
     generationId: response.id,
     finishReason: response.choices?.[0]?.finish_reason ?? undefined,
-    promptTokens: usage.prompt_tokens,
-    completionTokens: usage.completion_tokens,
-    totalTokens: usage.total_tokens,
+    promptTokens: usage?.prompt_tokens,
+    completionTokens: usage?.completion_tokens,
+    totalTokens: usage?.total_tokens,
     costUsd,
     costInr: costUsd * fx.rate,
     fx,
@@ -367,6 +367,63 @@ function resultFromUnknown(value: unknown): Omit<LeadAiReplyResult, "provider" |
   };
 }
 
+function strictRemoteAiRequired(env: Record<string, string | undefined>) {
+  return env.LEADSY_REQUIRE_REMOTE_AI?.trim().toLowerCase() === "true";
+}
+
+function openRouterRequestBody(input: {
+  model: string;
+  context: LeadAiRuntimeContext;
+  purpose: LeadAiReplyPurpose;
+  ownerName?: string;
+  slotText?: string;
+  includeResponseFormat: boolean;
+}) {
+  const body: Record<string, unknown> = {
+    model: input.model,
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are a human-sounding sales teammate for the owner business in ownerBusiness. Speak as that business or team, never as the CRM platform or as an AI product. Answer the lead's direct question first, then ask at most one clear next question. Use only the provided CRM context. Extract qualification facts from the latest conversation. Do not mention internal automation, routing, OpenRouter, model details, CRM routing, assignment, qualification, bookings, or the platform name unless the lead explicitly asks about them. Never invent facts. Return JSON only."
+      },
+      {
+        role: "user",
+        content: JSON.stringify(contextForPrompt(input.context, input.purpose, { ownerName: input.ownerName, slotText: input.slotText }))
+      }
+    ],
+    usage: { include: true },
+    temperature: input.context.aiSettings.temperature,
+    max_tokens: input.context.aiSettings.maxTokens
+  };
+  if (input.includeResponseFormat) {
+    body.response_format = {
+      type: "json_schema",
+      json_schema: {
+        name: "lead_qualification_reply",
+        strict: false,
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            reply: { type: "string" },
+            extractedFields: {
+              type: "object",
+              additionalProperties: { type: "string" }
+            },
+            crmNote: { type: "string" },
+            nextMissingField: { type: "string" },
+            shouldEscalate: { type: "boolean" },
+            confidence: { type: "number" }
+          },
+          required: ["reply", "extractedFields", "crmNote", "nextMissingField", "shouldEscalate", "confidence"]
+        }
+      }
+    };
+  }
+  return body;
+}
+
 export async function recordLeadAiUsage(input: Scope & {
   agent: string;
   purpose: LeadAiReplyPurpose;
@@ -407,65 +464,59 @@ export async function generateLeadAiReply(input: Scope & {
   const fallback = deterministicReply(context, input.purpose, { ownerName: input.ownerName, slotText: input.slotText });
   const env = envForTask(context, task);
   const selection = selectLeadsyAiModel(task, env);
+  const strictRemoteAi = strictRemoteAiRequired(env);
   if (!route?.enabled || !shouldUseRemoteAi(env) || selection.provider !== "openrouter" || !selection.model || !env.OPENROUTER_API_KEY?.trim()) {
+    if (strictRemoteAi) {
+      throw new Error(
+        `remote_ai_required:${JSON.stringify({
+          routeEnabled: Boolean(route?.enabled),
+          useRemote: shouldUseRemoteAi(env),
+          provider: selection.provider,
+          hasModel: Boolean(selection.model),
+          hasKey: Boolean(env.OPENROUTER_API_KEY?.trim())
+        })}`
+      );
+    }
     return fallback;
   }
 
   try {
-    const response = await fetch(`${env.OPENROUTER_BASE_URL?.trim() || "https://openrouter.ai/api/v1"}/chat/completions`, {
-      method: "POST",
-      signal: AbortSignal.timeout(8000),
-      headers: {
-        authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
-        "content-type": "application/json",
-        "http-referer": process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
-        "x-title": "Owner Sales Assistant"
-      },
-      body: JSON.stringify({
-        model: selection.model,
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are a human-sounding sales teammate for the owner business in ownerBusiness. Speak as that business or team, never as the CRM platform or as an AI product. Answer the lead's direct question first, then ask at most one clear next question. Use only the provided CRM context. Extract qualification facts from the latest conversation. Do not mention internal automation, routing, OpenRouter, model details, CRM routing, assignment, qualification, bookings, or the platform name unless the lead explicitly asks about them. Never invent facts. Return JSON only."
-          },
-          {
-            role: "user",
-            content: JSON.stringify(contextForPrompt(context, input.purpose, { ownerName: input.ownerName, slotText: input.slotText }))
-          }
-        ],
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: "lead_qualification_reply",
-            strict: false,
-            schema: {
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                reply: { type: "string" },
-                extractedFields: {
-                  type: "object",
-                  additionalProperties: { type: "string" }
-                },
-                crmNote: { type: "string" },
-                nextMissingField: { type: "string" },
-                shouldEscalate: { type: "boolean" },
-                confidence: { type: "number" }
-              },
-              required: ["reply", "extractedFields", "crmNote", "nextMissingField", "shouldEscalate", "confidence"]
-            }
-          }
-        },
-        temperature: settings.temperature,
-        max_tokens: settings.maxTokens
-      })
-    });
-    const text = await response.text();
+    const endpoint = `${env.OPENROUTER_BASE_URL?.trim() || "https://openrouter.ai/api/v1"}/chat/completions`;
+    const headers = {
+      authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
+      "content-type": "application/json",
+      "http-referer": process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+      "x-title": "Owner Sales Assistant"
+    };
+    const fetchOpenRouter = (includeResponseFormat: boolean) =>
+      fetch(endpoint, {
+        method: "POST",
+        signal: AbortSignal.timeout(12000),
+        headers,
+        body: JSON.stringify(
+          openRouterRequestBody({
+            model: selection.model as string,
+            context,
+            purpose: input.purpose,
+            ownerName: input.ownerName,
+            slotText: input.slotText,
+            includeResponseFormat
+          })
+        )
+      });
+    let response = await fetchOpenRouter(true);
+    let text = await response.text();
+    if (!response.ok) {
+      response = await fetchOpenRouter(false);
+      text = await response.text();
+    }
     if (!response.ok) throw new Error(text.slice(0, 300) || `OpenRouter failed with ${response.status}`);
     const payload = JSON.parse(text) as OpenRouterResponse;
     const parsed = resultFromUnknown(parseJsonFromText(payload.choices?.[0]?.message?.content ?? ""));
-    if (!parsed) return fallback;
+    if (!parsed) {
+      if (strictRemoteAi) throw new Error("OpenRouter returned an unparseable lead reply.");
+      return fallback;
+    }
     parsed.reply = sanitizeLeadFacingReply(parsed.reply, context);
     const cost = openRouterCostFromResponse(payload, stageForPurpose(input.purpose));
     await recordLeadAiUsage({
@@ -478,7 +529,10 @@ export async function generateLeadAiReply(input: Scope & {
       outputSummary: parsed.crmNote || parsed.reply
     });
     return { ...parsed, provider: "openrouter", cost };
-  } catch {
+  } catch (error) {
+    if (strictRemoteAi) {
+      throw new Error(`openrouter_failed:${(error as Error).message}`);
+    }
     return fallback;
   }
 }

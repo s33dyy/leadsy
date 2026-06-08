@@ -853,6 +853,9 @@ export async function seedChoritoesSimulationDemo(input: ChoritoesSeedInput) {
   const dataDir = activeDataDir(input.dataDir);
   const normalizedEmail = assertConfirmation(input);
   assertOpenRouterConfigured();
+  const previousStrictRemoteAi = process.env.LEADSY_REQUIRE_REMOTE_AI;
+  process.env.LEADSY_REQUIRE_REMOTE_AI = "true";
+  try {
   const owner = await resolveOwner(dataDir, normalizedEmail);
   const scope = { tenantId: owner.tenantId, ownerId: owner.id };
   const backupDir = await backupStores(dataDir);
@@ -917,4 +920,11 @@ export async function seedChoritoesSimulationDemo(input: ChoritoesSeedInput) {
     credentials,
     failedScenarios
   };
+  } finally {
+    if (previousStrictRemoteAi === undefined) {
+      delete process.env.LEADSY_REQUIRE_REMOTE_AI;
+    } else {
+      process.env.LEADSY_REQUIRE_REMOTE_AI = previousStrictRemoteAi;
+    }
+  }
 }
