@@ -21,6 +21,7 @@ async function fileExists(path: string) {
 async function main() {
   const routeAliases = [
     { page: "apps/web/src/app/dashboard/page.tsx", target: "/app" },
+    { page: "apps/web/src/app/analytics/page.tsx", target: "/app" },
     { page: "apps/web/src/app/crm/page.tsx", target: "/app/leads" },
     { page: "apps/web/src/app/workers/page.tsx", target: "/app/team" },
     { page: "apps/web/src/app/settings/page.tsx", target: "/app/settings" }
@@ -38,6 +39,7 @@ async function main() {
     assert(appShell.includes(href), `global sidebar should include ${href}`);
   }
   assert(!appShell.includes('href: "/app/worker"'), "global sidebar should not include the retired Automations route");
+  assert(!appShell.includes('href: "/app?view=analytics"'), "global sidebar should not include duplicate Analytics dashboard route");
   assert(appShell.includes("Quick search"), "app shell should include quick search");
   assert(appShell.includes("Conversion workflow"), "app shell should group primary navigation by conversion workflow");
   assert(appShell.includes("Supporting routes"), "app shell should keep secondary app routes visible");

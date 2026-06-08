@@ -119,10 +119,10 @@ export async function destroySessionFromRequest(request: NextRequest) {
 }
 
 export function redirectForSession(session: SessionUser) {
-  return session.role === "client" ? "/app/leads" : "/app/leads";
+  return session.role === "client" ? "/app" : "/app";
 }
 
-export async function loginRedirectForCurrentRequest(fallbackNext = "/app/leads") {
+export async function loginRedirectForCurrentRequest(fallbackNext = "/app") {
   const headerStore = await headers();
   return loginUrlForNextPath(headerStore.get(currentPathHeaderName), fallbackNext);
 }
@@ -130,12 +130,12 @@ export async function loginRedirectForCurrentRequest(fallbackNext = "/app/leads"
 export async function requireAgencySession() {
   const ownerExists = await hasOwnerUser();
   if (!ownerExists) {
-    redirect(await loginRedirectForCurrentRequest("/app/leads"));
+    redirect(await loginRedirectForCurrentRequest("/app"));
   }
 
   const session = await getCurrentSession();
   if (!session) {
-    redirect(await loginRedirectForCurrentRequest("/app/leads"));
+    redirect(await loginRedirectForCurrentRequest("/app"));
   }
 
   if (session.role === "client") {
@@ -148,12 +148,12 @@ export async function requireAgencySession() {
 export async function requireClientSession() {
   const ownerExists = await hasOwnerUser();
   if (!ownerExists) {
-    redirect(await loginRedirectForCurrentRequest("/app/leads"));
+    redirect(await loginRedirectForCurrentRequest("/app"));
   }
 
   const session = await getCurrentSession();
   if (!session) {
-    redirect(await loginRedirectForCurrentRequest("/app/leads"));
+    redirect(await loginRedirectForCurrentRequest("/app"));
   }
 
   if (session.role !== "client" || !session.clientId) {

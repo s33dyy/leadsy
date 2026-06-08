@@ -109,7 +109,7 @@ export async function AuthPage({
 }
 
 function OperatorPreview() {
-  const navItems = ["Dashboard", "Leads", "Inbox", "Automations", "Team", "Analytics", "Settings"];
+  const navItems = ["Dashboard", "Leads", "Inbox", "Calendar", "Team", "Settings"];
   const pipelineStatuses = ["New", "Qualified", "Interested", "Contacted", "Won", "Lost"];
 
   return (

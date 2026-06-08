@@ -1,8 +1,8 @@
 export const currentPathHeaderName = "x-leadsy-current-path";
 
-const allowedNextPrefixes = ["/app", "/crm", "/dashboard", "/workers", "/settings"];
+const allowedNextPrefixes = ["/app", "/analytics", "/crm", "/dashboard", "/workers", "/settings"];
 
-export function safeInternalNextPath(value: string | null | undefined, fallback = "/app/leads") {
+export function safeInternalNextPath(value: string | null | undefined, fallback = "/app") {
   const clean = value?.trim();
   if (!clean) return fallback;
 
@@ -21,6 +21,6 @@ export function safeInternalNextPath(value: string | null | undefined, fallback 
   return allowedNextPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)) ? path : fallback;
 }
 
-export function loginUrlForNextPath(nextPath: string | null | undefined, fallback = "/app/leads") {
+export function loginUrlForNextPath(nextPath: string | null | undefined, fallback = "/app") {
   return `/login?next=${encodeURIComponent(safeInternalNextPath(nextPath, fallback))}`;
 }
