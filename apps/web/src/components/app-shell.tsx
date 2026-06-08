@@ -5,7 +5,6 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
-  Activity,
   Bell,
   BookOpen,
   CalendarDays,
@@ -57,7 +56,6 @@ const workflowNav: ShellLink[] = [
   { href: "/app/communications", label: "Inbox", icon: MessageSquare },
   { href: "/app/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/app/team", label: "Team", icon: Users2 },
-  { href: "/app?view=analytics", label: "Analytics", icon: Activity },
   { href: "/app/settings", label: "Settings", icon: SettingsIcon }
 ];
 
@@ -101,8 +99,7 @@ function linkPath(href: string) {
 }
 
 function isActiveLink(pathname: string, searchParams: SearchParamsLike, link: ShellLink) {
-  if (link.label === "Dashboard") return pathname === "/app" && searchParams.get("view") !== "analytics";
-  if (link.label === "Analytics") return pathname === "/app" && searchParams.get("view") === "analytics";
+  if (link.label === "Dashboard") return pathname === "/app";
   const path = linkPath(link.href);
   const activePath = pathname === path || pathname.startsWith(`${path}/`);
   if (!activePath) return false;
@@ -122,7 +119,6 @@ function whatsAppSenderLabel(sender?: ShellWhatsAppSender) {
 }
 
 function pageTitle(pathname: string, searchParams: SearchParamsLike) {
-  if (pathname === "/app" && searchParams.get("view") === "analytics") return "Analytics";
   if (pathname === "/app") return "Dashboard";
   if (pathname.startsWith("/app/leads") && searchParams.get("panel") === "knowledge") return "Lead context";
   if (pathname.startsWith("/app/leads")) {
@@ -436,7 +432,7 @@ export function AppShell({
             </div>
             <div className="relative flex items-center gap-1.5">
               <Link href="/app/approvals" className="hidden items-center gap-1.5 rounded-[5px] border border-border bg-surface-2 px-2 py-1 font-mono text-[10.5px] text-muted-foreground hover:bg-surface-3 md:flex">
-                <Activity className="h-3 w-3 text-primary" />
+                <CheckSquare className="h-3 w-3 text-primary" />
                 <span>{pendingApprovalCount ? `${pendingApprovalCount} approvals` : "No pending approvals"}</span>
               </Link>
               <Link href="/app/leads?view=needs-reply" className="hidden h-7 items-center gap-1.5 rounded-[5px] border border-border bg-surface-2 px-2 text-[12px] hover:bg-surface-3 sm:flex">

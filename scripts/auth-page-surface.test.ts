@@ -80,7 +80,9 @@ async function main() {
   assert(authLib.includes("loginRedirectForCurrentRequest"), "protected auth helpers should preserve the current route in login next");
   assert(authLib.includes("currentPathHeaderName"), "auth helpers should read the request path captured by middleware");
   assert(!authLib.includes('redirect("/login?next=/app/leads")'), "protected auth redirects should not hardcode every route to /app/leads");
-  assert(authLib.includes('loginRedirectForCurrentRequest("/app/leads")'), "missing sessions should redirect through the route-aware login helper");
+  assert(authLib.includes('return session.role === "client" ? "/app" : "/app"'), "successful login should land on Dashboard");
+  assert(authLib.includes('loginRedirectForCurrentRequest("/app")'), "missing sessions should redirect through the route-aware login helper with Dashboard fallback");
+  assert(!authLib.includes('loginRedirectForCurrentRequest("/app/leads")'), "login fallback should not send users to Leads anymore");
 
   const proxy = await read(root, "apps/web/src/proxy.ts");
   assert(proxy.includes("currentPathHeaderName"), "proxy should share the auth header name for route-aware redirects");
