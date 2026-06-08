@@ -272,6 +272,21 @@ export function AppShell({
   }, []);
 
   useEffect(() => {
+    function handleSettingsShortcut(event: KeyboardEvent) {
+      if (!(event.metaKey || event.ctrlKey)) return;
+      if (event.key !== ",") return;
+      event.preventDefault();
+      router.push("/app/settings");
+      setNotificationsOpen(false);
+      setUserMenuOpen(false);
+      setCommandSearchOpen(false);
+    }
+
+    window.addEventListener("keydown", handleSettingsShortcut);
+    return () => window.removeEventListener("keydown", handleSettingsShortcut);
+  }, [router]);
+
+  useEffect(() => {
     if (searchParams.get("new") !== "lead") return;
     const openTimer = window.setTimeout(() => setManualLeadOpen(true), 0);
     const nextParams = new URLSearchParams(searchParams.toString());

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Mail, MessageSquare, Phone, Search } from "lucide-react";
+import { LeadSummaryAction, type LeadSummaryMessage } from "@/components/lead-summary-modal";
 import { Badge } from "@/components/ui";
 import { getCurrentSession } from "@/lib/auth";
 import {
@@ -188,7 +189,13 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
       <section className="col-span-12 min-h-0 overflow-y-auto bg-background md:col-span-8 xl:col-span-9">
         {active ? (
           <div className="mx-auto flex max-w-6xl flex-col gap-5 p-5">
-            <LeadHeader lead={active} owner={activeOwner} conversationId={activeConversation?.id} />
+            <LeadHeader
+              lead={active}
+              owner={activeOwner}
+              conversationId={activeConversation?.id}
+              messages={activeMessages}
+              missingFields={(audit?.fields ?? []).filter((field) => field.state === "Missing").map((field) => field.field)}
+            />
             <div className="flex border-b border-border">
               {workspaceTabs.map((tab) => (
                 <Link
@@ -226,7 +233,25 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
   );
 }
 
-function LeadHeader({ lead, owner, conversationId }: { lead: LeadKnowledgeRecord; owner?: TeamMember; conversationId?: string }) {
+function LeadHeader({
+  lead,
+  owner,
+  conversationId,
+  messages,
+  missingFields
+}: {
+  lead: LeadKnowledgeRecord;
+  owner?: TeamMember;
+  conversationId?: string;
+  messages: LeadKnowledgeMessage[];
+  missingFields: string[];
+}) {
+  const summaryMessages: LeadSummaryMessage[] = messages.slice(-8).map((message) => ({
+    id: message.id,
+    label: `${message.direction} - ${message.channel}`,
+    body: message.body,
+    meta: relativeTime(message.sentAt)
+  }));
   return (
     <header className="border-b border-border pb-5">
       <div className="flex flex-wrap items-center gap-3">
@@ -242,6 +267,18 @@ function LeadHeader({ lead, owner, conversationId }: { lead: LeadKnowledgeRecord
             Open conversation
           </Link>
         ) : null}
+        <LeadSummaryAction
+          title={`${leadName(lead)} summary`}
+          subtitle={lead.contact.phone || lead.contact.email || lead.leadSource}
+          summary={lead.summary}
+          nextAction={lead.nextAction}
+          owner={owner?.name || lead.assigneeName}
+          qualification={lead.qualificationStage.replace(/_/g, " ")}
+          messages={summaryMessages}
+          missingFields={missingFields}
+          facts={lead.facts}
+          triggerClassName="inline-flex h-9 items-center gap-1.5 rounded-[5px] border border-border bg-surface-2 px-3 text-sm"
+        />
       </div>
       <div className="mt-4 grid gap-2 md:grid-cols-3">
         <InfoCell label="Owner" value={owner?.name || lead.assigneeName || "Unassigned"} />

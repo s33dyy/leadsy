@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { Bot, CalendarDays, Mail, MessageSquare, Phone, Search, Sparkles, Star, Users2 } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Bot, CalendarDays, Mail, MessageSquare, Phone, Search, Star, Users2 } from "lucide-react";
 import { InboxReplyComposer } from "@/components/inbox-reply-composer";
+import { LeadSummaryModal, type LeadSummaryMessage } from "@/components/lead-summary-modal";
 import { Badge } from "@/components/ui";
 import type { CalendarEvent } from "@/lib/calendar-store";
 import type { StabilizedInboxItem } from "@/lib/inbox-stabilization";
@@ -41,6 +42,37 @@ function itemMatchesTab(item: StabilizedInboxItem, tab: InboxTabId) {
   if (tab === "needs-reply") return item.needsReply;
   if (tab === "assigned-to-me") return item.assignedToMe;
   return true;
+}
+
+function isEditableShortcutTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName.toLowerCase();
+  return tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable;
+}
+
+function itemMatchesSearch(item: StabilizedInboxItem, query: string) {
+  const clean = query.trim().toLowerCase();
+  if (!clean) return true;
+  const messageText = item.channelTabs
+    .flatMap((tab) => tab.messages.map((message) => message.text))
+    .join(" ");
+  const haystack = [
+    item.lead,
+    item.contact,
+    item.company,
+    item.channel,
+    item.preview,
+    item.lastMessage,
+    item.owner,
+    item.qualification,
+    item.lastActivity,
+    ...item.channelTabs.map((tab) => `${tab.label} ${tab.preview ?? ""}`),
+    messageText
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(clean);
 }
 
 function channelIcon(channel: StabilizedInboxItem["channel"]) {
@@ -93,8 +125,16 @@ export function CommunicationsConsole({
   leadCalendarEvents
 }: CommunicationsConsoleProps) {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [items, setItems] = useState(initialItems);
-  const visibleItems = useMemo(() => items.filter((item) => itemMatchesTab(item, activeTab)), [activeTab, items]);
+  const [conversationQuery, setConversationQuery] = useState("");
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const conversationSearchRef = useRef<HTMLInputElement>(null);
+  const tabItems = useMemo(() => items.filter((item) => itemMatchesTab(item, activeTab)), [activeTab, items]);
+  const visibleItems = useMemo(
+    () => tabItems.filter((item) => itemMatchesSearch(item, conversationQuery)),
+    [conversationQuery, tabItems]
+  );
   const active =
     visibleItems.find((item) => item.conversationId === selectedConversationId) ??
     items.find((item) => item.conversationId === selectedConversationId) ??
@@ -107,6 +147,7 @@ export function CommunicationsConsole({
     active?.channelTabs.find((tab) => tab.channel === "whatsapp") ??
     active?.channelTabs[0];
   const activeMessages = activeChannelTab?.messages ?? [];
+  const activeLeadHref = active ? `/app/leads?contact=${active.leadId}&tab=comms&channel=${activeChannelTab?.channel ?? "whatsapp"}` : "/app/leads";
 
   useEffect(() => {
     const stream = new EventSource("/api/conversations/stream");
@@ -117,13 +158,99 @@ export function CommunicationsConsole({
     return () => stream.close();
   }, []);
 
+  useEffect(() => {
+    function pushInboxTab(tab: InboxTabId) {
+      const params = new URLSearchParams({ tab });
+      if (active?.conversationId) params.set("conversation", active.conversationId);
+      params.set("channel", activeChannelTab?.channel ?? "whatsapp");
+      router.push(`/app/communications?${params.toString()}`);
+    }
+
+    function handleCommunicationsShortcut(event: KeyboardEvent) {
+      if (event.metaKey || event.ctrlKey) {
+        if (event.key.toLowerCase() !== "s") return;
+        event.preventDefault();
+        if (active) setSummaryOpen(true);
+        return;
+      }
+      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      if (isEditableShortcutTarget(event.target)) return;
+      const key = event.key.toLowerCase();
+      if (key === "/") {
+        event.preventDefault();
+        conversationSearchRef.current?.focus();
+        return;
+      }
+      if (key === "u") {
+        event.preventDefault();
+        pushInboxTab("unread");
+      }
+      if (key === "r") {
+        event.preventDefault();
+        pushInboxTab("needs-reply");
+      }
+      if (key === "m") {
+        event.preventDefault();
+        pushInboxTab("assigned-to-me");
+      }
+      if (key === "a") {
+        event.preventDefault();
+        pushInboxTab("all");
+      }
+      if (key === "o" && active) {
+        event.preventDefault();
+        router.push(activeLeadHref);
+      }
+      if (key === "t" && active) {
+        event.preventDefault();
+        router.push(`/app/leads?contact=${active.leadId}&tab=tasks`);
+      }
+      if (key === "q") {
+        event.preventDefault();
+        router.push("/app/approvals");
+      }
+    }
+
+    window.addEventListener("keydown", handleCommunicationsShortcut);
+    return () => window.removeEventListener("keydown", handleCommunicationsShortcut);
+  }, [active, activeChannelTab?.channel, activeLeadHref, router]);
+
+  const summaryMessages: LeadSummaryMessage[] = activeMessages.slice(-8).map((message) => ({
+    id: message.id,
+    label: `${message.from === "us" ? "Leadsy" : "Lead"} - ${message.time}`,
+    body: message.text,
+    meta: message.deliveryStatus
+  }));
+  const summaryInternalNotes: LeadSummaryMessage[] = internalThread.slice(-5).map((message) => ({
+    id: message.id,
+    label: `${message.authorType} - ${message.eventType}`,
+    body: message.body
+  }));
+  const summaryCalendarEvents: LeadSummaryMessage[] = leadCalendarEvents.map((event) => ({
+    id: event.id,
+    label: event.status,
+    body: event.title,
+    meta: formatEventTime(event.startAt)
+  }));
+  const missingFields = contextLead
+    ? Object.entries(contextLead.qualificationFields)
+        .filter(([, value]) => !String(value ?? "").trim())
+        .map(([field]) => field)
+    : [];
+
   return (
     <div className="grid h-full min-h-0 grid-cols-12 gap-px bg-border">
       <section className="col-span-12 flex min-h-0 flex-col bg-background md:col-span-4 xl:col-span-3">
         <div className="border-b border-border p-3">
           <div className="flex h-7 items-center gap-2 rounded-[5px] border border-border bg-surface-2 px-2">
             <Search className="h-3 w-3 text-muted-foreground" />
-            <span className="flex-1 text-[12px] text-muted-foreground">Search conversations...</span>
+            <input
+              ref={conversationSearchRef}
+              value={conversationQuery}
+              onChange={(event) => setConversationQuery(event.target.value)}
+              placeholder="Search conversations..."
+              className="min-w-0 flex-1 bg-transparent text-[12px] outline-none placeholder:text-muted-foreground"
+            />
             <span className="kbd">/</span>
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-1">
@@ -200,12 +327,24 @@ export function CommunicationsConsole({
                 </div>
               </div>
               <div className="flex items-center gap-1.5">
-                <Link href={`/app/leads?contact=${active.leadId}&tab=comms&channel=${activeChannelTab?.channel ?? "whatsapp"}`} className="inline-flex h-7 items-center gap-1.5 rounded-[5px] border border-border bg-surface-2 px-2 text-[12px]">
+                <Link href={activeLeadHref} className="inline-flex h-7 items-center gap-1.5 rounded-[5px] border border-border bg-surface-2 px-2 text-[12px]">
                   <Users2 className="h-3 w-3" /> Open lead
                 </Link>
-                <span className="inline-flex h-7 items-center gap-1.5 rounded-[5px] border border-border bg-surface-2 px-2 text-[12px]">
-                  <Sparkles className="h-3 w-3 text-primary" /> Summarize
-                </span>
+                <LeadSummaryModal
+                  open={summaryOpen}
+                  onOpenChange={setSummaryOpen}
+                  title={`${active.contact} summary`}
+                  subtitle={active.company}
+                  summary={contextLead?.summary || active.preview}
+                  nextAction={contextLead?.nextAction}
+                  owner={assignedMember?.name || active.owner}
+                  qualification={active.qualification}
+                  messages={summaryMessages}
+                  internalNotes={summaryInternalNotes}
+                  calendarEvents={summaryCalendarEvents}
+                  missingFields={missingFields}
+                  facts={contextLead?.facts}
+                />
               </div>
             </header>
 

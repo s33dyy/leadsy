@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
-import { CalendarPlus, ChevronLeft, ChevronRight, Pencil, Search, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { CalendarPlus, ChevronLeft, ChevronRight, Pencil, Search, Trash2, X } from "lucide-react";
 import type { CalendarEvent, CalendarEventStatus, CalendarEventType } from "@/lib/calendar-store";
 
 type CalendarConsoleProps = {
@@ -125,19 +125,41 @@ function dayNumberClass(day: Date, anchor: Date) {
   return "text-muted-foreground";
 }
 
+function isEditableShortcutTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName.toLowerCase();
+  return tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable;
+}
+
 export function CalendarConsole({ initialEvents, members, leads }: CalendarConsoleProps) {
   const [events, setEvents] = useState(initialEvents);
   const [mode, setMode] = useState<CalendarMode>("Month");
   const [anchor, setAnchor] = useState(new Date());
   const [query, setQuery] = useState("");
   const [form, setForm] = useState<EventForm>(() => defaultForm());
+  const [eventModalOpen, setEventModalOpen] = useState(false);
   const [status, setStatus] = useState("");
+  const eventSearchRef = useRef<HTMLInputElement>(null);
+  const leadNameById = useMemo(
+    () => new Map(leads.map((lead) => [lead.id, lead.contact.displayName || lead.contact.phone || lead.id])),
+    [leads]
+  );
+  const memberNameById = useMemo(() => new Map(members.map((member) => [member.id, member.name])), [members]);
 
   const filteredEvents = useMemo(() => {
     const clean = query.trim().toLowerCase();
     if (!clean) return events;
-    return events.filter((event) => [event.title, event.location, event.notes, event.status, event.eventType].filter(Boolean).join(" ").toLowerCase().includes(clean));
-  }, [events, query]);
+    return events.filter((event) => [
+      event.title,
+      event.location,
+      event.notes,
+      event.status,
+      event.eventType,
+      event.memberId ? memberNameById.get(event.memberId) : undefined,
+      event.leadId ? leadNameById.get(event.leadId) : undefined,
+      ...event.attendees
+    ].filter(Boolean).join(" ").toLowerCase().includes(clean));
+  }, [events, leadNameById, memberNameById, query]);
 
   function visibleEventsForDay(day: Date) {
     return filteredEvents.filter((event) => sameDay(eventDay(event), day)).sort((left, right) => left.startAt.localeCompare(right.startAt));
@@ -155,6 +177,18 @@ export function CalendarConsole({ initialEvents, members, leads }: CalendarConso
     const payload = (await response.json().catch(() => ({}))) as { events?: CalendarEvent[] };
     if (response.ok && Array.isArray(payload.events)) setEvents(payload.events);
   }
+
+  const openCreateEvent = useCallback(() => {
+    setForm(defaultForm(anchor));
+    setStatus("");
+    setEventModalOpen(true);
+  }, [anchor]);
+
+  const openEditEvent = useCallback((event: CalendarEvent) => {
+    setForm(formFromEvent(event));
+    setStatus("");
+    setEventModalOpen(true);
+  }, []);
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -182,6 +216,7 @@ export function CalendarConsole({ initialEvents, members, leads }: CalendarConso
     }
     setForm(defaultForm(anchor));
     setStatus(form.id ? "Event updated." : "Event created.");
+    setEventModalOpen(false);
     await refresh();
   }
 
@@ -195,12 +230,50 @@ export function CalendarConsole({ initialEvents, members, leads }: CalendarConso
     await refresh();
   }
 
+  useEffect(() => {
+    function handleCalendarShortcut(event: KeyboardEvent) {
+      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      if (isEditableShortcutTarget(event.target)) return;
+      const key = event.key.toLowerCase();
+      if (key === "/") {
+        event.preventDefault();
+        eventSearchRef.current?.focus();
+      }
+      if (key === "e") {
+        event.preventDefault();
+        openCreateEvent();
+      }
+      if (key === "d") {
+        event.preventDefault();
+        setMode("Day");
+      }
+      if (key === "w") {
+        event.preventDefault();
+        setMode("Week");
+      }
+      if (key === "m") {
+        event.preventDefault();
+        setMode("Month");
+      }
+      if (key === "y") {
+        event.preventDefault();
+        setMode("Year");
+      }
+      if (key === "t") {
+        event.preventDefault();
+        setAnchor(new Date());
+      }
+    }
+
+    window.addEventListener("keydown", handleCalendarShortcut);
+    return () => window.removeEventListener("keydown", handleCalendarShortcut);
+  }, [openCreateEvent]);
+
   return (
     <div className="h-full min-h-0 overflow-y-auto bg-background">
       <div className="space-y-5 p-5">
         <header className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <div className="caption">Leadsy / Calendar</div>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight">{mode === "Year" ? anchor.getFullYear() : monthLabel(anchor)}</h1>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -217,27 +290,34 @@ export function CalendarConsole({ initialEvents, members, leads }: CalendarConso
           </div>
         </header>
 
-        <div className="grid gap-5 xl:grid-cols-[1fr_340px]">
+        <div>
           <section className="min-w-0 overflow-hidden rounded-[8px] border border-border bg-surface">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-3">
               <div className="flex h-9 min-w-[220px] items-center gap-2 rounded-[6px] border border-border bg-background px-3">
                 <Search className="h-4 w-4 text-muted-foreground" />
-                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search events..." className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground" />
+                <input ref={eventSearchRef} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search events..." className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground" />
+                <span className="kbd">/</span>
               </div>
-              <button type="button" onClick={() => setForm(defaultForm(anchor))} className="inline-flex h-9 items-center gap-2 rounded-[6px] bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+              <button type="button" onClick={openCreateEvent} className="inline-flex h-9 items-center gap-2 rounded-[6px] bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90">
                 <CalendarPlus className="h-4 w-4" /> New event
+                <span className="kbd border-primary-foreground/40 text-primary-foreground">E</span>
               </button>
             </div>
-            {mode === "Month" ? <MonthGrid anchor={anchor} days={monthGridDays(anchor)} visibleEventsForDay={visibleEventsForDay} edit={setForm} remove={remove} /> : null}
-            {mode === "Week" ? <WeekGrid days={weekGridDays(anchor)} visibleEventsForDay={visibleEventsForDay} edit={setForm} remove={remove} /> : null}
-            {mode === "Day" ? <DayView day={anchor} events={visibleEventsForDay(anchor)} edit={setForm} remove={remove} /> : null}
+            {mode === "Month" ? <MonthGrid anchor={anchor} days={monthGridDays(anchor)} visibleEventsForDay={visibleEventsForDay} edit={openEditEvent} remove={remove} /> : null}
+            {mode === "Week" ? <WeekGrid days={weekGridDays(anchor)} visibleEventsForDay={visibleEventsForDay} edit={openEditEvent} remove={remove} /> : null}
+            {mode === "Day" ? <DayView day={anchor} events={visibleEventsForDay(anchor)} edit={openEditEvent} remove={remove} /> : null}
             {mode === "Year" ? <YearView anchor={anchor} events={filteredEvents} setAnchor={setAnchor} setMode={setMode} /> : null}
           </section>
-
-          <form onSubmit={save} className="rounded-[8px] border border-border bg-surface p-4">
-            <div className="flex items-center justify-between gap-3">
+        </div>
+      </div>
+      {eventModalOpen ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-label={form.id ? "Edit event" : "Create event"}>
+          <form onSubmit={save} className="max-h-[88vh] w-full max-w-xl overflow-y-auto rounded-[8px] border border-border bg-background p-4 shadow-2xl">
+            <div className="flex items-center justify-between gap-3 border-b border-border pb-3">
               <h2 className="text-sm font-semibold">{form.id ? "Edit event" : "Create event"}</h2>
-              {form.id ? <button type="button" onClick={() => setForm(defaultForm(anchor))} className="text-xs text-muted-foreground hover:text-foreground">Clear</button> : null}
+              <button type="button" aria-label="Close event form" onClick={() => setEventModalOpen(false)} className="grid h-8 w-8 place-items-center rounded-[6px] border border-border bg-surface-2">
+                <X className="h-4 w-4" />
+              </button>
             </div>
             <div className="mt-4 space-y-3">
               <Field label="Title"><input className={inputClass} value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} /></Field>
@@ -285,7 +365,7 @@ export function CalendarConsole({ initialEvents, members, leads }: CalendarConso
             </div>
           </form>
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }
@@ -302,18 +382,18 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function EventPill({ event, edit, remove }: { event: CalendarEvent; edit: (form: EventForm) => void; remove: (eventId: string) => void }) {
+function EventPill({ event, edit, remove }: { event: CalendarEvent; edit: (event: CalendarEvent) => void; remove: (eventId: string) => void }) {
   const tone = event.eventType === "availability" ? "bg-teal-300/20 text-teal-100" : event.status === "cancelled" ? "bg-rose-300/15 text-rose-100" : "bg-violet-300/20 text-violet-100";
   return (
     <div className={`group flex items-center gap-1 rounded-[5px] px-1.5 py-1 text-[11px] ${tone}`}>
       <span className="min-w-0 flex-1 truncate">{eventTime(event.startAt)} {event.title}</span>
-      <button type="button" aria-label="Edit event" onClick={() => edit(formFromEvent(event))} className="opacity-0 group-hover:opacity-100"><Pencil className="h-3 w-3" /></button>
+      <button type="button" aria-label="Edit event" onClick={() => edit(event)} className="opacity-0 group-hover:opacity-100"><Pencil className="h-3 w-3" /></button>
       <button type="button" aria-label="Delete event" onClick={() => remove(event.id)} className="opacity-0 group-hover:opacity-100"><Trash2 className="h-3 w-3" /></button>
     </div>
   );
 }
 
-function MonthGrid({ anchor, days, visibleEventsForDay, edit, remove }: { anchor: Date; days: Date[]; visibleEventsForDay: (day: Date) => CalendarEvent[]; edit: (form: EventForm) => void; remove: (eventId: string) => void }) {
+function MonthGrid({ anchor, days, visibleEventsForDay, edit, remove }: { anchor: Date; days: Date[]; visibleEventsForDay: (day: Date) => CalendarEvent[]; edit: (event: CalendarEvent) => void; remove: (eventId: string) => void }) {
   return (
     <div className="calendar-month-grid">
       <div className="grid grid-cols-7 border-b border-border">
@@ -337,7 +417,7 @@ function MonthGrid({ anchor, days, visibleEventsForDay, edit, remove }: { anchor
   );
 }
 
-function WeekGrid({ days, visibleEventsForDay, edit, remove }: { days: Date[]; visibleEventsForDay: (day: Date) => CalendarEvent[]; edit: (form: EventForm) => void; remove: (eventId: string) => void }) {
+function WeekGrid({ days, visibleEventsForDay, edit, remove }: { days: Date[]; visibleEventsForDay: (day: Date) => CalendarEvent[]; edit: (event: CalendarEvent) => void; remove: (eventId: string) => void }) {
   return (
     <div className="grid grid-cols-7">
       {days.map((day) => (
@@ -352,7 +432,7 @@ function WeekGrid({ days, visibleEventsForDay, edit, remove }: { days: Date[]; v
   );
 }
 
-function DayView({ day, events, edit, remove }: { day: Date; events: CalendarEvent[]; edit: (form: EventForm) => void; remove: (eventId: string) => void }) {
+function DayView({ day, events, edit, remove }: { day: Date; events: CalendarEvent[]; edit: (event: CalendarEvent) => void; remove: (eventId: string) => void }) {
   return (
     <div className="min-h-[520px] divide-y divide-border">
       <div className="p-4 text-sm font-semibold">{weekDays[day.getDay()]} {day.toLocaleDateString("en-IN")}</div>
@@ -364,7 +444,7 @@ function DayView({ day, events, edit, remove }: { day: Date; events: CalendarEve
             <div className="mt-1 text-xs text-muted-foreground">{event.location || event.status}</div>
           </div>
           <div className="flex gap-2">
-            <button type="button" onClick={() => edit(formFromEvent(event))} className="grid h-8 w-8 place-items-center rounded-[6px] border border-border"><Pencil className="h-4 w-4" /></button>
+            <button type="button" onClick={() => edit(event)} className="grid h-8 w-8 place-items-center rounded-[6px] border border-border"><Pencil className="h-4 w-4" /></button>
             <button type="button" onClick={() => remove(event.id)} className="grid h-8 w-8 place-items-center rounded-[6px] border border-border"><Trash2 className="h-4 w-4" /></button>
           </div>
         </div>
