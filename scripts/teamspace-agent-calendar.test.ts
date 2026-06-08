@@ -18,8 +18,10 @@ async function main() {
     } = await import("../apps/web/src/lib/teamspace-store");
     const {
       createCalendarEvent,
+      deleteCalendarEvent,
       findCalendarFreeSlots,
-      listCalendarEvents
+      listCalendarEvents,
+      updateCalendarEvent
     } = await import("../apps/web/src/lib/calendar-store");
 
     const scope = { tenantId: "tenant_teamspace", ownerId: "owner_teamspace" };
@@ -107,7 +109,7 @@ async function main() {
     const thread = await listTeamThreadMessages({ ...scope, leadId: "lead_1" });
     assert.equal(thread.length, 1);
 
-    await createCalendarEvent({
+    const meeting = await createCalendarEvent({
       ...scope,
       memberId: human.id,
       title: "Existing demo",
@@ -118,16 +120,38 @@ async function main() {
       leadId: "lead_1",
       conversationId: "conv_1"
     });
+    assert.equal(meeting.location, undefined);
+    const rescheduled = await updateCalendarEvent({
+      ...scope,
+      eventId: meeting.id,
+      title: "Rescheduled demo",
+      startAt: "2026-06-08T06:30:00.000Z",
+      endAt: "2026-06-08T07:00:00.000Z",
+      location: "Leadsy Meet",
+      notes: "Bring trial frame catalogue."
+    });
+    assert.equal(rescheduled.title, "Rescheduled demo");
+    assert.equal(rescheduled.location, "Leadsy Meet");
+    assert.equal(rescheduled.notes, "Bring trial frame catalogue.");
     const freeSlots = await findCalendarFreeSlots({
       ...scope,
       memberId: human.id,
       from: "2026-06-08T04:30:00.000Z",
-      to: "2026-06-08T06:30:00.000Z",
+      to: "2026-06-08T07:30:00.000Z",
       slotMinutes: 30
     });
-    assert(!freeSlots.some((slot) => slot.startAt === "2026-06-08T05:00:00.000Z"), "busy meetings should not be returned as free slots");
+    assert(!freeSlots.some((slot) => slot.startAt === "2026-06-08T06:30:00.000Z"), "busy meetings should not be returned as free slots");
     assert(freeSlots.some((slot) => slot.startAt === "2026-06-08T04:30:00.000Z"));
     assert.equal((await listCalendarEvents(scope)).length, 1);
+    assert.equal(await deleteCalendarEvent({ ...scope, eventId: meeting.id }), true);
+    assert.equal((await listCalendarEvents(scope)).length, 0);
+
+    const calendarPage = await import("node:fs/promises").then(({ readFile }) => readFile(join(process.cwd(), "apps/web/src/components/calendar-console.tsx"), "utf8"));
+    for (const view of ["Day", "Week", "Month", "Year"]) {
+      assert(calendarPage.includes(view), `calendar page should expose ${view} mode`);
+    }
+    assert(calendarPage.includes("calendar-month-grid"), "calendar page should render a literal month grid");
+    assert(calendarPage.includes("New event"), "calendar page should expose create affordance");
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

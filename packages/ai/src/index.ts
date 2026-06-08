@@ -1556,7 +1556,13 @@ function dedupeLeads(leads: LeadDossier[]) {
   return [...byKey.values()].sort((left, right) => right.score.overall - left.score.overall);
 }
 
-export type LeadsyAiTask = "onboarding-options" | "lead-research-planner" | "lead-dossier" | "message-draft";
+export type LeadsyAiTask =
+  | "onboarding-options"
+  | "lead-research-planner"
+  | "lead-dossier"
+  | "message-draft"
+  | "qualification-reply"
+  | "calendar-reply";
 
 export type LeadsyAiCostTier = "zero" | "free" | "paid" | "premium";
 

@@ -22,7 +22,7 @@ async function main() {
   const routeAliases = [
     { page: "apps/web/src/app/dashboard/page.tsx", target: "/app" },
     { page: "apps/web/src/app/crm/page.tsx", target: "/app/leads" },
-    { page: "apps/web/src/app/workers/page.tsx", target: "/app/worker" },
+    { page: "apps/web/src/app/workers/page.tsx", target: "/app/team" },
     { page: "apps/web/src/app/settings/page.tsx", target: "/app/settings" }
   ];
 
@@ -34,9 +34,10 @@ async function main() {
   }
 
   const appShell = await read("apps/web/src/components/app-shell.tsx");
-  for (const href of ['href: "/app"', 'href: "/app/leads"', 'href: "/app/communications"', 'href: "/app/worker"', 'href: "/app/team"', 'href: "/app/settings"', 'href: "/app/calendar"']) {
+  for (const href of ['href: "/app"', 'href: "/app/leads"', 'href: "/app/communications"', 'href: "/app/team"', 'href: "/app/settings"', 'href: "/app/calendar"']) {
     assert(appShell.includes(href), `global sidebar should include ${href}`);
   }
+  assert(!appShell.includes('href: "/app/worker"'), "global sidebar should not include the retired Automations route");
   assert(appShell.includes("Quick search"), "app shell should include quick search");
   assert(appShell.includes("Conversion workflow"), "app shell should group primary navigation by conversion workflow");
   assert(appShell.includes("Supporting routes"), "app shell should keep secondary app routes visible");
@@ -48,13 +49,16 @@ async function main() {
 
   const teamPage = await read("apps/web/src/app/app/team/page.tsx");
   assert(teamPage.includes("TeamspaceConsole"), "Team route should expose Teamspace controls");
+  const calendarComponent = await read("apps/web/src/components/calendar-console.tsx");
   const calendarPage = await read("apps/web/src/app/app/calendar/page.tsx");
-  assert(calendarPage.includes("Month"), "Calendar route should expose calendar modes");
+  assert(calendarComponent.includes("Month"), "Calendar route should expose calendar modes");
   assert(calendarPage.includes("listCalendarEvents"), "Calendar route should read native calendar data");
 
   const settingsPage = await read("apps/web/src/app/app/settings/page.tsx");
-  assert(settingsPage.includes("grid min-w-0 grid-cols-1 gap-px bg-border"), "Settings status grids should stay horizontally contained");
-  assert(settingsPage.includes("Leadsy-assigned WhatsApp sender"), "Settings should show Leadsy-managed WhatsApp sender status");
+  const settingsConsole = await read("apps/web/src/components/settings-console.tsx");
+  assert(settingsPage.includes("SettingsConsole"), "Settings should render editable controls");
+  assert(settingsConsole.includes("Advanced AI Lab"), "Settings should include detailed AI controls");
+  assert(settingsConsole.includes("Notification preferences"), "Settings should include detailed notification controls");
 }
 
 main().catch((error) => {

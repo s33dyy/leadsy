@@ -64,7 +64,9 @@ export async function POST(request: NextRequest) {
       endAt,
       eventType,
       status,
-      attendees: stringArray(body.attendees)
+      attendees: stringArray(body.attendees),
+      notes: typeof body.notes === "string" ? body.notes : undefined,
+      location: typeof body.location === "string" ? body.location : undefined
     });
 
     audit({

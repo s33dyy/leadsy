@@ -86,6 +86,13 @@ async function main() {
   ]) {
     assert(report.includes(required), `${reportName} should include ${required}`);
   }
+
+  const shell = await readFile(join(root, "apps/web/src/components/app-shell.tsx"), "utf8");
+  assert(!shell.includes("/app/worker"), "primary shell should not expose the retired Automations page");
+  assert(!shell.includes("Automations"), "primary shell should not label an Automations page");
+
+  const workerPage = await readFile(join(root, "apps/web/src/app/app/worker/page.tsx"), "utf8");
+  assert(workerPage.includes('redirect("/app/team")'), "retired Automations route should redirect to Teamspace");
 }
 
 main().catch((error) => {

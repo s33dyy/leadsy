@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { audit } from "@leadsy/security";
 import { requireApiSession } from "@/lib/api-auth";
-import { updateCalendarEvent, type CalendarEventStatus, type CalendarEventType } from "@/lib/calendar-store";
+import { deleteCalendarEvent, updateCalendarEvent, type CalendarEventStatus, type CalendarEventType } from "@/lib/calendar-store";
 
 export const runtime = "nodejs";
 
@@ -44,7 +44,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       endAt: typeof body.endAt === "string" ? body.endAt : undefined,
       eventType,
       status,
-      attendees: stringArray(body.attendees)
+      attendees: stringArray(body.attendees),
+      notes: typeof body.notes === "string" ? body.notes : undefined,
+      location: typeof body.location === "string" ? body.location : undefined
     });
 
     audit({
@@ -65,4 +67,26 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
     throw error;
   }
+}
+
+export async function DELETE(_request: NextRequest, context: RouteContext) {
+  const auth = await requireApiSession(_request, "crm:write");
+  if (!auth.ok) return auth.response;
+
+  const { eventId } = await context.params;
+  const deleted = await deleteCalendarEvent({
+    tenantId: auth.session.tenantId,
+    ownerId: auth.session.id,
+    eventId
+  });
+  if (!deleted) return NextResponse.json({ error: "calendar_event_not_found" }, { status: 404 });
+
+  audit({
+    tenantId: auth.session.tenantId,
+    actorId: auth.session.id,
+    action: "calendar.event.delete",
+    resource: eventId
+  });
+
+  return NextResponse.json({ ok: true });
 }

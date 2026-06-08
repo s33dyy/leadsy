@@ -1,14 +1,13 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Activity,
   Bell,
   BookOpen,
-  Bot,
   CalendarDays,
   CheckSquare,
   ChevronDown,
@@ -57,7 +56,6 @@ const workflowNav: ShellLink[] = [
   { href: "/app/leads", label: "Leads", icon: Users2 },
   { href: "/app/communications", label: "Inbox", icon: MessageSquare },
   { href: "/app/calendar", label: "Calendar", icon: CalendarDays },
-  { href: "/app/worker", label: "Automations", icon: Bot },
   { href: "/app/team", label: "Team", icon: Users2 },
   { href: "/app?view=analytics", label: "Analytics", icon: Activity },
   { href: "/app/settings", label: "Settings", icon: SettingsIcon }
@@ -70,6 +68,15 @@ const supportingNav: ShellLink[] = [
 ];
 
 type SearchParamsLike = Pick<URLSearchParams, "get">;
+
+type NotificationRecord = {
+  id: string;
+  title: string;
+  detail: string;
+  href?: string;
+  readAt?: string;
+  priority?: "low" | "medium" | "high";
+};
 
 function initials(name: string) {
   return (
@@ -101,7 +108,6 @@ function isActiveLink(pathname: string, searchParams: SearchParamsLike, link: Sh
   if (!activePath) return false;
   if (link.href.includes("?")) return searchParamsMatch(searchParams, link.href);
   if (link.label === "Leads") return !searchParams.get("tab") && searchParams.get("panel") !== "knowledge";
-  if (link.label === "Automations") return searchParams.get("tab") !== "pending";
   return true;
 }
 
@@ -122,8 +128,6 @@ function pageTitle(pathname: string, searchParams: SearchParamsLike) {
   if (pathname.startsWith("/app/leads")) {
     return "Leads";
   }
-  if (pathname.startsWith("/app/worker") && searchParams.get("tab") === "pending") return "Approval queue";
-  if (pathname.startsWith("/app/worker")) return "Automations";
   if (pathname.startsWith("/app/approvals")) return "Approvals";
   if (pathname.startsWith("/app/communications")) return "Inbox";
   if (pathname.startsWith("/app/calendar")) return "Calendar";
@@ -192,32 +196,71 @@ export function AppShell({
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notificationRecords, setNotificationRecords] = useState<NotificationRecord[]>([]);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [logoutPending, setLogoutPending] = useState(false);
   const title = pageTitle(pathname, searchParams);
   const onboardingReminder = session.onboardingCompletedAt ? 0 : 1;
-  const notificationCount = pendingApprovalCount + onboardingReminder;
+  const unreadNotifications = notificationRecords.filter((item) => !item.readAt);
+  const notificationCount = pendingApprovalCount + onboardingReminder + unreadNotifications.length;
   const whatsAppLabel = whatsAppSenderLabel(whatsAppSender);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadNotifications() {
+      const response = await fetch("/api/notifications", { headers: { accept: "application/json" } });
+      if (!response.ok) return;
+      const payload = (await response.json().catch(() => ({}))) as { notifications?: NotificationRecord[] };
+      if (!cancelled) setNotificationRecords(Array.isArray(payload.notifications) ? payload.notifications : []);
+    }
+    void loadNotifications();
+    const timer = window.setInterval(loadNotifications, 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   const notificationItems = useMemo(
     () => [
+      ...unreadNotifications.map((item) => ({
+        id: item.id,
+        title: item.title,
+        detail: item.detail,
+        href: item.href || "/app/leads",
+        source: "record" as const
+      })),
       ...(session.onboardingCompletedAt
         ? []
         : [
             {
+              id: "onboarding",
               title: "Finish onboarding",
               detail: "Complete the workspace profile so AI qualification can use the right lead context.",
-              href: "/app/leads"
+              href: "/app/leads",
+              source: "system" as const
             }
           ]),
       {
+        id: "approvals",
         title: "Approval queue",
-        detail: pendingApprovalCount ? `${pendingApprovalCount} automation item needs review.` : "Automation approvals will appear before outreach is sent.",
-        href: "/app/approvals"
+        detail: pendingApprovalCount ? `${pendingApprovalCount} item needs review.` : "Human review items appear here before sensitive action.",
+        href: "/app/approvals",
+        source: "system" as const
       }
     ],
-    [pendingApprovalCount, session.onboardingCompletedAt]
+    [pendingApprovalCount, session.onboardingCompletedAt, unreadNotifications]
   );
+
+  async function markAllNotificationsRead() {
+    const response = await fetch("/api/notifications/mark-read", {
+      method: "POST",
+      headers: { accept: "application/json" }
+    });
+    if (!response.ok) return;
+    const payload = (await response.json().catch(() => ({}))) as { notifications?: NotificationRecord[] };
+    if (Array.isArray(payload.notifications)) setNotificationRecords(payload.notifications);
+  }
 
   async function logout() {
     if (logoutPending) return;
@@ -423,13 +466,20 @@ export function AppShell({
                 <div data-testid="notification-center" className="absolute right-0 top-9 z-40 w-[min(360px,calc(100vw-2rem))] rounded-[8px] border border-border bg-surface p-3 shadow-2xl">
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-sm font-semibold text-foreground">Needs you</div>
-                    <button type="button" aria-label="Close notifications" onClick={() => setNotificationsOpen(false)} className="grid h-7 w-7 place-items-center rounded-[6px] text-muted-foreground hover:bg-surface-3 hover:text-foreground">
-                      <X className="h-3.5 w-3.5" />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      {unreadNotifications.length ? (
+                        <button type="button" onClick={markAllNotificationsRead} className="h-7 rounded-[6px] px-2 text-xs text-muted-foreground hover:bg-surface-3 hover:text-foreground">
+                          Mark read
+                        </button>
+                      ) : null}
+                      <button type="button" aria-label="Close notifications" onClick={() => setNotificationsOpen(false)} className="grid h-7 w-7 place-items-center rounded-[6px] text-muted-foreground hover:bg-surface-3 hover:text-foreground">
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
                   <div className="mt-3 divide-y divide-border rounded-[8px] border border-border">
                     {notificationItems.map((item) => (
-                      <Link key={item.title} href={item.href} onClick={() => setNotificationsOpen(false)} className="block p-3 hover:bg-surface-2">
+                      <Link key={item.id} href={item.href} onClick={() => setNotificationsOpen(false)} className="block p-3 hover:bg-surface-2">
                         <span className="block text-sm font-medium text-foreground">{item.title}</span>
                         <span className="mt-1 block text-xs leading-5 text-muted-foreground">{item.detail}</span>
                       </Link>
