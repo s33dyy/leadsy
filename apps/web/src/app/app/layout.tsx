@@ -2,19 +2,35 @@ import type { ReactNode } from "react";
 import { AppShell } from "@/components/app-shell";
 import { requireAgencySession } from "@/lib/auth";
 import { listLeadKnowledgeRecords } from "@/lib/lead-knowledge-store";
+import { ensureDefaultQualificationAgent, listTeamMembers } from "@/lib/teamspace-store";
 import { getWorkspaceWhatsAppSender } from "@/lib/workspace-whatsapp-sender-store";
 
 export default async function WorkspaceLayout({ children }: { children: ReactNode }) {
   const session = await requireAgencySession();
-  const [leads, whatsAppSender] = await Promise.all([
+  const scope = { tenantId: session.tenantId, ownerId: session.id };
+  await ensureDefaultQualificationAgent(scope);
+  const [leads, whatsAppSender, teamMembers] = await Promise.all([
     listLeadKnowledgeRecords({ tenantId: session.tenantId, ownerId: session.id }),
-    getWorkspaceWhatsAppSender({ tenantId: session.tenantId, ownerId: session.id })
+    getWorkspaceWhatsAppSender({ tenantId: session.tenantId, ownerId: session.id }),
+    listTeamMembers(scope)
   ]);
   const pendingApprovalCount = leads.filter((lead) => lead.crmStatus === "human_review").length;
   return (
     <AppShell
       session={session}
       pendingApprovalCount={pendingApprovalCount}
+      manualLeadOptions={leads.slice(0, 30).map((lead) => ({
+        id: lead.id,
+        label: lead.contact.displayName || lead.contact.phone || lead.contact.email || "Unnamed lead",
+        detail: lead.lastMessagePreview
+      }))}
+      teamMembers={teamMembers.map((member) => ({
+        id: member.id,
+        name: member.name,
+        type: member.type,
+        senderMode: member.senderMode,
+        autoReplyEnabled: member.autoReplyEnabled
+      }))}
       whatsAppSender={
         whatsAppSender
           ? {

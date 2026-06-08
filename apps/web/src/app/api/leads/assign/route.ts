@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { audit, rateLimit } from "@leadsy/security";
 import { requireApiSession } from "@/lib/api-auth";
-import { assignLeadOwner } from "@/lib/crm-store";
+import { sendInitialAiOutboundForLead } from "@/lib/agent-runtime";
+import { assignLeadOwner, listCrmAssignmentHistory } from "@/lib/crm-store";
 import { getTeamMember } from "@/lib/teamspace-store";
 import { urlForRequestHost } from "@/lib/request-url";
 
@@ -16,13 +17,15 @@ async function assignmentInput(request: NextRequest) {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     return {
       leadId: typeof body.leadId === "string" ? body.leadId.trim() : "",
-      assigneeId: typeof body.assigneeId === "string" ? body.assigneeId.trim() : ""
+      assigneeId: typeof body.assigneeId === "string" ? body.assigneeId.trim() : "",
+      sendInitialAiMessage: body.sendInitialAiMessage === true
     };
   }
   const form = await request.formData();
   return {
     leadId: String(form.get("leadId") ?? "").trim(),
-    assigneeId: String(form.get("assigneeId") ?? "").trim()
+    assigneeId: String(form.get("assigneeId") ?? "").trim(),
+    sendInitialAiMessage: ["1", "true", "yes", "on"].includes(String(form.get("sendInitialAiMessage") ?? "").trim().toLowerCase())
   };
 }
 
@@ -45,7 +48,7 @@ export async function POST(request: NextRequest) {
   const limiter = rateLimit(`${auth.session.tenantId}:${auth.session.id}:lead-assign`, 120, 60_000);
   if (!limiter.ok) return NextResponse.json({ error: "rate_limited", resetAt: limiter.resetAt }, { status: 429 });
 
-  const { leadId, assigneeId } = await assignmentInput(request);
+  const { leadId, assigneeId, sendInitialAiMessage } = await assignmentInput(request);
   if (!leadId) return errorResponse(request, leadId, "lead_required", 400);
   if (!assigneeId) return errorResponse(request, leadId, "assignee_required", 400);
 
@@ -76,7 +79,21 @@ export async function POST(request: NextRequest) {
       metadata: { assigneeId: member.id, assigneeType: member.type }
     });
 
-    if (wantsJson(request)) return NextResponse.json({ ok: true, lead });
+    const aiAction = sendInitialAiMessage
+      ? await sendInitialAiOutboundForLead({
+          tenantId: auth.session.tenantId,
+          ownerId: auth.session.id,
+          leadId: lead.id,
+          memberId: member.id,
+          trigger: "manual-assign"
+        })
+      : undefined;
+    const [assignment] = await listCrmAssignmentHistory(
+      { tenantId: auth.session.tenantId, ownerId: auth.session.id },
+      { leadId: lead.id }
+    );
+
+    if (wantsJson(request)) return NextResponse.json({ ok: true, lead, assignment, aiAction });
     return leadRedirect(request, lead.id, "lead-assigned");
   } catch (error) {
     if (error instanceof Error && /not found/i.test(error.message)) {

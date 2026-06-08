@@ -3,10 +3,12 @@ import { findCalendarFreeSlots } from "./calendar-store";
 import {
   findPipelineOwner,
   findPrimaryQualificationAgent,
+  getTeamMember,
   listTeamThreadMessages,
   postTeamThreadMessage,
   type TeamMember
 } from "./teamspace-store";
+import { sendAndStoreWhatsAppMessage, type WhatsAppSendResult } from "./whatsapp-transport";
 
 type Scope = {
   tenantId: string;
@@ -27,6 +29,24 @@ export type AgentRunResult = {
   assignedMemberId?: string;
   replyBody?: string;
   reason?: string;
+};
+
+export type InitialAiOutboundAction =
+  | "sent"
+  | "drafted_for_review"
+  | "auto_reply_disabled"
+  | "not_ai_member"
+  | "lead_not_found"
+  | "no_whatsapp_phone"
+  | "skipped_duplicate";
+
+export type InitialAiOutboundResult = {
+  action: InitialAiOutboundAction;
+  memberId?: string;
+  leadId?: string;
+  body?: string;
+  reason?: string;
+  transport?: WhatsAppSendResult;
 };
 
 type AgentRunInput = Scope & {
@@ -73,6 +93,145 @@ function qualificationQuestion(fields: Record<string, string | undefined>) {
   if (missing.includes("timeline")) return "When would you like to start, and is there a specific launch date or campaign we should consider?";
   if (missing.includes("authority")) return "Are you the decision maker for this, or should we include someone else before proposing the next step?";
   return "Thanks. I have enough context to route this to the right owner for the next step.";
+}
+
+function whatsappAddressForLead(lead: Awaited<ReturnType<typeof listLeadKnowledgeRecords>>[number]) {
+  const phone = lead.contact.waId || lead.contact.phone;
+  if (!phone?.trim()) return undefined;
+  const digits = phone.replace(/\D/g, "");
+  if (!digits) return undefined;
+  return `whatsapp:+${digits}`;
+}
+
+function firstNameForLead(lead: Awaited<ReturnType<typeof listLeadKnowledgeRecords>>[number]) {
+  return lead.contact.displayName?.trim().split(/\s+/)[0] || "there";
+}
+
+function initialAiOutboundBody(lead: Awaited<ReturnType<typeof listLeadKnowledgeRecords>>[number], member: TeamMember) {
+  const fields = lead.qualificationFields as Record<string, string | undefined>;
+  const greeting = `Hi ${firstNameForLead(lead)}, I am ${member.name} from Leadsy.`;
+  if (!fields.company) {
+    return `${greeting} Thanks for sharing your details. Which company or business is this for?`;
+  }
+  if (!fields.need) {
+    return `${greeting} Thanks for reaching out about ${fields.company}. What are you hoping to improve with WhatsApp lead handling?`;
+  }
+  if (!fields.budget || !fields.authority) {
+    return `${greeting} I can help qualify this quickly. What budget range should we plan around, and who makes the final decision?`;
+  }
+  return `${greeting} I have the basics. When would you like to start, and should we book a short call?`;
+}
+
+async function initialOutboundAlreadyHandled(input: Scope & { leadId: string; triggerId: string }) {
+  const thread = await listTeamThreadMessages({ ...input, leadId: input.leadId });
+  return thread.some((message) => message.triggerId === input.triggerId);
+}
+
+export async function sendInitialAiOutboundForLead(input: Scope & {
+  leadId: string;
+  memberId: string;
+  trigger: string;
+}): Promise<InitialAiOutboundResult> {
+  const member = await getTeamMember({ ...input, memberId: input.memberId });
+  if (!member || !member.type.startsWith("ai_agent")) {
+    return { action: "not_ai_member", memberId: member?.id, leadId: input.leadId, reason: "Selected owner is not an AI team member." };
+  }
+
+  const triggerId = `initial-outbound:${input.leadId}:${member.id}:${input.trigger}`;
+  if (await initialOutboundAlreadyHandled({ ...input, triggerId })) {
+    return { action: "skipped_duplicate", memberId: member.id, leadId: input.leadId, reason: "Initial AI outbound was already handled for this trigger." };
+  }
+
+  const lead = (await listLeadKnowledgeRecords(input)).find((record) => record.id === input.leadId);
+  if (!lead) {
+    return { action: "lead_not_found", memberId: member.id, leadId: input.leadId, reason: "Lead was not found." };
+  }
+
+  const body = initialAiOutboundBody(lead, member);
+  if (member.type === "ai_agent_assisted" || !member.autoReplyEnabled) {
+    await postTeamThreadMessage({
+      ...input,
+      leadId: lead.id,
+      authorMemberId: member.id,
+      authorType: "ai_agent",
+      body: `Initial outbound draft for review by ${member.name}: ${body}`,
+      eventType: "handoff_summary",
+      triggerId
+    });
+    await editLeadKnowledgeRecord({
+      ...input,
+      leadId: lead.id,
+      contact: lead.contact,
+      summary: lead.summary,
+      nextAction: "AI drafted the first outbound message for human review.",
+      facts: [...lead.facts, `AI note: ${member.name} drafted an initial outbound message for review.`],
+      crmStatus: lead.crmStatus,
+      productPipelineStatus: lead.productPipelineStatus,
+      leadSource: lead.leadSource,
+      campaignId: lead.campaignId,
+      assigneeId: lead.assigneeId,
+      assigneeName: lead.assigneeName,
+      qualificationFields: lead.qualificationFields,
+      qualificationStage: lead.qualificationStage
+    });
+    return {
+      action: member.type === "ai_agent_assisted" ? "drafted_for_review" : "auto_reply_disabled",
+      memberId: member.id,
+      leadId: lead.id,
+      body
+    };
+  }
+
+  const to = whatsappAddressForLead(lead);
+  if (!to) {
+    await postTeamThreadMessage({
+      ...input,
+      leadId: lead.id,
+      authorMemberId: member.id,
+      authorType: "ai_agent",
+      body: `${member.name} could not send the initial outbound message because the lead has no WhatsApp phone.`,
+      eventType: "agent_guard",
+      triggerId
+    });
+    return { action: "no_whatsapp_phone", memberId: member.id, leadId: lead.id, body };
+  }
+
+  const transport = await sendAndStoreWhatsAppMessage({
+    ...input,
+    leadId: lead.id,
+    to,
+    body,
+    contact: lead.contact
+  });
+
+  await postTeamThreadMessage({
+    ...input,
+    leadId: lead.id,
+    conversationId: transport.conversationId,
+    authorMemberId: member.id,
+    authorType: "ai_agent",
+    body: `Initial outbound sent by ${member.name}: ${body}`,
+    eventType: "handoff_summary",
+    triggerId
+  });
+  await editLeadKnowledgeRecord({
+    ...input,
+    leadId: lead.id,
+    contact: lead.contact,
+    summary: lead.summary,
+    nextAction: "Initial AI outbound sent. Wait for the lead response.",
+    facts: [...lead.facts, `AI note: ${member.name} sent the initial outbound message.`],
+    crmStatus: "needs_reply",
+    productPipelineStatus: lead.productPipelineStatus,
+    leadSource: lead.leadSource,
+    campaignId: lead.campaignId,
+    assigneeId: lead.assigneeId,
+    assigneeName: lead.assigneeName,
+    qualificationFields: lead.qualificationFields,
+    qualificationStage: lead.qualificationStage
+  });
+
+  return { action: "sent", memberId: member.id, leadId: lead.id, body, transport };
 }
 
 async function appendAgentReply(input: Scope & {

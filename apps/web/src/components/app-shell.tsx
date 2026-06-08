@@ -6,7 +6,6 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Bell,
-  BookOpen,
   CalendarDays,
   CheckSquare,
   ChevronDown,
@@ -30,6 +29,7 @@ import {
 import type { SessionUser } from "@leadsy/security";
 import { CommandSearchModal } from "@/components/command-search-modal";
 import { CostReceiptButton } from "@/components/cost-receipt-button";
+import { ManualLeadIntake } from "@/components/manual-lead-intake";
 import { OnboardingWizard } from "@/components/onboarding-wizard";
 import { ToastProvider } from "@/components/toast-provider";
 
@@ -51,6 +51,20 @@ type ShellWhatsAppSender = {
   statusReason?: string;
 };
 
+type ShellRelatedLead = {
+  id: string;
+  label: string;
+  detail?: string;
+};
+
+type ShellTeamMember = {
+  id: string;
+  name: string;
+  type: "human" | "ai_agent_full" | "ai_agent_assisted";
+  senderMode?: string;
+  autoReplyEnabled?: boolean;
+};
+
 const workflowNav: ShellLink[] = [
   { href: "/app", label: "Dashboard", icon: LayoutDashboard, end: true },
   { href: "/app/leads", label: "Leads", icon: Users2 },
@@ -62,8 +76,7 @@ const workflowNav: ShellLink[] = [
 
 const supportingNav: ShellLink[] = [
   { href: "/app/approvals", label: "Approval queue", icon: CheckSquare, accent: true },
-  { href: "/app/tasks", label: "Follow-up tasks", icon: ListChecks },
-  { href: "/app/leads?panel=knowledge", label: "Lead context", icon: BookOpen }
+  { href: "/app/tasks", label: "Follow-up tasks", icon: ListChecks }
 ];
 
 type SearchParamsLike = Pick<URLSearchParams, "get">;
@@ -105,7 +118,6 @@ function isActiveLink(pathname: string, searchParams: SearchParamsLike, link: Sh
   const activePath = pathname === path || pathname.startsWith(`${path}/`);
   if (!activePath) return false;
   if (link.href.includes("?")) return searchParamsMatch(searchParams, link.href);
-  if (link.label === "Leads") return !searchParams.get("tab") && searchParams.get("panel") !== "knowledge";
   return true;
 }
 
@@ -121,7 +133,6 @@ function whatsAppSenderLabel(sender?: ShellWhatsAppSender) {
 
 function pageTitle(pathname: string, searchParams: SearchParamsLike) {
   if (pathname === "/app") return "Dashboard";
-  if (pathname.startsWith("/app/leads") && searchParams.get("panel") === "knowledge") return "Lead context";
   if (pathname.startsWith("/app/leads")) {
     return "Leads";
   }
@@ -180,12 +191,16 @@ export function AppShell({
   children,
   session,
   pendingApprovalCount = 0,
-  whatsAppSender
+  whatsAppSender,
+  manualLeadOptions = [],
+  teamMembers = []
 }: {
   children: ReactNode;
   session: SessionUser;
   pendingApprovalCount?: number;
   whatsAppSender?: ShellWhatsAppSender;
+  manualLeadOptions?: ShellRelatedLead[];
+  teamMembers?: ShellTeamMember[];
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -197,6 +212,7 @@ export function AppShell({
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [logoutPending, setLogoutPending] = useState(false);
   const [commandSearchOpen, setCommandSearchOpen] = useState(false);
+  const [manualLeadOpen, setManualLeadOpen] = useState(false);
   const title = pageTitle(pathname, searchParams);
   const onboardingReminder = session.onboardingCompletedAt ? 0 : 1;
   const unreadNotifications = notificationRecords.filter((item) => !item.readAt);
@@ -231,6 +247,16 @@ export function AppShell({
     window.addEventListener("keydown", handleCommandSearchShortcut);
     return () => window.removeEventListener("keydown", handleCommandSearchShortcut);
   }, []);
+
+  useEffect(() => {
+    if (searchParams.get("new") !== "lead") return;
+    const openTimer = window.setTimeout(() => setManualLeadOpen(true), 0);
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.delete("new");
+    const query = nextParams.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    return () => window.clearTimeout(openTimer);
+  }, [pathname, router, searchParams]);
 
   const notificationItems = useMemo(
     () => [
@@ -326,6 +352,13 @@ export function AppShell({
   return (
     <ToastProvider>
       <CommandSearchModal open={commandSearchOpen} onOpenChange={setCommandSearchOpen} />
+      <ManualLeadIntake
+        relatedLeads={manualLeadOptions}
+        teamMembers={teamMembers}
+        open={manualLeadOpen}
+        onOpenChange={setManualLeadOpen}
+        hideTrigger
+      />
       <div data-layout="lovable-operator" className="flex h-[100dvh] max-h-[100dvh] w-full overflow-hidden bg-background text-foreground">
         <aside
           data-testid="global-sidebar"
@@ -371,11 +404,18 @@ export function AppShell({
 
           {!collapsed ? (
             <div className="px-2.5 pt-1.5">
-              <Link href="/app/leads?new=lead" className="flex h-7 w-full items-center gap-2 rounded-[5px] px-2 text-[12.5px] text-muted-foreground hover:bg-sidebar-accent hover:text-foreground">
+              <button
+                type="button"
+                onClick={() => {
+                  setManualLeadOpen(true);
+                  setMobileOpen(false);
+                }}
+                className="flex h-7 w-full items-center gap-2 rounded-[5px] px-2 text-[12.5px] text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+              >
                 <Plus className="h-3.5 w-3.5" />
                 <span className="flex-1 text-left">New lead</span>
                 <span className="kbd">N</span>
-              </Link>
+              </button>
             </div>
           ) : null}
 
@@ -463,9 +503,13 @@ export function AppShell({
                 <span>Needs reply</span>
                 <ChevronDown className="h-3 w-3 opacity-60" />
               </Link>
-              <Link href="/app/leads?new=lead" className="flex h-7 items-center gap-1.5 rounded-[5px] bg-primary px-2 text-[12px] font-medium text-primary-foreground hover:bg-primary/90">
+              <button
+                type="button"
+                onClick={() => setManualLeadOpen(true)}
+                className="flex h-7 items-center gap-1.5 rounded-[5px] bg-primary px-2 text-[12px] font-medium text-primary-foreground hover:bg-primary/90"
+              >
                 <Plus className="h-3 w-3" /> New
-              </Link>
+              </button>
               <CostReceiptButton />
               <button
                 type="button"

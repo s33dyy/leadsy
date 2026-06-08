@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { audit, rateLimit } from "@leadsy/security";
 import { requireApiSession } from "@/lib/api-auth";
+import { sendInitialAiOutboundForLead } from "@/lib/agent-runtime";
+import { assignLeadOwner } from "@/lib/crm-store";
 import {
   appendManualLeadMessage,
   editLeadKnowledgeRecord,
@@ -10,6 +12,7 @@ import {
   type LeadKnowledgeStatus
 } from "@/lib/lead-knowledge-store";
 import { urlForRequestHost } from "@/lib/request-url";
+import { ensureDefaultQualificationAgent, getTeamMember } from "@/lib/teamspace-store";
 
 export const runtime = "nodejs";
 
@@ -37,6 +40,10 @@ function directionFromValue(value: FormDataEntryValue | null): Extract<LeadKnowl
 
 function leadStatusFromValue(value: FormDataEntryValue | null): LeadKnowledgeStatus {
   return clean(value) === "excluded" ? "excluded" : "lead";
+}
+
+function booleanFromValue(value: FormDataEntryValue | null) {
+  return ["1", "true", "yes", "on"].includes(clean(value).toLowerCase());
 }
 
 function splitLines(value: string) {
@@ -95,6 +102,20 @@ export async function POST(request: NextRequest) {
   const sourceDetail = clean(form.get("sourceDetail"));
   const extraEmails = splitLines(clean(form.get("additionalEmails")));
   const nextAction = clean(form.get("nextAction"));
+  const assigneeId = clean(form.get("assigneeId"));
+  const selectedMember = assigneeId
+    ? await getTeamMember({
+        tenantId: auth.session.tenantId,
+        ownerId: auth.session.id,
+        memberId: assigneeId
+      })
+    : await ensureDefaultQualificationAgent({
+        tenantId: auth.session.tenantId,
+        ownerId: auth.session.id
+      });
+  if (!selectedMember) {
+    return NextResponse.json({ error: "team_member_not_found", message: "Choose a valid owner before saving this lead." }, { status: 404 });
+  }
 
   const facts = [
     fact("Company", company),
@@ -139,7 +160,7 @@ export async function POST(request: NextRequest) {
     facts: [body || "Manual lead created from CRM intake.", ...facts].filter(Boolean)
   });
 
-  const finalLead =
+  let finalLead =
     leadStatus === "excluded"
       ? await setLeadKnowledgeStatus({
           tenantId: auth.session.tenantId,
@@ -148,6 +169,28 @@ export async function POST(request: NextRequest) {
           leadStatus
         })
       : editedLead;
+
+  finalLead = await assignLeadOwner({
+    tenantId: auth.session.tenantId,
+    ownerId: auth.session.id,
+    leadId: finalLead.id,
+    assigneeId: selectedMember.id,
+    assigneeName: selectedMember.name,
+    assignedById: auth.session.id,
+    assignedByName: auth.session.name,
+    reason: "Owner selected during manual lead intake"
+  });
+
+  const aiAction =
+    leadStatus === "excluded" || !booleanFromValue(form.get("sendInitialAiMessage"))
+      ? undefined
+      : await sendInitialAiOutboundForLead({
+          tenantId: auth.session.tenantId,
+          ownerId: auth.session.id,
+          leadId: finalLead.id,
+          memberId: selectedMember.id,
+          trigger: "manual-create"
+        });
 
   audit({
     tenantId: auth.session.tenantId,
@@ -159,7 +202,7 @@ export async function POST(request: NextRequest) {
 
   const url = redirectUrl(request, finalLead.id);
   if (wantsJson(request)) {
-    return NextResponse.json({ leadId: finalLead.id, href: `${url.pathname}${url.search}` });
+    return NextResponse.json({ leadId: finalLead.id, href: `${url.pathname}${url.search}`, lead: finalLead, aiAction });
   }
   return NextResponse.redirect(url, 303);
 }
