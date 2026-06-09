@@ -1605,8 +1605,9 @@ export function selectLeadsyAiModel(
 
   const fallbackModel = configured(env, "LEADSY_FREE_AI_MODEL") ?? defaultRoutineOpenRouterModel;
   const candidate = modelCandidateForTask(task, env) ?? fallbackModel;
-  if (isFreeAiModel(candidate)) {
-    return { task, provider: "openrouter", model: candidate, costTier: "free", reason: "free_model" };
+  const resolvedCandidate = candidate === "openrouter/free" ? "google/gemini-2.5-flash:free" : candidate;
+  if (isFreeAiModel(resolvedCandidate)) {
+    return { task, provider: "openrouter", model: resolvedCandidate, costTier: "free", reason: "free_model" };
   }
 
   const expensiveAllowed = envFlag(env, "LEADSY_ALLOW_EXPENSIVE_AI_MODELS") || env.LEADSY_AI_COST_MODE?.trim().toLowerCase() === "premium";
@@ -2077,7 +2078,7 @@ function researchBudgetForBrief(brief: LeadBrief, progress = campaignProgressFor
 }
 
 const defaultSpendCapInr = 1;
-const defaultRoutineOpenRouterModel = "openrouter/free";
+const defaultRoutineOpenRouterModel = "google/gemini-2.5-flash:free";
 
 function spendCapFromEnv() {
   const configured = parseNumber(process.env.LEADSY_SPEND_CAP_INR) ?? parseNumber(process.env.LEADSY_DEFAULT_SPEND_CAP_INR);

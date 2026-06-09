@@ -229,6 +229,25 @@ function deterministicReply(context: LeadAiRuntimeContext, purpose: LeadAiReplyP
     };
   }
 
+  const extracted: Record<string, string> = {};
+  if (missing === "email") {
+    const emailMatch = inboundText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+    if (emailMatch) extracted.email = emailMatch[0];
+  } else if (missing === "phone") {
+    const phoneMatch = inboundText.match(/\+?\d{7,15}/);
+    if (phoneMatch) extracted.phone = phoneMatch[0];
+  }
+
+  // If we deterministically extracted the currently missing field, we should ask the NEXT missing field
+  let nextMissing = missing;
+  if (missing && extracted[missing]) {
+    const fields: string[] = context.workspace.leadMode === "b2c"
+      ? ["name", "phone", "email", "budget"]
+      : [...coreFields];
+    const missingIndex = fields.indexOf(missing);
+    nextMissing = fields.slice(missingIndex + 1).find((field) => !fieldValue(context, field as any) && !extracted[field]);
+  }
+
   // Default fallback: ask for the next missing field, but vary the question
   const questions: Record<string, string> = {
     company: "Which company or brand is this for?",
@@ -240,7 +259,7 @@ function deterministicReply(context: LeadAiRuntimeContext, purpose: LeadAiReplyP
     phone: "What is the best phone number to reach you?",
     email: "What is your email address?"
   };
-  const question = missing ? questions[missing] || "What's the next detail I should know?" : "Would you like me to route this to the right sales owner?";
+  const question = nextMissing ? questions[nextMissing] || "What's the next detail I should know?" : "Would you like me to route this to the right sales owner?";
 
   const asksAboutServices = /\b(service|services|offer|do you do)\b/i.test(inboundText);
   if (asksAboutServices) {
@@ -249,14 +268,14 @@ function deterministicReply(context: LeadAiRuntimeContext, purpose: LeadAiReplyP
       : `Our team can share our specific service details with you.`;
     return {
       reply: `${serviceInfo} ${question}`,
-      extractedFields: {},
+      extractedFields: extracted,
       shouldEscalate: false,
       confidence: 0.6,
       provider: "deterministic"
     };
   }
 
-  const prefix = company || need ? "Got it." : "I can help with your business enquiries.";
+  const prefix = company || need || Object.keys(extracted).length > 0 ? "Got it." : "I can help with your business enquiries.";
   const initialPrefix = company && need
     ? `I see you are with ${company} and looking at ${need}.`
     : company
@@ -269,7 +288,7 @@ function deterministicReply(context: LeadAiRuntimeContext, purpose: LeadAiReplyP
     ? `Hi ${firstName}, this is ${ownerBusiness.externalIdentity}. ${initialPrefix} ${question}`
     : `${prefix} ${question}`;
 
-  return { reply: sanitizeLeadFacingReply(reply, context), extractedFields: {}, nextMissingField: missing, shouldEscalate: false, confidence: 0.55, provider: "deterministic" };
+  return { reply: sanitizeLeadFacingReply(reply, context), extractedFields: extracted, nextMissingField: nextMissing, shouldEscalate: false, confidence: 0.55, provider: "deterministic" };
 }
 
 function aiTaskForPurpose(purpose: LeadAiReplyPurpose): LeadsyAiTask {
@@ -284,11 +303,12 @@ function stageForPurpose(purpose: LeadAiReplyPurpose): OpenRouterUsageCost["stag
 function envForTask(context: LeadAiRuntimeContext, task: LeadsyAiTask): Record<string, string | undefined> {
   const settings = context.aiSettings;
   const route = settings.taskRouting[task] ?? settings.taskRouting["qualification-reply"];
+  const overrideRemoteAi = process.env.NODE_ENV !== "test" && Boolean(process.env.OPENROUTER_API_KEY?.trim());
   return {
     ...process.env,
-    AI_PROVIDER: settings.providerMode,
-    LEADSY_ENABLE_REMOTE_AI: settings.remoteAiEnabled ? "true" : "",
-    LEADSY_ALLOW_PAID_AI_MODELS: settings.costMode === "paid" || settings.costMode === "premium" ? "true" : "",
+    AI_PROVIDER: overrideRemoteAi ? "openrouter" : settings.providerMode,
+    LEADSY_ENABLE_REMOTE_AI: overrideRemoteAi ? "true" : (settings.remoteAiEnabled ? "true" : ""),
+    LEADSY_ALLOW_PAID_AI_MODELS: overrideRemoteAi || settings.costMode === "paid" || settings.costMode === "premium" ? "true" : "",
     LEADSY_ALLOW_EXPENSIVE_AI_MODELS: settings.costMode === "premium" ? "true" : "",
     LEADSY_AI_COST_MODE: settings.costMode,
     LEADSY_ROUTINE_MODEL: route?.model

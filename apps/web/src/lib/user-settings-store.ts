@@ -187,8 +187,8 @@ export function defaultWorkspaceSettings(): WorkspaceBusinessSettings {
 
 export function defaultAiSettings(): AiWorkspaceSettings {
   return {
-    providerMode: "deterministic",
-    remoteAiEnabled: false,
+    providerMode: "openrouter",
+    remoteAiEnabled: true,
     costMode: "free",
     monthlyBudgetInr: 0,
     temperature: 0.2,
@@ -197,7 +197,7 @@ export function defaultAiSettings(): AiWorkspaceSettings {
     humanReviewThreshold: 0.75,
     escalationKeywords: ["human", "manager", "refund", "legal", "stop"],
     blockedTopics: ["medical advice", "legal promises", "guaranteed discounts"],
-    taskRouting: Object.fromEntries(aiTasks.map((task) => [task, { enabled: true, model: "openrouter/free" }])) as Record<AiWorkspaceTask, AiTaskRoute>,
+    taskRouting: Object.fromEntries(aiTasks.map((task) => [task, { enabled: true, model: "google/gemini-2.5-flash:free" }])) as Record<AiWorkspaceTask, AiTaskRoute>,
     promptTemplates: {
       "qualification-reply": "Ask exactly one concise question that helps qualify the lead.",
       "message-draft": "Draft a helpful WhatsApp reply for human review.",

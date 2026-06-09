@@ -45,7 +45,7 @@ async function main() {
     {
       task: "lead-research-planner",
       provider: "openrouter",
-      model: "openrouter/free",
+      model: "google/gemini-2.5-flash:free",
       costTier: "free",
       reason: "blocked_paid_or_expensive_model"
     },
@@ -78,7 +78,7 @@ async function main() {
     {
       task: "lead-dossier",
       provider: "openrouter",
-      model: "openrouter/free",
+      model: "google/gemini-2.5-flash:free",
       costTier: "free",
       reason: "blocked_paid_or_expensive_model"
     },

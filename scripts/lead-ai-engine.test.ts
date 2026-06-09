@@ -6,6 +6,7 @@ import { join } from "node:path";
 async function main() {
   const tempDir = await mkdtemp(join(tmpdir(), "leadsy-lead-ai-engine-"));
   process.env.LEADSY_DATA_DIR = tempDir;
+  process.env.NODE_ENV = "test";
   process.env.OPENROUTER_API_KEY = "test-openrouter-key";
   process.env.AI_PROVIDER = "openrouter";
   process.env.LEADSY_ENABLE_REMOTE_AI = "true";
@@ -164,6 +165,11 @@ async function main() {
       ...fallbackScope,
       communicationStyle: "Warm and direct",
       knowledgeBase: "XYZ Company helps founders turn expertise into SEO blogs, LinkedIn posts, and monthly content calendars."
+    });
+    await updateAiWorkspaceSettings({
+      ...fallbackScope,
+      providerMode: "deterministic",
+      remoteAiEnabled: false
     });
     await createTeamMember({
       ...fallbackScope,
