@@ -29,6 +29,11 @@ async function main() {
     assert(settingsSurface.includes("Quiet hours"), "notifications settings should expose quiet hours");
     assert(settingsSurface.includes("Operator knowledge base"), "profile settings should expose operator knowledge");
     assert(settingsSurface.includes("Business operations"), "workspace settings should expose business operations fields");
+    assert(settingsConsole.includes("MultiValueEditor"), "list-style settings should use chip editors instead of raw multiline textareas");
+    assert(settingsConsole.includes("addListValue"), "settings chip editors should let non-technical users add items one at a time");
+    assert(settingsConsole.includes("removeListValue"), "settings chip editors should let users remove individual items");
+    assert(settingsConsole.includes("Add language"), "profile languages should have a plain add control");
+    assert(settingsConsole.includes("Add service"), "services should have a plain add control");
 
     const appShell = await readFile(join(root, "apps/web/src/components/app-shell.tsx"), "utf8");
     assert(!appShell.includes('/app/worker"'), "primary navigation should not link to Automations");

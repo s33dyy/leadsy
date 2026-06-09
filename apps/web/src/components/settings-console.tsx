@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, type FormEvent } from "react";
-import { Bot, Check, FlaskConical, Save } from "lucide-react";
+import { Bot, Check, FlaskConical, Plus, Save, X } from "lucide-react";
 import { Badge } from "@/components/ui";
 import type {
   AiWorkspaceSettings,
@@ -62,15 +62,15 @@ function costTierLabel(value: string) {
   return "Leadsy selected";
 }
 
-function lines(values: string[]) {
-  return values.join("\n");
+function addListValue(values: string[], value: string) {
+  const clean = value.trim();
+  if (!clean) return values;
+  if (values.some((item) => item.toLowerCase() === clean.toLowerCase())) return values;
+  return [...values, clean];
 }
 
-function splitLines(value: string) {
-  return value
-    .split(/\r?\n|,/)
-    .map((item) => item.trim())
-    .filter(Boolean);
+function removeListValue(values: string[], value: string) {
+  return values.filter((item) => item !== value);
 }
 
 async function patchJson<T>(url: string, body: unknown, key: string): Promise<T> {
@@ -86,15 +86,85 @@ async function patchJson<T>(url: string, body: unknown, key: string): Promise<T>
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="block min-w-0">
+    <div className="block min-w-0">
       <span className="caption">{label}</span>
       <div className="mt-2">{children}</div>
-    </label>
+    </div>
   );
 }
 
 const inputClass = "h-10 w-full rounded-[6px] border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-primary";
 const textAreaClass = "min-h-24 w-full rounded-[6px] border border-border bg-background px-3 py-2 text-sm leading-6 text-foreground outline-none focus:border-primary";
+const chipButtonClass = "inline-flex h-8 items-center gap-1 rounded-full border border-border bg-surface px-2.5 text-xs text-foreground hover:border-primary/70";
+
+function MultiValueEditor({
+  label,
+  values,
+  onChange,
+  addLabel,
+  placeholder
+}: {
+  label: string;
+  values: string[];
+  onChange: (values: string[]) => void;
+  addLabel: string;
+  placeholder: string;
+}) {
+  const [draft, setDraft] = useState("");
+
+  function addDraft() {
+    const next = addListValue(values, draft);
+    onChange(next);
+    setDraft("");
+  }
+
+  return (
+    <Field label={label}>
+      <div className="rounded-[8px] border border-border bg-background p-3">
+        <div className="flex min-h-9 flex-wrap gap-2">
+          {values.length ? values.map((value) => (
+            <button
+              key={value}
+              type="button"
+              className={chipButtonClass}
+              onClick={() => onChange(removeListValue(values, value))}
+              title={`Remove ${value}`}
+            >
+              {value}
+              <X className="h-3 w-3 text-muted-foreground" />
+            </button>
+          )) : (
+            <div className="flex h-8 items-center text-xs text-muted-foreground">No items yet.</div>
+          )}
+        </div>
+        <div className="mt-3 flex gap-2">
+          <input
+            className={`${inputClass} h-9`}
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                addDraft();
+              }
+            }}
+            placeholder={placeholder}
+          />
+          <button
+            type="button"
+            onClick={addDraft}
+            disabled={!draft.trim()}
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-[6px] border border-border bg-surface-2 px-3 text-xs font-medium hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {addLabel}
+          </button>
+        </div>
+      </div>
+    </Field>
+  );
+}
+
 
 export function SettingsConsole({
   activeSection,
@@ -161,15 +231,15 @@ function ProfileSettings({ initial }: { initial: OperatorKnowledgeProfile }) {
           <Field label="Seniority"><input className={inputClass} value={form.seniority} onChange={(event) => setForm({ ...form, seniority: event.target.value })} /></Field>
           <Field label="Timezone"><input className={inputClass} value={form.timezone} onChange={(event) => setForm({ ...form, timezone: event.target.value })} /></Field>
           <Field label="Working hours"><input className={inputClass} value={form.workingHours} onChange={(event) => setForm({ ...form, workingHours: event.target.value })} /></Field>
-          <Field label="Languages"><textarea className={textAreaClass} value={lines(form.languages)} onChange={(event) => setForm({ ...form, languages: splitLines(event.target.value) })} /></Field>
-          <Field label="Expertise"><textarea className={textAreaClass} value={lines(form.expertise)} onChange={(event) => setForm({ ...form, expertise: splitLines(event.target.value) })} /></Field>
-          <Field label="Markets"><textarea className={textAreaClass} value={lines(form.markets)} onChange={(event) => setForm({ ...form, markets: splitLines(event.target.value) })} /></Field>
-          <Field label="Services handled"><textarea className={textAreaClass} value={lines(form.servicesHandled)} onChange={(event) => setForm({ ...form, servicesHandled: splitLines(event.target.value) })} /></Field>
+          <MultiValueEditor label="Languages" values={form.languages} onChange={(languages) => setForm({ ...form, languages })} addLabel="Add language" placeholder="English, Hindi, Bengali..." />
+          <MultiValueEditor label="Expertise" values={form.expertise} onChange={(expertise) => setForm({ ...form, expertise })} addLabel="Add expertise" placeholder="Distributor sales, pricing..." />
+          <MultiValueEditor label="Markets" values={form.markets} onChange={(markets) => setForm({ ...form, markets })} addLabel="Add market" placeholder="India, Mumbai, Tier 2 retail..." />
+          <MultiValueEditor label="Services handled" values={form.servicesHandled} onChange={(servicesHandled) => setForm({ ...form, servicesHandled })} addLabel="Add service" placeholder="Retail onboarding, sampling..." />
         </div>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <Field label="Communication style"><textarea className={textAreaClass} value={form.communicationStyle} onChange={(event) => setForm({ ...form, communicationStyle: event.target.value })} /></Field>
           <Field label="Escalation preferences"><textarea className={textAreaClass} value={form.escalationPreferences} onChange={(event) => setForm({ ...form, escalationPreferences: event.target.value })} /></Field>
-          <Field label="Restricted claims"><textarea className={textAreaClass} value={lines(form.restrictedClaims)} onChange={(event) => setForm({ ...form, restrictedClaims: splitLines(event.target.value) })} /></Field>
+          <MultiValueEditor label="Restricted claims" values={form.restrictedClaims} onChange={(restrictedClaims) => setForm({ ...form, restrictedClaims })} addLabel="Add restriction" placeholder="Do not promise discounts..." />
           <Field label="Operator notes"><textarea className={textAreaClass} value={form.knowledgeBase} onChange={(event) => setForm({ ...form, knowledgeBase: event.target.value })} /></Field>
         </div>
         <div className="mt-4"><StatusLine status={status} /></div>
@@ -214,12 +284,12 @@ function WorkspaceSettings({ initial }: { initial: WorkspaceBusinessSettings }) 
           <Field label="Currency"><input className={inputClass} value={form.currency} onChange={(event) => setForm({ ...form, currency: event.target.value })} /></Field>
           <Field label="Timezone"><input className={inputClass} value={form.timezone} onChange={(event) => setForm({ ...form, timezone: event.target.value })} /></Field>
           <Field label="Assignment defaults"><textarea className={textAreaClass} value={form.assignmentDefaults} onChange={(event) => setForm({ ...form, assignmentDefaults: event.target.value })} /></Field>
-          <Field label="Markets"><textarea className={textAreaClass} value={lines(form.markets)} onChange={(event) => setForm({ ...form, markets: splitLines(event.target.value) })} /></Field>
-          <Field label="Services"><textarea className={textAreaClass} value={lines(form.services)} onChange={(event) => setForm({ ...form, services: splitLines(event.target.value) })} /></Field>
-          <Field label="Lead sources"><textarea className={textAreaClass} value={lines(form.leadSources)} onChange={(event) => setForm({ ...form, leadSources: splitLines(event.target.value) })} /></Field>
-          <Field label="Pipeline stages"><textarea className={textAreaClass} value={lines(form.pipelineStages)} onChange={(event) => setForm({ ...form, pipelineStages: splitLines(event.target.value) })} /></Field>
-          <Field label="Qualification fields"><textarea className={textAreaClass} value={lines(form.qualificationFields)} onChange={(event) => setForm({ ...form, qualificationFields: splitLines(event.target.value) })} /></Field>
-          <Field label="Follow-up rules"><textarea className={textAreaClass} value={lines(form.followUpRules)} onChange={(event) => setForm({ ...form, followUpRules: splitLines(event.target.value) })} /></Field>
+          <MultiValueEditor label="Markets" values={form.markets} onChange={(markets) => setForm({ ...form, markets })} addLabel="Add market" placeholder="India, West Bengal, distributors..." />
+          <MultiValueEditor label="Services" values={form.services} onChange={(services) => setForm({ ...form, services })} addLabel="Add service" placeholder="Bulk orders, retail sampling..." />
+          <MultiValueEditor label="Lead sources" values={form.leadSources} onChange={(leadSources) => setForm({ ...form, leadSources })} addLabel="Add source" placeholder="WhatsApp, website, events..." />
+          <MultiValueEditor label="Pipeline stages" values={form.pipelineStages} onChange={(pipelineStages) => setForm({ ...form, pipelineStages })} addLabel="Add stage" placeholder="sample_requested, proposal_sent..." />
+          <MultiValueEditor label="Qualification fields" values={form.qualificationFields} onChange={(qualificationFields) => setForm({ ...form, qualificationFields })} addLabel="Add field" placeholder="budget, timeline, authority..." />
+          <MultiValueEditor label="Follow-up rules" values={form.followUpRules} onChange={(followUpRules) => setForm({ ...form, followUpRules })} addLabel="Add rule" placeholder="Follow up warm leads in 24 hours..." />
           <Field label="Calendar defaults"><textarea className={textAreaClass} value={form.calendarDefaults} onChange={(event) => setForm({ ...form, calendarDefaults: event.target.value })} /></Field>
         </div>
         <div className="mt-4"><StatusLine status={status} /></div>
@@ -306,8 +376,8 @@ function AiSettings({ initial }: { initial: AiWorkspaceSettings }) {
         </div>
 
         <div className="mt-5 grid gap-4 md:grid-cols-2">
-          <Field label="Escalation keywords"><textarea className={textAreaClass} value={lines(form.escalationKeywords)} onChange={(event) => setForm({ ...form, escalationKeywords: splitLines(event.target.value) })} /></Field>
-          <Field label="Blocked topics"><textarea className={textAreaClass} value={lines(form.blockedTopics)} onChange={(event) => setForm({ ...form, blockedTopics: splitLines(event.target.value) })} /></Field>
+          <MultiValueEditor label="Escalation keywords" values={form.escalationKeywords} onChange={(escalationKeywords) => setForm({ ...form, escalationKeywords })} addLabel="Add keyword" placeholder="refund, angry, legal..." />
+          <MultiValueEditor label="Blocked topics" values={form.blockedTopics} onChange={(blockedTopics) => setForm({ ...form, blockedTopics })} addLabel="Add topic" placeholder="Legal advice, medical claims..." />
         </div>
 
         <div className="mt-6">

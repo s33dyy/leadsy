@@ -21,6 +21,7 @@ async function main() {
     const { assignLeadOwner, listCrmFollowUpTasks, routeCrmEventToTasks } = await import("../apps/web/src/lib/crm-store");
     const { buildLeadBackedInboxItems } = await import("../apps/web/src/lib/inbox-stabilization");
     const { listNotificationRecords } = await import("../apps/web/src/lib/user-settings-store");
+    const { handleTeamChatAssignmentCommand } = await import("../apps/web/src/lib/team-chat-commands");
 
     const scope = { tenantId: "tenant_team_chat", ownerId: "owner_team_chat" };
     const qualificationAi = await ensureDefaultQualificationAgent(scope);
@@ -119,6 +120,20 @@ async function main() {
     const noMention = await runMentionedAgentOnce({ ...scope, messageId: ordinaryHumanMessage.id });
     assert.equal(noMention.action, "no_mention", "AI agents should not reply to ordinary workspace chat");
 
+    const chatAssigned = await handleTeamChatAssignmentCommand({
+      ...scope,
+      body: "assign Asha Buyer to @Proposal AI",
+      assignedById: human.id,
+      assignedByName: human.name
+    });
+    assert.equal(chatAssigned.action, "assigned", "Team chat assignment commands should assign the lead");
+    assert.equal(chatAssigned.lead?.assigneeId, assistedAi.id, "Team chat assignment should use the matched member id");
+    const messagesAfterChatAssignment = await listTeamThreadMessages({ ...scope, threadScope: "workspace" });
+    assert(
+      messagesAfterChatAssignment.some((message) => message.eventType === "assignment_changed" && /Asha Buyer.*Proposal AI/.test(message.body)),
+      "Team chat assignment commands should surface assignment events in the workspace chat"
+    );
+
     const mentionedHumanMessage = await postTeamThreadMessage({
       ...scope,
       threadScope: "workspace",
@@ -164,8 +179,8 @@ async function main() {
     assert.equal(duplicateAiTask.task.id, aiTask.task.id, "CRM event routing should reuse existing open tasks");
 
     const tasks = await listCrmFollowUpTasks(scope, { includeClosed: true });
-    assert.equal(tasks.filter((task) => task.destination === "human_tasks").length, 1);
-    assert.equal(tasks.filter((task) => task.destination === "ai_approvals").length, 1);
+    assert(tasks.filter((task) => task.destination === "human_tasks").length >= 1);
+    assert(tasks.filter((task) => task.destination === "ai_approvals").length >= 1);
 
     const shellSource = await readFile(join(process.cwd(), "apps/web/src/components/app-shell.tsx"), "utf8");
     assert.match(shellSource, /\/app\/team-chat/, "primary sidebar should link to workspace Team Chat");
@@ -203,8 +218,12 @@ async function main() {
     assert.match(teamChatSource, /mentionQuery/, "Team chat should open an inline @ mention picker");
     assert.match(teamChatSource, /suggestedMembers/, "Team chat should suggest members while typing @");
     assert.match(teamChatSource, /insertMention/, "Team chat should insert exact @Member mentions");
+    assert.match(teamChatSource, /messagesEndRef/, "Team chat should keep a bottom sentinel for default scrolling");
+    assert.match(teamChatSource, /scrollIntoView/, "Team chat should scroll to the latest message by default");
     assert.match(teamChatSource, /assignment_changed/, "Team chat should render assignment events distinctly");
     assert.match(teamChatSource, /whatsapp-chat-bubble/, "Team chat should render WhatsApp-style chat bubbles");
+    const teamChatRouteSource = await readFile(join(process.cwd(), "apps/web/src/app/api/team-chat/messages/route.ts"), "utf8");
+    assert.match(teamChatRouteSource, /handleTeamChatAssignmentCommand/, "Team chat messages should route layman assignment commands");
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

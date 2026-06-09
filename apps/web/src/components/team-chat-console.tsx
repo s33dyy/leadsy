@@ -44,6 +44,7 @@ export function TeamChatConsole({ initialMessages, members, leads }: TeamChatCon
   const [pending, setPending] = useState(false);
   const [mentionState, setMentionState] = useState<{ start: number; end: number; query: string; activeIndex: number } | null>(null);
   const bodyRef = useRef<HTMLTextAreaElement | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const aiMembers = useMemo(() => members.filter((member) => member.type.startsWith("ai_agent")), [members]);
   const mentionQuery = mentionState?.query ?? "";
   const suggestedMembers = useMemo(() => {
@@ -67,6 +68,12 @@ export function TeamChatConsole({ initialMessages, members, leads }: TeamChatCon
     });
     return () => stream.close();
   }, []);
+
+  useEffect(() => {
+    window.requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ block: "end" });
+    });
+  }, [messages.length]);
 
   function updateMentionQuery(value: string, cursor: number) {
     const beforeCursor = value.slice(0, cursor);
@@ -142,10 +149,15 @@ export function TeamChatConsole({ initialMessages, members, leads }: TeamChatCon
         },
         body: JSON.stringify({ body: cleanBody, leadId: leadId || undefined })
       });
-      const payload = (await response.json().catch(() => ({}))) as { message?: TeamThreadMessage; aiResult?: { message?: TeamThreadMessage } };
+      const payload = (await response.json().catch(() => ({}))) as {
+        message?: TeamThreadMessage;
+        messages?: TeamThreadMessage[];
+        aiResult?: { message?: TeamThreadMessage };
+      };
       if (response.ok) {
         setBody("");
         setMessages((current) => {
+          if (payload.messages?.length) return payload.messages;
           const next = [...current];
           for (const message of [payload.message, payload.aiResult?.message]) {
             if (message && !next.some((candidate) => candidate.id === message.id)) next.push(message);
@@ -218,6 +230,7 @@ export function TeamChatConsole({ initialMessages, members, leads }: TeamChatCon
                 Workspace assignment events, task events, and human messages will appear here.
               </div>
             )}
+            <div ref={messagesEndRef} aria-hidden="true" />
           </div>
         </div>
 
