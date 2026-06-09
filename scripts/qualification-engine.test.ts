@@ -60,13 +60,15 @@ const baseLead: LeadKnowledgeRecord = {
 
 async function main() {
   assert.deepEqual(qualificationFieldLabels.map((field) => field.label), [
+    "Name",
+    "Phone",
+    "Email",
     "Need",
     "Budget",
     "Timeline",
     "Authority",
     "Location",
     "Company",
-    "Email",
     "Service Interest",
     "Intent",
     "Risk",

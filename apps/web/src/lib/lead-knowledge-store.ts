@@ -23,6 +23,7 @@ export type LeadProductPipelineStatus = "new" | "qualified" | "interested" | "co
 export type LeadQualificationFieldKey =
   | "name"
   | "phone"
+  | "email"
   | "company"
   | "need"
   | "teamOrQueryVolume"
@@ -172,10 +173,11 @@ function normalizedMessageBody(body: string) {
   return body.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
-const qualificationFieldOrder: LeadQualificationFieldKey[] = ["name", "phone", "company", "need", "teamOrQueryVolume", "budget", "timeline", "authority", "location", "serviceInterest"];
+const qualificationFieldOrder: LeadQualificationFieldKey[] = ["name", "phone", "email", "company", "need", "teamOrQueryVolume", "budget", "timeline", "authority", "location", "serviceInterest"];
 const qualificationQuestions: Partial<Record<LeadQualificationFieldKey, string>> = {
   name: "Ask for the buyer's name before continuing qualification.",
   phone: "Confirm the preferred phone number for follow-up.",
+  email: "Ask for the email address for follow-up.",
   company: "Ask for the business or company name.",
   need: "Ask what business outcome or service they need help with.",
   teamOrQueryVolume: "Ask how many queries, leads, or messages they handle each day.",

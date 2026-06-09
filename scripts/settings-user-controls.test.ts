@@ -10,13 +10,13 @@ async function main() {
 
   try {
     const settingsPage = await readFile(join(root, "apps/web/src/app/app/settings/page.tsx"), "utf8");
-    for (const section of ['id: "profile"', 'id: "workspace"', 'id: "ai"', 'id: "agents"', 'id: "notifications"']) {
+    for (const section of ['id: "profile"', 'id: "workspace"', 'id: "ai"', 'id: "agents"', 'id: "twilio"', 'id: "notifications"']) {
       assert(settingsPage.includes(section), `settings should expose ${section}`);
     }
-    for (const removed of ['id: "twilio"', 'id: "infrastructure"', "TwilioSettingsPanel", "InfrastructurePanel", "Platform account SID", "/api/twilio/webhook"]) {
+    for (const removed of ['id: "infrastructure"', "InfrastructurePanel", "Platform account SID"]) {
       assert(!settingsPage.includes(removed), `settings should not expose user-facing ${removed}`);
     }
-    assert(settingsPage.includes('return "workspace"'), "unknown, twilio, and infrastructure sections should fall back to workspace");
+    assert(settingsPage.includes('return "workspace"'), "unknown and infrastructure sections should fall back to workspace");
     const settingsConsole = await readFile(join(root, "apps/web/src/components/settings-console.tsx"), "utf8");
     const settingsSurface = `${settingsPage}\n${settingsConsole}`;
     assert(settingsSurface.includes("Advanced AI Lab"), "AI settings should render an advanced lab, not a static card");

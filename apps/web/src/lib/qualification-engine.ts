@@ -42,6 +42,9 @@ export type QualificationHistoryEvent = {
 export const notYetCollectedLabel = "Not Yet Collected";
 
 export const qualificationFieldLabels: ReadonlyArray<{ key: LeadQualificationFieldKey; label: string }> = [
+  { key: "name", label: "Name" },
+  { key: "phone", label: "Phone" },
+  { key: "email", label: "Email" },
   { key: "need", label: "Need" },
   { key: "budget", label: "Budget" },
   { key: "timeline", label: "Timeline" },
@@ -109,65 +112,102 @@ function scoreLabel(value: number): QualificationIntentLabel {
   return "Low Intent";
 }
 
-function scoreQualification(lead: LeadKnowledgeRecord): QualificationScoreSummary {
+function scoreQualification(lead: LeadKnowledgeRecord, mode: QualificationMode = "b2b"): QualificationScoreSummary {
   const reasons: string[] = [];
   const missing: string[] = [];
   let score = 0;
 
-  if (cleanValue(lead.qualificationFields.need)) {
-    score += 15;
-    reasons.push("Need identified");
-  } else {
-    missing.push("Need not confirmed");
-  }
+  if (mode === "b2c") {
+    if (cleanValue(lead.qualificationFields.name)) {
+      score += 20;
+      reasons.push("Student name identified");
+    } else {
+      missing.push("Student name not confirmed");
+    }
 
-  if (cleanValue(lead.qualificationFields.budget)) {
-    score += 15;
-    reasons.push("Budget identified");
-  } else {
-    missing.push("Budget not confirmed");
-  }
+    if (cleanValue(lead.qualificationFields.phone)) {
+      score += 30;
+      reasons.push("Phone identified");
+    } else {
+      missing.push("Phone not confirmed");
+    }
 
-  if (cleanValue(lead.qualificationFields.timeline)) {
-    score += 15;
-    reasons.push("Timeline identified");
-  } else {
-    missing.push("Timeline not confirmed");
-  }
+    if (cleanValue(lead.qualificationFields.email)) {
+      score += 20;
+      reasons.push("Email identified");
+    } else {
+      missing.push("Email not confirmed");
+    }
 
-  if (cleanValue(lead.qualificationFields.authority) || cleanValue(lead.qualificationFields.name)) {
-    score += 15;
-    reasons.push("Decision maker present");
-  } else {
-    missing.push("Decision maker not confirmed");
-  }
+    if (cleanValue(lead.qualificationFields.budget)) {
+      score += 20;
+      reasons.push("Budget identified");
+    } else {
+      missing.push("Budget not confirmed");
+    }
 
-  if (cleanValue(lead.qualificationFields.company)) {
-    score += 10;
-    reasons.push("Company identified");
+    if (hasActiveConversation(lead)) {
+      score += 10;
+      reasons.push("Active conversation");
+    } else {
+      missing.push("Active conversation not started");
+    }
   } else {
-    missing.push("Company not confirmed");
-  }
+    if (cleanValue(lead.qualificationFields.need)) {
+      score += 15;
+      reasons.push("Need identified");
+    } else {
+      missing.push("Need not confirmed");
+    }
 
-  if (cleanValue(lead.qualificationFields.location)) {
-    score += 10;
-    reasons.push("Location confirmed");
-  } else {
-    missing.push("Location not confirmed");
-  }
+    if (cleanValue(lead.qualificationFields.budget)) {
+      score += 15;
+      reasons.push("Budget identified");
+    } else {
+      missing.push("Budget not confirmed");
+    }
 
-  if (cleanValue(lead.qualificationFields.serviceInterest) || cleanValue(lead.qualificationFields.need)) {
-    score += 10;
-    reasons.push("Service interest identified");
-  } else {
-    missing.push("Service scope unclear");
-  }
+    if (cleanValue(lead.qualificationFields.timeline)) {
+      score += 15;
+      reasons.push("Timeline identified");
+    } else {
+      missing.push("Timeline not confirmed");
+    }
 
-  if (hasActiveConversation(lead)) {
-    score += 10;
-    reasons.push("Active conversation");
-  } else {
-    missing.push("Active conversation not started");
+    if (cleanValue(lead.qualificationFields.authority) || cleanValue(lead.qualificationFields.name)) {
+      score += 15;
+      reasons.push("Decision maker present");
+    } else {
+      missing.push("Decision maker not confirmed");
+    }
+
+    if (cleanValue(lead.qualificationFields.company)) {
+      score += 10;
+      reasons.push("Company identified");
+    } else {
+      missing.push("Company not confirmed");
+    }
+
+    if (cleanValue(lead.qualificationFields.location)) {
+      score += 10;
+      reasons.push("Location confirmed");
+    } else {
+      missing.push("Location not confirmed");
+    }
+
+    if (cleanValue(lead.qualificationFields.serviceInterest) || cleanValue(lead.qualificationFields.need)) {
+      score += 10;
+      reasons.push("Service interest identified");
+    } else {
+      missing.push("Service scope unclear");
+    }
+
+    if (hasActiveConversation(lead)) {
+      score += 10;
+      reasons.push("Active conversation");
+    } else {
+      missing.push("Active conversation not started");
+    }
   }
 
   if (reasons.length === 0) reasons.push("No qualification evidence collected yet");
@@ -199,8 +239,8 @@ function getMissingQualificationFieldsWithoutDerived(lead: LeadKnowledgeRecord) 
     .filter((field) => field.state !== "collected");
 }
 
-function inferIntentLabel(lead: LeadKnowledgeRecord) {
-  return scoreLabel(scoreQualification(lead).value);
+function inferIntentLabel(lead: LeadKnowledgeRecord, mode: QualificationMode = "b2b") {
+  return scoreLabel(scoreQualification(lead, mode).value);
 }
 
 function recommendedActionForLead(lead: LeadKnowledgeRecord): QualificationRecommendedAction {
@@ -226,11 +266,10 @@ function recommendedActionForLead(lead: LeadKnowledgeRecord): QualificationRecom
   return { action: "Continue qualification", why: "Important fields are still missing or uncertain." };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function buildQualificationSummary(lead: LeadKnowledgeRecord, _mode: QualificationMode = "b2b"): QualificationSummary {
+export function buildQualificationSummary(lead: LeadKnowledgeRecord, mode: QualificationMode = "b2b"): QualificationSummary {
   const entries = qualificationFieldLabels.map((field) => [field.key, summarizeField(lead, field.key, field.label)] as const);
   const fields = Object.fromEntries(entries) as Record<LeadQualificationFieldKey, QualificationFieldSummary>;
-  const score = scoreQualification(lead);
+  const score = scoreQualification(lead, mode);
   const recommendedAction = recommendedActionForLead(lead);
   fields.intent = { ...fields.intent, displayValue: score.label, state: "collected" };
   fields.risk = { ...fields.risk, displayValue: inferRisk(lead), state: "collected" };

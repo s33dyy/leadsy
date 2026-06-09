@@ -45,7 +45,7 @@ export default async function IntegrationsPage() {
       desc: "Workspace WhatsApp channel for inbound lead messages and human or AI replies. Transport details stay internal to Leadsy.",
       status: sender?.status === "approved" ? "Leadsy managed" : "Platform pending",
       scope: sender?.assignedPhoneNumber || sender?.statusReason || twilio.whatsappNumber || "Leadsy platform config pending",
-      href: "/simulate-twilio"
+      href: "/app/settings?section=twilio"
     },
     {
       name: "OpenRouter",

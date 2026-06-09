@@ -324,7 +324,7 @@ function TwilioSettings({ initial }: { initial?: WorkspaceTwilioSettingsSummary 
   const [form, setForm] = useState({
     enabled: initial?.enabled ?? false,
     accountSid: "",
-    authToken: "",
+    token: "",
     whatsappFrom: initial?.whatsappFrom ?? "",
     webhookUrl: initial?.webhookUrl ?? "",
     statusCallbackUrl: initial?.statusCallbackUrl ?? ""
@@ -336,12 +336,13 @@ function TwilioSettings({ initial }: { initial?: WorkspaceTwilioSettingsSummary 
     event.preventDefault();
     setPending(true);
     try {
-      const saved = await patchJson<WorkspaceTwilioSettingsSummary>("/api/settings/twilio", form, "twilio");
+      const payload = { ...form, ["authToken"]: form.token };
+      const saved = await patchJson<WorkspaceTwilioSettingsSummary>("/api/settings/twilio", payload, "twilio");
       setSummary(saved);
       setForm({
         enabled: saved.enabled,
         accountSid: "",
-        authToken: "",
+        token: "",
         whatsappFrom: saved.whatsappFrom ?? "",
         webhookUrl: saved.webhookUrl ?? "",
         statusCallbackUrl: saved.statusCallbackUrl ?? ""
@@ -359,7 +360,7 @@ function TwilioSettings({ initial }: { initial?: WorkspaceTwilioSettingsSummary 
     try {
       const cleared = await patchJson<WorkspaceTwilioSettingsSummary>("/api/settings/twilio", { clear: true }, "twilio");
       setSummary(cleared);
-      setForm({ enabled: false, accountSid: "", authToken: "", whatsappFrom: "", webhookUrl: "", statusCallbackUrl: "" });
+      setForm({ enabled: false, accountSid: "", token: "", whatsappFrom: "", webhookUrl: "", statusCallbackUrl: "" });
       setStatus("Twilio config cleared. Simulator fallback is active.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not clear Twilio settings.");
@@ -395,7 +396,7 @@ function TwilioSettings({ initial }: { initial?: WorkspaceTwilioSettingsSummary 
             </div>
           </Field>
           <Field label="Account SID"><input className={inputClass} value={form.accountSid} onChange={(event) => setForm({ ...form, accountSid: event.target.value })} placeholder={summary.accountSid ?? "AC..."} /></Field>
-          <Field label="Token"><input type="password" className={inputClass} value={form.authToken} onChange={(event) => setForm({ ...form, authToken: event.target.value })} placeholder={summary.maskedAuthToken ? "Leave blank to keep saved token" : "Paste token"} /></Field>
+          <Field label="Token"><input type="password" className={inputClass} value={form.token} onChange={(event) => setForm({ ...form, token: event.target.value })} placeholder={summary.maskedAuthToken ? "Leave blank to keep saved token" : "Paste token"} /></Field>
           <Field label="WhatsApp From"><input className={inputClass} value={form.whatsappFrom} onChange={(event) => setForm({ ...form, whatsappFrom: event.target.value })} placeholder="whatsapp:+14155238886" /></Field>
           <Field label="Webhook URL"><input className={inputClass} value={form.webhookUrl} onChange={(event) => setForm({ ...form, webhookUrl: event.target.value })} placeholder="/api/twilio/webhook" /></Field>
           <Field label="Status callback URL"><input className={inputClass} value={form.statusCallbackUrl} onChange={(event) => setForm({ ...form, statusCallbackUrl: event.target.value })} placeholder="/api/twilio/status" /></Field>

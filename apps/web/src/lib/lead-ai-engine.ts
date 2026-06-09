@@ -236,6 +236,17 @@ function deterministicReply(context: LeadAiRuntimeContext, purpose: LeadAiReplyP
   };
   const question = missing ? questions[missing] || "What's the next detail I should know?" : "Would you like me to route this to the right sales owner?";
 
+  const asksAboutServices = /\b(service|services|offer|do you do)\b/i.test(inboundText);
+  if (asksAboutServices && ownerBusiness.services.length > 0) {
+    return {
+      reply: `We offer ${ownerBusiness.services.join(", ")}. ${question}`,
+      extractedFields: {},
+      shouldEscalate: false,
+      confidence: 0.6,
+      provider: "deterministic"
+    };
+  }
+
   const knownLine = company && need
     ? `${company} is looking at ${need}.`
     : company
