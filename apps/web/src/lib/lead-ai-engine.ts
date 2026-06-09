@@ -257,9 +257,16 @@ function deterministicReply(context: LeadAiRuntimeContext, purpose: LeadAiReplyP
   }
 
   const prefix = company || need ? "Got it." : "I can help with your business enquiries.";
+  const initialPrefix = company && need
+    ? `I see you are with ${company} and looking at ${need}.`
+    : company
+      ? `I see you are with ${company}.`
+      : need
+      ? `I see you are looking at ${need}.`
+      : "I can help with your business enquiries.";
 
   const reply = purpose === "initial_outbound"
-    ? `Hi ${firstName}, this is ${ownerBusiness.externalIdentity}. ${prefix} ${question}`
+    ? `Hi ${firstName}, this is ${ownerBusiness.externalIdentity}. ${initialPrefix} ${question}`
     : `${prefix} ${question}`;
 
   return { reply: sanitizeLeadFacingReply(reply, context), extractedFields: {}, nextMissingField: missing, shouldEscalate: false, confidence: 0.55, provider: "deterministic" };
