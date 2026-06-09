@@ -1,8 +1,9 @@
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
-import { Bell, Bot, Brain, Building2, Search, User } from "lucide-react";
+import { Bell, Bot, Brain, Building2, MessageCircle, Search, User } from "lucide-react";
 import { SettingsConsole } from "@/components/settings-console";
 import { getCurrentSession } from "@/lib/auth";
+import { getWorkspaceTwilioSettingsSummary, type WorkspaceTwilioSettingsSummary } from "@/lib/twilio-settings-store";
 import {
   getAiWorkspaceSettings,
   getNotificationPreferences,
@@ -20,13 +21,14 @@ type SettingsPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
-type SettingsSection = "profile" | "workspace" | "ai" | "agents" | "notifications";
+type SettingsSection = "profile" | "workspace" | "ai" | "agents" | "twilio" | "notifications";
 
 const groups: Array<{ id: SettingsSection; label: string; icon: LucideIcon }> = [
   { id: "profile", label: "Profile", icon: User },
   { id: "workspace", label: "Workspace", icon: Building2 },
   { id: "ai", label: "AI", icon: Brain },
   { id: "agents", label: "Agents", icon: Bot },
+  { id: "twilio", label: "Twilio", icon: MessageCircle },
   { id: "notifications", label: "Notifications", icon: Bell }
 ];
 
@@ -59,6 +61,11 @@ const sectionSummaries: Record<SettingsSection, {
     primaryHref: "/app/team",
     primaryLabel: "Open teamspace"
   },
+  twilio: {
+    eyebrow: "Settings / Twilio",
+    title: "Twilio WhatsApp",
+    detail: "Workspace WhatsApp credentials, simulator fallback, and webhook callback details for live inbound and outbound messages."
+  },
   notifications: {
     eyebrow: "Settings / Notifications",
     title: "Notification preferences",
@@ -86,19 +93,21 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   const section = sectionSummaries[activeSection];
   const session = await getCurrentSession();
   const scope = session ? { tenantId: session.tenantId, ownerId: session.id } : undefined;
-  const [profile, workspace, ai, notifications] = scope
+  const [profile, workspace, ai, notifications, twilio] = scope
     ? await Promise.all([
         getOperatorProfileSettings(scope),
         getWorkspaceBusinessSettings(scope),
         getAiWorkspaceSettings(scope),
-        getNotificationPreferences(scope)
+        getNotificationPreferences(scope),
+        getWorkspaceTwilioSettingsSummary(scope)
       ])
     : ([
         undefined,
         undefined,
         undefined,
+        undefined,
         undefined
-      ] as [OperatorKnowledgeProfile | undefined, WorkspaceBusinessSettings | undefined, AiWorkspaceSettings | undefined, NotificationPreferences | undefined]);
+      ] as [OperatorKnowledgeProfile | undefined, WorkspaceBusinessSettings | undefined, AiWorkspaceSettings | undefined, NotificationPreferences | undefined, WorkspaceTwilioSettingsSummary | undefined]);
 
   return (
     <div className="grid h-full min-h-0 min-w-0 grid-cols-12 gap-px overflow-hidden bg-border">
@@ -155,6 +164,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
               workspace={workspace}
               ai={ai}
               notifications={notifications}
+              twilio={twilio}
               emailConfigured={emailConfigured()}
             />
           ) : (

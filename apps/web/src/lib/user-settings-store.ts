@@ -26,6 +26,7 @@ export type OperatorKnowledgeProfile = {
 };
 
 export type WorkspaceBusinessSettings = {
+  leadMode: "b2b" | "b2c";
   businessName: string;
   industry: string;
   website: string;
@@ -167,6 +168,7 @@ export function defaultOperatorProfile(): OperatorKnowledgeProfile {
 
 export function defaultWorkspaceSettings(): WorkspaceBusinessSettings {
   return {
+    leadMode: "b2b",
     businessName: "Leadsy workspace",
     industry: "Sales operations",
     website: "",
@@ -254,6 +256,10 @@ function bool(value: unknown, fallback: boolean) {
   return typeof value === "boolean" ? value : fallback;
 }
 
+function leadMode(value: unknown, fallback: WorkspaceBusinessSettings["leadMode"] = "b2b") {
+  return value === "b2c" || value === "b2b" ? value : fallback;
+}
+
 function text(value: unknown, fallback = "") {
   return typeof value === "string" ? value.trim() : fallback;
 }
@@ -278,7 +284,12 @@ function normalizeProfile(value?: Partial<OperatorKnowledgeProfile>): OperatorKn
 
 function normalizeWorkspace(value?: Partial<WorkspaceBusinessSettings>): WorkspaceBusinessSettings {
   const defaults = defaultWorkspaceSettings();
+  const mode = leadMode(value?.leadMode, defaults.leadMode);
+  const defaultQualificationFields = mode === "b2c"
+    ? ["name", "phone", "email", "budget"]
+    : defaults.qualificationFields;
   return {
+    leadMode: mode,
     businessName: text(value?.businessName, defaults.businessName),
     industry: text(value?.industry, defaults.industry),
     website: text(value?.website, defaults.website),
@@ -286,7 +297,7 @@ function normalizeWorkspace(value?: Partial<WorkspaceBusinessSettings>): Workspa
     services: uniqueStrings(value?.services, defaults.services),
     leadSources: uniqueStrings(value?.leadSources, defaults.leadSources),
     pipelineStages: uniqueStrings(value?.pipelineStages, defaults.pipelineStages),
-    qualificationFields: uniqueStrings(value?.qualificationFields, defaults.qualificationFields),
+    qualificationFields: uniqueStrings(value?.qualificationFields, defaultQualificationFields),
     assignmentDefaults: text(value?.assignmentDefaults, defaults.assignmentDefaults),
     followUpRules: uniqueStrings(value?.followUpRules, defaults.followUpRules),
     timezone: text(value?.timezone, defaults.timezone),

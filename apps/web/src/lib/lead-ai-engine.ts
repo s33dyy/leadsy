@@ -164,38 +164,12 @@ export function buildOwnerBusinessContext(context: Pick<LeadAiContext, "workspac
   };
 }
 
-function workspaceServicePhrase(context: LeadAiContext) {
-  const ownerBusiness = buildOwnerBusinessContext(context);
-  const services = ownerBusiness.services;
-  if (services.length) return services.slice(0, 3).join(", ");
-  if (/content|marketing|seo|linkedin/i.test(`${context.workspace.industry} ${context.workspace.businessName}`)) {
-    return "content marketing";
-  }
-  return "your requirement";
-}
-
-function fieldQuestion(field: string, context: LeadAiContext) {
-  const company = fieldValue(context, "company");
-  const need = fieldValue(context, "need");
-  const servicePhrase = workspaceServicePhrase(context);
-  if (field === "company") return "Which company or brand is this for?";
-  if (field === "need") return `What ${servicePhrase} outcome should we focus on first?`;
-  if (field === "budget") return `What monthly budget range should we plan around${company ? ` for ${company}` : ""}?`;
-  if (field === "timeline") return `When would you like to start${need ? ` with ${need}` : ""}?`;
-  if (field === "authority") return "Who will approve the plan before we move ahead?";
-  return "What is the next detail I should know?";
-}
-
 function nextMissingField(context: LeadAiContext) {
   return coreFields.find((field) => !fieldValue(context, field));
 }
 
 function latestInboundBody(context: LeadAiContext) {
   return [...context.recentMessages].reverse().find((message) => message.direction === "inbound")?.body ?? "";
-}
-
-function asksAboutServices(text: string) {
-  return /\b(services|what do you do|what else|do you offer|offerings|speciali[sz]e|best at)\b/i.test(text);
 }
 
 function oneQuestion(text: string) {
@@ -224,22 +198,10 @@ function deterministicReply(context: LeadAiRuntimeContext, purpose: LeadAiReplyP
   const ownerBusiness = buildOwnerBusinessContext(context);
   const company = fieldValue(context, "company");
   const need = fieldValue(context, "need");
-  const servicePhrase = workspaceServicePhrase(context);
-  const serviceList = ownerBusiness.services.length ? ownerBusiness.services.slice(0, 4).join(", ") : servicePhrase;
   const missing = nextMissingField(context);
-  const knownLine = company && need
-    ? `${company} is looking at ${need}.`
-    : company
-      ? `This is for ${company}.`
-      : need
-      ? `You are looking at ${need}.`
-      : `I can help with ${servicePhrase}.`;
 
-  if (asksAboutServices(latestInboundBody(context))) {
-    const reply = `${ownerBusiness.businessName === "the business" ? "We" : ownerBusiness.businessName} can help with ${serviceList}. ${missing && missing !== "need" ? fieldQuestion(missing, context) : "What outcome should we focus on first?"}`;
-    return { reply: sanitizeLeadFacingReply(reply, context), extractedFields: {}, nextMissingField: missing, shouldEscalate: false, confidence: 0.58, provider: "deterministic" };
-  }
-
+  // Minimal fallback: only used when AI is unavailable
+  // The real intelligence should come from OpenRouter/AI models
   if (purpose === "qualified_handoff") {
     const reply = options.slotText
       ? `Thanks ${firstName}. ${options.ownerName ?? "Our sales owner"} has time at ${options.slotText}. Which slot works for you?`
@@ -247,10 +209,45 @@ function deterministicReply(context: LeadAiRuntimeContext, purpose: LeadAiReplyP
     return { reply: sanitizeLeadFacingReply(reply, context), extractedFields: {}, shouldEscalate: false, confidence: 0.62, provider: "deterministic" };
   }
 
-  const question = missing ? fieldQuestion(missing, context) : "Would you like me to route this to the right sales owner?";
+  // Avoid the broken loop pattern: never repeat "which company" after personal signal
+  const inboundText = latestInboundBody(context);
+  const hasPersonalSignal = /\b(this is for me|this is personal|personally|for myself|my own)\b/i.test(inboundText);
+
+  if (hasPersonalSignal && missing === "company") {
+    // Skip company question, ask for need instead
+    const extractedName = inboundText.match(/\b(this is for|for) ([A-Z][a-z]{2,})\b/i)?.[2];
+    return {
+      reply: `Got it${extractedName ? `, thanks ${extractedName}` : ""}. What outcome or challenge are you looking to solve?`,
+      extractedFields: { name: extractedName || "", company: "Personal/Individual" },
+      nextMissingField: "need",
+      shouldEscalate: false,
+      confidence: 0.6,
+      provider: "deterministic"
+    };
+  }
+
+  // Default fallback: ask for the next missing field, but vary the question
+  const questions: Record<string, string> = {
+    company: "Which company or brand is this for?",
+    need: "What outcome are you hoping to achieve?",
+    budget: "What budget range should we plan around?",
+    timeline: "When would you like to get started?",
+    authority: "Who will approve the plan before we move ahead?"
+  };
+  const question = missing ? questions[missing] || "What's the next detail I should know?" : "Would you like me to route this to the right sales owner?";
+
+  const knownLine = company && need
+    ? `${company} is looking at ${need}.`
+    : company
+      ? `This is for ${company}.`
+      : need
+      ? `You are looking at ${need}.`
+      : `I can help with your business enquiries.`;
+
   const reply = purpose === "initial_outbound"
     ? `Hi ${firstName}, this is ${ownerBusiness.externalIdentity}. ${knownLine} ${question}`
     : `${knownLine} ${question}`;
+
   return { reply: sanitizeLeadFacingReply(reply, context), extractedFields: {}, nextMissingField: missing, shouldEscalate: false, confidence: 0.55, provider: "deterministic" };
 }
 
@@ -385,7 +382,7 @@ function openRouterRequestBody(input: {
       {
         role: "system",
         content:
-          "You are a human-sounding sales teammate for the owner business in ownerBusiness. Speak as that business or team, never as the CRM platform or as an AI product. Answer the lead's direct question first, then ask at most one clear next question. Use only the provided CRM context. Extract qualification facts from the latest conversation. Do not mention internal automation, routing, OpenRouter, model details, CRM routing, assignment, qualification, bookings, or the platform name unless the lead explicitly asks about them. Never invent facts. Return JSON only."
+          "You are a human-sounding sales teammate for the owner business. Speak as that business or team, never as a CRM platform or AI product.\n\nRules:\n1. If the lead asks about your services/products, answer with real business info from the workspace/operator context. If no services are provided, say 'A human teammate can share our service details - what outcome are you looking to achieve?' and ask ONE qualifying question.\n2. Never重复 the same question. If the lead says 'this is for me' or 'this is for [name]', do NOT ask 'which company' again. Move to the next missing field (need, budget, timeline, etc.)\n3. Detect personal signals like 'this is for me, [name]' - extract the name and treat it as valid identity. Do not loop asking for company.\n4. Detect company signals like 'this is for AlaskaTourism' - treat as valid company, move to next question.\n5. Answer the lead's direct question first, then ask at most one clear next question.\n6. Use only the provided CRM context. Never invent facts.\n7. Do not mention internal automation, routing, AI, or platform names unless explicitly asked.\n8. Return JSON only with fields: reply, extractedFields, crmNote, nextMissingField, shouldEscalate, confidence."
       },
       {
         role: "user",

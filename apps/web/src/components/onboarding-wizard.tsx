@@ -149,7 +149,9 @@ function textFromProfile(profile: Record<string, unknown> | undefined, key: stri
 }
 
 function workspaceConfigurationFromProfile(profile: OnboardingProfile) {
+  const leadMode = profile.leadMode === "b2c" ? "b2c" : "b2b";
   return {
+    leadMode,
     businessName: profile.businessName,
     industry: profile.industry,
     teamSize: profile.teamSize,
@@ -197,6 +199,7 @@ export function OnboardingWizard({ session }: { session: SessionUser }) {
     assignmentPreferences: textFromProfile(initialProfile, "assignmentPreferences"),
     followUpPreferences: textFromProfile(initialProfile, "followUpPreferences"),
     services: textFromProfile(initialProfile, "services"),
+    leadMode: textFromProfile(initialProfile, "leadMode") || "b2b",
     markets: textFromProfile(initialProfile, "markets"),
     website: textFromProfile(initialProfile, "website"),
     targetQuestion0: textFromProfile(initialProfile, "targetQuestion0"),
@@ -437,6 +440,13 @@ export function OnboardingWizard({ session }: { session: SessionUser }) {
                 <input value={profile.businessName} onChange={(event) => updateField("businessName", event.target.value)} aria-invalid={Boolean(fieldErrors.businessName)} className={inputClass} />
                 {fieldErrors.businessName ? <span className="mt-2 block text-xs text-rose-200">{fieldErrors.businessName}</span> : null}
               </label>
+              <label className="block">
+                <span className="mono text-[10px] uppercase text-[var(--muted)]">Lead mode</span>
+                <select value={profile.leadMode} onChange={(event) => updateField("leadMode", event.target.value)} className={inputClass}>
+                  <option value="b2b">B2B leads</option>
+                  <option value="b2c">B2C / student leads</option>
+                </select>
+              </label>
               <MultiSelectField
                 keyName="industry"
                 label="Industry"
@@ -496,7 +506,9 @@ export function OnboardingWizard({ session }: { session: SessionUser }) {
           {step === 2 ? (
             <div className="space-y-4">
               <p className="text-sm leading-6 text-[var(--muted-2)]">
-                Leadsy uses these qualifying answers as business context for worker research, summaries, and task drafting.
+                {profile.leadMode === "b2c"
+                  ? "Leadsy uses these answers as student and consumer context for qualification, summaries, and handoff tasks."
+                  : "Leadsy uses these qualifying answers as business context for worker research, summaries, and task drafting."}
               </p>
               {targetFields.map(({ key, label }) => {
                 return (

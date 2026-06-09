@@ -11,8 +11,9 @@ import type {
   OperatorKnowledgeProfile,
   WorkspaceBusinessSettings
 } from "@/lib/user-settings-store";
+import type { WorkspaceTwilioSettingsSummary } from "@/lib/twilio-settings-store";
 
-type SettingsSection = "profile" | "workspace" | "ai" | "notifications";
+type SettingsSection = "profile" | "workspace" | "ai" | "twilio" | "notifications";
 
 type SettingsConsoleProps = {
   activeSection: SettingsSection;
@@ -20,6 +21,7 @@ type SettingsConsoleProps = {
   workspace: WorkspaceBusinessSettings;
   ai: AiWorkspaceSettings;
   notifications: NotificationPreferences;
+  twilio?: WorkspaceTwilioSettingsSummary;
   emailConfigured: boolean;
 };
 
@@ -172,11 +174,13 @@ export function SettingsConsole({
   workspace,
   ai,
   notifications,
+  twilio,
   emailConfigured
 }: SettingsConsoleProps) {
   if (activeSection === "profile") return <ProfileSettings initial={profile} />;
   if (activeSection === "workspace") return <WorkspaceSettings initial={workspace} />;
   if (activeSection === "ai") return <AiSettings initial={ai} />;
+  if (activeSection === "twilio") return <TwilioSettings initial={twilio} />;
   return <NotificationSettings initial={notifications} emailConfigured={emailConfigured} />;
 }
 
@@ -278,6 +282,23 @@ function WorkspaceSettings({ initial }: { initial: WorkspaceBusinessSettings }) 
           <SaveButton pending={pending} />
         </div>
         <div className="mt-5 grid gap-4 md:grid-cols-2">
+          <Field label="Lead mode">
+            <select
+              className={inputClass}
+              value={form.leadMode}
+              onChange={(event) => {
+                const leadMode = event.target.value as WorkspaceBusinessSettings["leadMode"];
+                setForm({
+                  ...form,
+                  leadMode,
+                  qualificationFields: leadMode === "b2c" ? ["name", "phone", "email", "budget"] : form.qualificationFields
+                });
+              }}
+            >
+              <option value="b2b">B2B leads</option>
+              <option value="b2c">B2C / student leads</option>
+            </select>
+          </Field>
           <Field label="Business name"><input className={inputClass} value={form.businessName} onChange={(event) => setForm({ ...form, businessName: event.target.value })} /></Field>
           <Field label="Industry"><input className={inputClass} value={form.industry} onChange={(event) => setForm({ ...form, industry: event.target.value })} /></Field>
           <Field label="Website"><input className={inputClass} value={form.website} onChange={(event) => setForm({ ...form, website: event.target.value })} /></Field>
@@ -293,6 +314,99 @@ function WorkspaceSettings({ initial }: { initial: WorkspaceBusinessSettings }) 
           <Field label="Calendar defaults"><textarea className={textAreaClass} value={form.calendarDefaults} onChange={(event) => setForm({ ...form, calendarDefaults: event.target.value })} /></Field>
         </div>
         <div className="mt-4"><StatusLine status={status} /></div>
+      </section>
+    </form>
+  );
+}
+
+function TwilioSettings({ initial }: { initial?: WorkspaceTwilioSettingsSummary }) {
+  const [summary, setSummary] = useState<WorkspaceTwilioSettingsSummary>(initial ?? { configured: false, enabled: false });
+  const [form, setForm] = useState({
+    enabled: initial?.enabled ?? false,
+    accountSid: "",
+    authToken: "",
+    whatsappFrom: initial?.whatsappFrom ?? "",
+    webhookUrl: initial?.webhookUrl ?? "",
+    statusCallbackUrl: initial?.statusCallbackUrl ?? ""
+  });
+  const [status, setStatus] = useState("");
+  const [pending, setPending] = useState(false);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setPending(true);
+    try {
+      const saved = await patchJson<WorkspaceTwilioSettingsSummary>("/api/settings/twilio", form, "twilio");
+      setSummary(saved);
+      setForm({
+        enabled: saved.enabled,
+        accountSid: "",
+        authToken: "",
+        whatsappFrom: saved.whatsappFrom ?? "",
+        webhookUrl: saved.webhookUrl ?? "",
+        statusCallbackUrl: saved.statusCallbackUrl ?? ""
+      });
+      setStatus(saved.enabled ? "Twilio config saved. Live WhatsApp transport is enabled." : "Twilio config saved. Simulator fallback remains active.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not save Twilio settings.");
+    } finally {
+      setTimeout(() => setPending(false), 500);
+    }
+  }
+
+  async function clearConfig() {
+    setPending(true);
+    try {
+      const cleared = await patchJson<WorkspaceTwilioSettingsSummary>("/api/settings/twilio", { clear: true }, "twilio");
+      setSummary(cleared);
+      setForm({ enabled: false, accountSid: "", authToken: "", whatsappFrom: "", webhookUrl: "", statusCallbackUrl: "" });
+      setStatus("Twilio config cleared. Simulator fallback is active.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not clear Twilio settings.");
+    } finally {
+      setTimeout(() => setPending(false), 500);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="mt-6 space-y-5">
+      <section className="rounded-[8px] border border-border bg-background p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-[15px] font-semibold">Twilio WhatsApp</h2>
+            <p className="mt-1 text-[12.5px] leading-6 text-muted-foreground">Use simulator fallback until workspace Twilio credentials are saved and enabled.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge tone={summary.enabled ? "teal" : "neutral"}>{summary.enabled ? "Live Twilio" : "Simulator fallback"}</Badge>
+            <SaveButton pending={pending} />
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-4 md:grid-cols-2">
+          <Field label="Transport mode">
+            <label className="flex h-10 items-center gap-2 rounded-[6px] border border-border bg-background px-3 text-sm">
+              <input type="checkbox" checked={form.enabled} onChange={(event) => setForm({ ...form, enabled: event.target.checked })} />
+              Enable live Twilio when configured
+            </label>
+          </Field>
+          <Field label="Saved config">
+            <div className="flex h-10 items-center rounded-[6px] border border-border bg-background px-3 text-sm text-muted-foreground">
+              {summary.configured ? `Saved ${summary.accountSid ?? "account"} · token ${summary.maskedAuthToken ?? "saved"}` : "No Twilio config saved"}
+            </div>
+          </Field>
+          <Field label="Account SID"><input className={inputClass} value={form.accountSid} onChange={(event) => setForm({ ...form, accountSid: event.target.value })} placeholder={summary.accountSid ?? "AC..."} /></Field>
+          <Field label="Token"><input type="password" className={inputClass} value={form.authToken} onChange={(event) => setForm({ ...form, authToken: event.target.value })} placeholder={summary.maskedAuthToken ? "Leave blank to keep saved token" : "Paste token"} /></Field>
+          <Field label="WhatsApp From"><input className={inputClass} value={form.whatsappFrom} onChange={(event) => setForm({ ...form, whatsappFrom: event.target.value })} placeholder="whatsapp:+14155238886" /></Field>
+          <Field label="Webhook URL"><input className={inputClass} value={form.webhookUrl} onChange={(event) => setForm({ ...form, webhookUrl: event.target.value })} placeholder="/api/twilio/webhook" /></Field>
+          <Field label="Status callback URL"><input className={inputClass} value={form.statusCallbackUrl} onChange={(event) => setForm({ ...form, statusCallbackUrl: event.target.value })} placeholder="/api/twilio/status" /></Field>
+        </div>
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <StatusLine status={status} />
+          <button type="button" onClick={clearConfig} disabled={pending || !summary.configured} className="inline-flex h-9 items-center gap-2 rounded-[6px] border border-border bg-surface-2 px-3 text-sm hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50">
+            <X className="h-4 w-4" />
+            Clear Twilio config
+          </button>
+        </div>
       </section>
     </form>
   );

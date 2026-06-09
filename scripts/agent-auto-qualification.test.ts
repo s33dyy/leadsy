@@ -108,6 +108,92 @@ async function main() {
     assert.equal(assignedAiRun.memberId, retainerAi.id, "current full AI assignee should handle new inbound messages");
     assert.doesNotMatch(assignedAiRun.replyBody ?? "", /Leadsy|Qualification AI/i);
 
+    const servicesInbound = await saveTwilioInboundMessage({
+      ...scope,
+      source: "twilio_simulator",
+      messageSid: "SIMIN_SERVICES_1",
+      from: "whatsapp:+919000000007",
+      to: "whatsapp:leadsy-simulator",
+      profileName: "Pratik",
+      body: "I want to know more about your services",
+      receivedAt: "2026-06-08T04:30:00.000Z"
+    });
+    const servicesRun = await runAgentForInboundLead({
+      ...scope,
+      leadId: servicesInbound.lead.id,
+      conversationId: servicesInbound.conversation.id,
+      triggerMessageId: servicesInbound.saved[0].id,
+      now: "2026-06-08T04:31:00.000Z"
+    });
+    assert.equal(servicesRun.action, "auto_replied");
+    assert.match(servicesRun.replyBody ?? "", /help|service|offer|support|work with/i, "service questions should get an educational answer");
+    assert.doesNotMatch(servicesRun.replyBody ?? "", /^We can help with your requirement\. Which company or brand is this for\?$/i);
+
+    const personalInbound = await saveTwilioInboundMessage({
+      ...scope,
+      source: "twilio_simulator",
+      messageSid: "SIMIN_SERVICES_2",
+      from: "whatsapp:+919000000007",
+      to: "whatsapp:leadsy-simulator",
+      profileName: "Pratik",
+      body: "this is for me, pratik",
+      receivedAt: "2026-06-08T04:32:00.000Z"
+    });
+    const personalRun = await runAgentForInboundLead({
+      ...scope,
+      leadId: personalInbound.lead.id,
+      conversationId: personalInbound.conversation.id,
+      triggerMessageId: personalInbound.saved[0].id,
+      now: "2026-06-08T04:33:00.000Z"
+    });
+    assert.equal(personalRun.action, "auto_replied");
+    assert.doesNotMatch(personalRun.replyBody ?? "", /Which company or brand is this for\?/i, "personal enquiries should not loop on company");
+
+    const repeatedServicesInbound = await saveTwilioInboundMessage({
+      ...scope,
+      source: "twilio_simulator",
+      messageSid: "SIMIN_SERVICES_3",
+      from: "whatsapp:+919000000007",
+      to: "whatsapp:leadsy-simulator",
+      profileName: "Pratik",
+      body: "i want to know more about your services",
+      receivedAt: "2026-06-08T04:34:00.000Z"
+    });
+    const repeatedServicesRun = await runAgentForInboundLead({
+      ...scope,
+      leadId: repeatedServicesInbound.lead.id,
+      conversationId: repeatedServicesInbound.conversation.id,
+      triggerMessageId: repeatedServicesInbound.saved[0].id,
+      now: "2026-06-08T04:35:00.000Z"
+    });
+    assert.equal(repeatedServicesRun.action, "auto_replied");
+    assert.notEqual(repeatedServicesRun.replyBody, servicesRun.replyBody, "repeated service questions should not receive the identical looped reply");
+
+    const companyInbound = await saveTwilioInboundMessage({
+      ...scope,
+      source: "twilio_simulator",
+      messageSid: "SIMIN_SERVICES_4",
+      from: "whatsapp:+919000000007",
+      to: "whatsapp:leadsy-simulator",
+      profileName: "Pratik",
+      body: "this is for AlaskaTourism",
+      receivedAt: "2026-06-08T04:36:00.000Z"
+    });
+    const companyRun = await runAgentForInboundLead({
+      ...scope,
+      leadId: companyInbound.lead.id,
+      conversationId: companyInbound.conversation.id,
+      triggerMessageId: companyInbound.saved[0].id,
+      now: "2026-06-08T04:37:00.000Z"
+    });
+    assert(["auto_replied", "assigned_to_pipeline_owner", "no_action"].includes(companyRun.action));
+    assert.notEqual(companyRun.action, "skipped_loop_guard", "new inbound company details should not be swallowed by the loop guard");
+    const companyTasks = await listCrmFollowUpTasks(scope, { leadId: companyInbound.lead.id });
+    assert(
+      companyRun.action !== "no_action" || companyTasks.length > 0,
+      "if the agent does not reply after company details, the lead should still get a visible task"
+    );
+
     const duplicate = await runAgentForInboundLead({
       ...scope,
       leadId: inbound.lead.id,
