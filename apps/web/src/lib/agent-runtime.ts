@@ -194,6 +194,8 @@ async function sendWithSimulatorFallback(input: Scope & {
   body: string;
   contact: LeadAiContext["lead"]["contact"];
   businessName?: string;
+  sentAt?: string;
+  receivedAt?: string;
 }) {
   try {
     return await sendAndStoreWhatsAppMessage(input);
@@ -296,7 +298,9 @@ export async function sendInitialAiOutboundForLead(input: Scope & {
       to,
       body,
       contact: lead.contact,
-      businessName: context.workspace.businessName
+      businessName: context.workspace.businessName,
+      sentAt: input.now,
+      receivedAt: input.now
     });
   } catch (error) {
     return {
@@ -338,24 +342,6 @@ export async function sendInitialAiOutboundForLead(input: Scope & {
   return { action: "sent", memberId: member.id, leadId: lead.id, body, transport };
 }
 
-async function appendAgentReply(input: Scope & {
-  leadId: string;
-  to?: string;
-  body: string;
-  now: string;
-}) {
-  return appendTwilioOutboundMessage({
-    ...input,
-    messageSid: `SIMOUT_${crypto.randomUUID()}`,
-    from: "whatsapp:leadsy-simulator",
-    to: input.to?.startsWith("whatsapp:") ? input.to : `whatsapp:${input.to ?? "+0000000000"}`,
-    source: "twilio_simulator",
-    body: input.body,
-    sentAt: input.now,
-    receivedAt: input.now,
-    deliveryStatus: "simulated_delivered"
-  });
-}
 
 async function guardAlreadyHandled(input: AgentRunInput) {
   const existing = await listTeamThreadMessages({ ...input, leadId: input.leadId });
@@ -530,7 +516,18 @@ export async function runAgentForInboundLead(input: AgentRunInput): Promise<Agen
         reason: "Qualification threshold reached."
       });
     }
-    await appendAgentReply({ ...input, leadId: input.leadId, to: contactPhone, body: replyBody, now });
+    if (contactPhone) {
+      await sendWithSimulatorFallback({
+        ...input,
+        leadId: input.leadId,
+        to: contactPhone,
+        body: replyBody,
+        contact: lead.contact,
+        businessName: context.workspace.businessName,
+        sentAt: input.now,
+        receivedAt: input.now
+      });
+    }
     await postTeamThreadMessage({
       ...input,
       authorMemberId: agent.id,
@@ -608,7 +605,18 @@ export async function runAgentForInboundLead(input: AgentRunInput): Promise<Agen
         reason: "Qualification threshold reached."
       });
     }
-    await appendAgentReply({ ...input, leadId: input.leadId, to: contactPhone, body: replyBody, now });
+    if (contactPhone) {
+      await sendWithSimulatorFallback({
+        ...input,
+        leadId: input.leadId,
+        to: contactPhone,
+        body: replyBody,
+        contact: lead.contact,
+        businessName: context.workspace.businessName,
+        sentAt: input.now,
+        receivedAt: input.now
+      });
+    }
     await postTeamThreadMessage({
       ...input,
       authorMemberId: agent.id,
@@ -635,7 +643,18 @@ export async function runAgentForInboundLead(input: AgentRunInput): Promise<Agen
       replyBody
     };
   }
-  await appendAgentReply({ ...input, leadId: input.leadId, to: contactPhone, body: replyBody, now });
+  if (contactPhone) {
+    await sendWithSimulatorFallback({
+      ...input,
+      leadId: input.leadId,
+      to: contactPhone,
+      body: replyBody,
+      contact: lead.contact,
+      businessName: context.workspace.businessName,
+      sentAt: input.now,
+      receivedAt: input.now
+    });
+  }
   await editLeadKnowledgeRecord({
     ...input,
     leadId: input.leadId,

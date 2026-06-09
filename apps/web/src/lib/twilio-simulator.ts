@@ -80,6 +80,8 @@ export async function sendAndStoreSimulatedWhatsAppMessage(input: Scope & {
   leadId?: string;
   body?: string;
   contact?: LeadKnowledgeContact;
+  sentAt?: string;
+  receivedAt?: string;
 }): Promise<GenericWhatsAppSendResult & Awaited<ReturnType<typeof appendTwilioOutboundMessage>>> {
   const to = normalizeSimulatorWhatsAppAddress(input.to);
   if (!to) throw new Error("A valid simulated WhatsApp recipient is required.");
@@ -96,6 +98,8 @@ export async function sendAndStoreSimulatedWhatsAppMessage(input: Scope & {
     leadId: input.leadId,
     contact: input.contact,
     deliveryStatus: "simulated_delivered",
+    sentAt: input.sentAt,
+    receivedAt: input.receivedAt,
     raw: {
       source: "twilio_simulator",
       simulatorHandle: twilioSimulatorHandle,

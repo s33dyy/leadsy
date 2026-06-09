@@ -276,16 +276,9 @@ function deterministicReply(context: LeadAiRuntimeContext, purpose: LeadAiReplyP
   }
 
   const prefix = company || need || Object.keys(extracted).length > 0 ? "Got it." : "I can help with your business enquiries.";
-  const initialPrefix = company && need
-    ? `I see you are with ${company} and looking at ${need}.`
-    : company
-      ? `I see you are with ${company}.`
-      : need
-      ? `I see you are looking at ${need}.`
-      : "I can help with your business enquiries.";
 
   const reply = purpose === "initial_outbound"
-    ? `Hi ${firstName}, this is ${ownerBusiness.externalIdentity}. ${initialPrefix} ${question}`
+    ? `Hi ${firstName}, this is ${ownerBusiness.externalIdentity}. ${prefix} ${question}`
     : `${prefix} ${question}`;
 
   return { reply: sanitizeLeadFacingReply(reply, context), extractedFields: extracted, nextMissingField: nextMissing, shouldEscalate: false, confidence: 0.55, provider: "deterministic" };
@@ -385,7 +378,7 @@ function normalizeExtractedFields(value: unknown) {
   return Object.fromEntries(
     Object.entries(record)
       .map(([key, item]) => [key, clean(item)])
-      .filter(([, item]) => item)
+      .filter(([, item]) => item && !/^not yet collected$/i.test(item) && !/^none$/i.test(item))
   );
 }
 

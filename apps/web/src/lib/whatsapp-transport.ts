@@ -25,6 +25,8 @@ export async function sendAndStoreWhatsAppMessage(input: Scope & {
   contact?: LeadKnowledgeContact;
   contentSid?: string;
   contentVariables?: Record<string, string>;
+  sentAt?: string;
+  receivedAt?: string;
 }): Promise<WhatsAppSendResult> {
   const sender = await getWorkspaceWhatsAppSender(input);
   if (sender?.transportMode === "simulator") {
@@ -34,7 +36,9 @@ export async function sendAndStoreWhatsAppMessage(input: Scope & {
       leadId: input.leadId,
       to: input.to,
       body: input.body,
-      contact: input.contact
+      contact: input.contact,
+      sentAt: input.sentAt,
+      receivedAt: input.receivedAt
     });
   }
 

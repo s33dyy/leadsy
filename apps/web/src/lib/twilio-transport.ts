@@ -211,6 +211,8 @@ export async function sendAndStoreTwilioWhatsAppMessage(input: Scope & {
   contact?: LeadKnowledgeContact;
   contentSid?: string;
   contentVariables?: Record<string, string>;
+  sentAt?: string;
+  receivedAt?: string;
 }) {
   const sender = await resolveOutboundSender(input);
   const twilio = await sendTwilioWhatsAppMessage({
@@ -232,6 +234,8 @@ export async function sendAndStoreTwilioWhatsAppMessage(input: Scope & {
     deliveryStatus: twilio.status,
     contentSid: input.contentSid || process.env.TWILIO_CONTENT_SID?.trim(),
     contentVariables: input.contentVariables,
+    sentAt: input.sentAt,
+    receivedAt: input.receivedAt,
     raw: twilio.raw
   });
   return { twilio, ...stored };

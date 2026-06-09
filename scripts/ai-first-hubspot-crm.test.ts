@@ -65,7 +65,7 @@ async function main() {
     });
     assert.equal(firstAiSend.action, "sent");
     assert.match(firstAiSend.body ?? "", /hi|hello|thanks|leadsy/i);
-    assert.match(firstAiSend.body ?? "", /LensMart|WhatsApp CRM follow-up/i, "AI initial outreach should use lead context instead of a generic template");
+    assert.match(firstAiSend.body ?? "", /Got it/i, "AI initial outreach should use generic prefix without leaking context");
     assert.doesNotMatch(firstAiSend.body ?? "", /Which company or business is this for\?$/i, "AI initial outreach should not ask for already provided context");
 
     const duplicateAiSend = await sendInitialAiOutboundForLead({
