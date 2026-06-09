@@ -66,6 +66,7 @@ async function main() {
     "Authority",
     "Location",
     "Company",
+    "Email",
     "Service Interest",
     "Intent",
     "Risk",
@@ -113,6 +114,43 @@ async function main() {
   assert(history.some((event) => event.whatChanged === "Timeline: Not Yet Collected → 30 Days"));
   assert(history.some((event) => event.whatChanged.startsWith("Qualification Score:")));
   assert(history.every((event) => event.when && event.whyScoreChanged), "History events should explain when and why score changed");
+
+  const b2cLead = {
+    ...baseLead,
+    id: "lead_b2c_test",
+    contact: { displayName: "Ananya Student", phone: "+91 90000 00009", email: "ananya@example.com" },
+    qualificationFields: {
+      name: "Ananya Student",
+      phone: "+91 90000 00009",
+      email: "ananya@example.com",
+      budget: "₹80,000"
+    },
+    facts: ["Workspace lead mode: b2c"],
+    messages: [
+      {
+        ...baseLead.messages[0],
+        id: "msg_b2c_1",
+        body: "Student name: Ananya. Number: +91 90000 00009. Email: ananya@example.com. Budget: ₹80,000."
+      }
+    ],
+    qualificationStage: "qualified"
+  } satisfies LeadKnowledgeRecord;
+  const b2cSummary = buildQualificationSummary(b2cLead, "b2c");
+  assert.equal(b2cSummary.fields.name.state, "collected");
+  assert.equal(b2cSummary.fields.phone.state, "collected");
+  assert.equal(b2cSummary.fields.email.state, "collected");
+  assert.equal(b2cSummary.fields.budget.state, "collected");
+  assert.equal(b2cSummary.score.label, "Very High Intent");
+  assert(b2cSummary.score.explanation.reasons.includes("Student name identified"));
+  assert(b2cSummary.score.explanation.reasons.includes("Email identified"));
+
+  const partialB2cSummary = buildQualificationSummary({
+    ...b2cLead,
+    qualificationFields: { name: "Ananya Student", phone: "+91 90000 00009" },
+    qualificationStage: "collecting"
+  }, "b2c");
+  assert(partialB2cSummary.missingFields.some((field) => field.key === "email"), "B2C missing fields should include email");
+  assert(partialB2cSummary.missingFields.some((field) => field.key === "budget"), "B2C missing fields should include budget");
 }
 
 main().catch((error) => {

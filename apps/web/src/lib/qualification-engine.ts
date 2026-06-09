@@ -10,6 +10,8 @@ export type QualificationFieldSummary = {
   displayValue: string;
 };
 
+export type QualificationMode = "b2b" | "b2c";
+
 export type QualificationScoreSummary = {
   value: number;
   label: QualificationIntentLabel;
@@ -224,7 +226,8 @@ function recommendedActionForLead(lead: LeadKnowledgeRecord): QualificationRecom
   return { action: "Continue qualification", why: "Important fields are still missing or uncertain." };
 }
 
-export function buildQualificationSummary(lead: LeadKnowledgeRecord): QualificationSummary {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function buildQualificationSummary(lead: LeadKnowledgeRecord, _mode: QualificationMode = "b2b"): QualificationSummary {
   const entries = qualificationFieldLabels.map((field) => [field.key, summarizeField(lead, field.key, field.label)] as const);
   const fields = Object.fromEntries(entries) as Record<LeadQualificationFieldKey, QualificationFieldSummary>;
   const score = scoreQualification(lead);

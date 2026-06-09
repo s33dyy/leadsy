@@ -5,23 +5,27 @@ import { join } from "node:path";
 async function main() {
   const root = process.cwd();
   const settingsPage = await readFile(join(root, "apps/web/src/app/app/settings/page.tsx"), "utf8");
-  assert(!settingsPage.includes("getTwilioIntegrationStatus"), "settings page should not read Twilio integration status");
-  assert(!settingsPage.includes("getWorkspaceWhatsAppSender"), "settings page should not read the workspace assigned sender");
-  assert(!settingsPage.includes('id: "twilio"'), "settings navigation should not expose Twilio");
-  for (const label of ["Workspace sender status", "Assigned lead number", "Provisioning detail", "Platform connection status", "Platform account SID", "Platform default sender", "Last webhook", "Last delivery callback"]) {
-    assert(!settingsPage.includes(label), `settings page should not display user-facing ${label}`);
+  const settingsConsole = await readFile(join(root, "apps/web/src/components/settings-console.tsx"), "utf8");
+  const route = await readFile(join(root, "apps/web/src/app/api/settings/twilio/route.ts"), "utf8");
+  const store = await readFile(join(root, "apps/web/src/lib/twilio-settings-store.ts"), "utf8");
+
+  assert(settingsPage.includes('id: "twilio"'), "settings navigation should expose Twilio");
+  assert(settingsPage.includes("getWorkspaceTwilioSettingsSummary"), "settings page should read masked Twilio settings");
+  assert(settingsConsole.includes("TwilioSettings"), "settings console should render a Twilio settings panel");
+  for (const label of ["Twilio WhatsApp", "Simulator fallback", "Account SID", "WhatsApp From", "Webhook URL", "Status callback URL", "Clear Twilio config"]) {
+    assert(settingsConsole.includes(label), `Twilio settings should display ${label}`);
   }
-  assert(!settingsPage.includes("maskTwilioAccountSid"), "settings should not render Twilio SID helpers");
-  assert(!settingsPage.includes("Leadsy assigns each workspace a dedicated WhatsApp lead number"), "settings should not describe Twilio sender infrastructure");
-  assert(!settingsPage.includes("/api/twilio/webhook"), "settings should not show the Twilio inbound webhook route");
-  assert(!settingsPage.includes("/api/twilio/status"), "settings should not show the Twilio status callback route");
-  for (const secretLeak of ["TWILIO_AUTH_TOKEN", "Auth Token", "authToken"]) {
-    assert(!settingsPage.includes(secretLeak), `settings page should not expose ${secretLeak}`);
-  }
+  assert(settingsConsole.includes("/api/settings/twilio"), "Twilio settings should save through the settings API");
+  assert(route.includes("requireApiSession(request, \"crm:write\")"), "Twilio settings updates should require write auth");
+  assert(route.includes("maskWorkspaceTwilioConfig"), "Twilio settings API should return masked config");
+  assert(store.includes("authToken"), "Twilio settings store should persist an auth token server-side");
+  assert(store.includes("maskedAuthToken"), "Twilio settings store should expose only masked token status");
+  assert(!settingsConsole.includes("TWILIO_AUTH_TOKEN"), "Twilio settings UI should not show env secret names");
+  assert(!settingsConsole.includes("authToken:"), "Twilio settings UI should not render raw auth token object keys");
 
   const integrationsPage = await readFile(join(root, "apps/web/src/app/app/integrations/page.tsx"), "utf8");
   assert(integrationsPage.includes("Leadsy WhatsApp"), "integrations page can describe the user-facing WhatsApp channel");
-  assert(!integrationsPage.includes("/app/settings?section=twilio"), "integrations page should not link Twilio to settings");
+  assert(integrationsPage.includes("/app/settings?section=twilio"), "integrations page should link WhatsApp setup to Twilio settings");
   assert(!integrationsPage.includes("TWILIO_AUTH_TOKEN"), "integrations page should not expose Twilio secrets");
 
   const senderRoute = await readFile(join(root, "apps/web/src/app/api/twilio/sender/route.ts"), "utf8");
