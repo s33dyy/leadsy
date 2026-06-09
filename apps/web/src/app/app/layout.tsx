@@ -3,18 +3,20 @@ import { AppShell } from "@/components/app-shell";
 import { requireAgencySession } from "@/lib/auth";
 import { listLeadKnowledgeRecords } from "@/lib/lead-knowledge-store";
 import { ensureDefaultQualificationAgent, listTeamMembers } from "@/lib/teamspace-store";
+import { listCrmFollowUpTasks } from "@/lib/crm-store";
 import { getWorkspaceWhatsAppSender } from "@/lib/workspace-whatsapp-sender-store";
 
 export default async function WorkspaceLayout({ children }: { children: ReactNode }) {
   const session = await requireAgencySession();
   const scope = { tenantId: session.tenantId, ownerId: session.id };
   await ensureDefaultQualificationAgent(scope);
-  const [leads, whatsAppSender, teamMembers] = await Promise.all([
+  const [leads, whatsAppSender, teamMembers, aiTasks] = await Promise.all([
     listLeadKnowledgeRecords({ tenantId: session.tenantId, ownerId: session.id }),
     getWorkspaceWhatsAppSender({ tenantId: session.tenantId, ownerId: session.id }),
-    listTeamMembers(scope)
+    listTeamMembers(scope),
+    listCrmFollowUpTasks(scope, { includeClosed: false, destination: "ai_approvals" })
   ]);
-  const pendingApprovalCount = leads.filter((lead) => lead.crmStatus === "human_review").length;
+  const pendingApprovalCount = leads.filter((lead) => lead.crmStatus === "human_review").length + aiTasks.length;
   return (
     <AppShell
       session={session}

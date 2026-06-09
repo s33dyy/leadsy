@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
-import { ArrowUpRight, Check, Filter, Inbox, Pencil, Search, Sparkles, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ArrowUpRight, Check, Filter, Inbox, Loader2, Pencil, Search, Sparkles, X } from "lucide-react";
 import { Badge } from "@/components/ui";
 
 export type ApprovalConsoleItem = {
@@ -37,11 +37,34 @@ function groupKey(item: ApprovalConsoleItem, groupBy: ApprovalGroupBy) {
 }
 
 export function ApprovalsConsole({ approvals }: { approvals: ApprovalConsoleItem[] }) {
+  const router = useRouter();
   const approvalSearchRef = useRef<HTMLInputElement | null>(null);
   const [query, setQuery] = useState("");
   const [selectedKind, setSelectedKind] = useState<ApprovalKindFilter>("All");
   const [groupBy, setGroupBy] = useState<ApprovalGroupBy>("Kind");
   const [selectedId, setSelectedId] = useState(approvals[0]?.id ?? "");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleApproval(id: string, kind: string, action: "approve" | "reject") {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      const response = await fetch("/api/approvals", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id, kind, action })
+      });
+      if (!response.ok) throw new Error("Approval failed");
+      router.refresh();
+      // Select next item
+      const nextItem = approvals.find((a) => a.id !== id);
+      if (nextItem) setSelectedId(nextItem.id);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   useEffect(() => {
     function handleApprovalsShortcut(event: KeyboardEvent) {
@@ -167,10 +190,20 @@ export function ApprovalsConsole({ approvals }: { approvals: ApprovalConsoleItem
                 For <span className="text-foreground">{selected.leadName}</span> - {selected.createdAt} ago
               </p>
               <div className="mt-3 flex items-center gap-1.5">
-                <button type="button" className="inline-flex h-7 items-center gap-1.5 rounded-[5px] bg-primary px-2.5 text-[12px] font-medium text-primary-foreground hover:bg-primary/90">
-                  <Check className="h-3 w-3" /> Approve
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => handleApproval(selected.id, selected.kind, "approve")}
+                  className="inline-flex h-7 items-center gap-1.5 rounded-[5px] bg-primary px-2.5 text-[12px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+                >
+                  {submitting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Approve
                 </button>
-                <button type="button" className="inline-flex h-7 items-center gap-1.5 rounded-[5px] border border-destructive/20 bg-destructive/10 px-2.5 text-[12px] text-destructive hover:bg-destructive/20">
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => handleApproval(selected.id, selected.kind, "reject")}
+                  className="inline-flex h-7 items-center gap-1.5 rounded-[5px] border border-destructive/20 bg-destructive/10 px-2.5 text-[12px] text-destructive hover:bg-destructive/20 disabled:opacity-60"
+                >
                   <X className="h-3 w-3" /> Reject
                 </button>
                 <Link href={selected.href} className="inline-flex h-7 items-center gap-1.5 rounded-[5px] border border-border bg-surface-2 px-2.5 text-[12px] hover:bg-surface-3">

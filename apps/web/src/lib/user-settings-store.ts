@@ -168,20 +168,20 @@ export function defaultOperatorProfile(): OperatorKnowledgeProfile {
 
 export function defaultWorkspaceSettings(): WorkspaceBusinessSettings {
   return {
-    leadMode: "b2b",
-    businessName: "Leadsy workspace",
-    industry: "Sales operations",
-    website: "",
-    markets: ["India"],
-    services: ["Lead qualification", "WhatsApp follow-up", "Appointment booking"],
-    leadSources: ["WhatsApp", "Manual leads"],
-    pipelineStages: ["new", "collecting", "qualified", "meeting", "won"],
-    qualificationFields: ["need", "budget", "timeline", "authority", "location", "intent"],
-    assignmentDefaults: "New leads go to Qualification AI until qualified.",
-    followUpRules: ["Reply within 5 minutes", "Escalate hot leads", "Create task after missed reply"],
+    leadMode: "b2c",
+    businessName: "StudentKhabri",
+    industry: "Education",
+    website: "https://studentkhabri.com",
+    markets: ["India", "Tier 2 cities", "Tier 3 cities"],
+    services: ["College Admission Counseling", "Career Guidance", "Exam Prep Info"],
+    leadSources: ["WhatsApp", "Instagram", "Website", "YouTube"],
+    pipelineStages: ["new", "collecting", "qualified", "counseling_scheduled", "enrolled", "lost"],
+    qualificationFields: ["name", "phone", "email", "budget", "course_interest", "location"],
+    assignmentDefaults: "New leads go to Qualification AI until qualified. Hot leads go to senior counselors.",
+    followUpRules: ["Reply within 5 minutes", "Escalate hot leads", "Create task after missed reply", "Follow up after 2 days"],
     timezone: "Asia/Kolkata",
     currency: "INR",
-    calendarDefaults: "Offer 30 minute meetings during working hours."
+    calendarDefaults: "Offer 30 minute counseling sessions during working hours."
   };
 }
 
