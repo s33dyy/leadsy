@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowUpRight, Check, Filter, Inbox, Pencil, Search, Sparkles } from "lucide-react";
+import { ArrowUpRight, Check, Filter, Inbox, Pencil, Search, Sparkles, X } from "lucide-react";
 import { Badge } from "@/components/ui";
 
 export type ApprovalConsoleItem = {
@@ -110,7 +110,6 @@ export function ApprovalsConsole({ approvals }: { approvals: ApprovalConsoleItem
         </div>
 
         <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border bg-background px-3 text-[12px]">
-          <input type="checkbox" aria-label="Select all approvals" className="h-3.5 w-3.5 accent-primary" />
           <span className="text-muted-foreground">{filtered.length} pending - grouped by {groupBy.toLowerCase()}</span>
           <Link href="/app/team" className="ml-auto inline-flex h-7 items-center gap-1.5 rounded-[5px] bg-primary px-2.5 text-[12px] font-medium text-primary-foreground hover:bg-primary/90">
             <Check className="h-3 w-3" /> Review queue
@@ -127,7 +126,6 @@ export function ApprovalsConsole({ approvals }: { approvals: ApprovalConsoleItem
               <ul className="divide-y divide-border">
                 {items.map((item) => (
                   <li key={item.id} className={`flex items-start gap-3 px-3 py-3 hover:bg-surface-2 ${selected?.id === item.id ? "bg-surface-2" : ""}`}>
-                    <input type="checkbox" aria-label={`Select ${item.subject}`} className="mt-1 h-3.5 w-3.5 accent-primary" />
                     <button type="button" onClick={() => setSelectedId(item.id)} className="min-w-0 flex-1 text-left">
                       <div className="flex items-center gap-2">
                         <span className={`font-mono text-[10.5px] ${item.priority === "P0" ? "text-destructive" : item.priority === "P1" ? "text-warning" : "text-muted-foreground"}`}>
@@ -169,9 +167,12 @@ export function ApprovalsConsole({ approvals }: { approvals: ApprovalConsoleItem
                 For <span className="text-foreground">{selected.leadName}</span> - {selected.createdAt} ago
               </p>
               <div className="mt-3 flex items-center gap-1.5">
-                <Link href={selected.href} className="inline-flex h-7 items-center gap-1.5 rounded-[5px] bg-primary px-2.5 text-[12px] font-medium text-primary-foreground hover:bg-primary/90">
-                  <Check className="h-3 w-3" /> Open review
-                </Link>
+                <button type="button" className="inline-flex h-7 items-center gap-1.5 rounded-[5px] bg-primary px-2.5 text-[12px] font-medium text-primary-foreground hover:bg-primary/90">
+                  <Check className="h-3 w-3" /> Approve
+                </button>
+                <button type="button" className="inline-flex h-7 items-center gap-1.5 rounded-[5px] border border-destructive/20 bg-destructive/10 px-2.5 text-[12px] text-destructive hover:bg-destructive/20">
+                  <X className="h-3 w-3" /> Reject
+                </button>
                 <Link href={selected.href} className="inline-flex h-7 items-center gap-1.5 rounded-[5px] border border-border bg-surface-2 px-2.5 text-[12px] hover:bg-surface-3">
                   <Pencil className="h-3 w-3" /> Edit
                 </Link>

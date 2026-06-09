@@ -19,9 +19,9 @@ export type TaskConsoleRow = {
   href: string;
 };
 
-type TaskGroupBy = "Status" | "Priority" | "Owner";
+type TaskGroupBy = "Status" | "Priority" | "Owner" | "Source" | "Due Date" | "Type";
 
-const groupOptions: TaskGroupBy[] = ["Status", "Priority", "Owner"];
+const groupOptions: TaskGroupBy[] = ["Status", "Priority", "Owner", "Source", "Due Date", "Type"];
 
 function priorityClass(priority: TaskConsoleRow["priority"]) {
   if (priority === "Urgent") return "bg-destructive";
@@ -39,6 +39,9 @@ function matchesTask(row: TaskConsoleRow, query: string) {
 function groupKey(row: TaskConsoleRow, groupBy: TaskGroupBy) {
   if (groupBy === "Priority") return row.priority;
   if (groupBy === "Owner") return row.owner;
+  if (groupBy === "Source") return row.source;
+  if (groupBy === "Due Date") return row.due;
+  if (groupBy === "Type") return row.typeLabel;
   return row.status;
 }
 

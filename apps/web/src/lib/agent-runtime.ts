@@ -420,6 +420,12 @@ export async function runAgentForInboundLead(input: AgentRunInput): Promise<Agen
   }
   const agent = responder.member;
   if (responder.mode === "human" || responder.mode === "assisted_ai" || responder.mode === "ai_disabled") {
+    await editLeadKnowledgeRecord({
+      ...input,
+      leadId: input.leadId,
+      crmStatus: "needs_reply",
+      nextAction: "Waiting for assigned owner to reply."
+    });
     await routeCrmEventToTasks({
       ...input,
       eventType: "inbound_message",
@@ -575,9 +581,12 @@ export async function runAgentForInboundLead(input: AgentRunInput): Promise<Agen
   const updatedContext = await buildLeadAiContext({ ...input, memberId: agent.id });
   const effectiveFields = updatedContext?.qualificationFields ?? mergedQualificationFields(context, ai);
   const replyBody = ai.reply;
-  if (isQualified(effectiveFields, context.workspace.leadMode)) {
+  const isAlreadyAssignedToAgent = lead.assigneeId === agent.id;
+  const isNewlyQualified = isQualified(effectiveFields, context.workspace.leadMode) && lead.qualificationStage !== "qualified";
+
+  if (isNewlyQualified && !isAlreadyAssignedToAgent) {
     const owner = await findPipelineOwner(input, "qualified");
-    if (owner) {
+    if (owner && owner.id !== agent.id) {
       await editLeadKnowledgeRecord({
         ...input,
         leadId: input.leadId,
@@ -631,8 +640,8 @@ export async function runAgentForInboundLead(input: AgentRunInput): Promise<Agen
     ...input,
     leadId: input.leadId,
     crmStatus: "needs_reply",
-    qualificationStage: "collecting",
-    nextAction: "AI qualification reply sent. Wait for the lead response."
+    qualificationStage: isQualified(effectiveFields, context.workspace.leadMode) ? "qualified" : "collecting",
+    nextAction: "AI agent replied. Wait for the lead response."
   });
   await postTeamThreadMessage({
     ...input,
