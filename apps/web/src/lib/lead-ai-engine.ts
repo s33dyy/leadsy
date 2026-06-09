@@ -245,7 +245,7 @@ function deterministicReply(context: LeadAiRuntimeContext, purpose: LeadAiReplyP
       ? ["name", "phone", "email", "budget"]
       : [...coreFields];
     const missingIndex = fields.indexOf(missing);
-    nextMissing = fields.slice(missingIndex + 1).find((field) => !fieldValue(context, field as any) && !extracted[field]);
+    nextMissing = fields.slice(missingIndex + 1).find((field) => !fieldValue(context, field) && !extracted[field]);
   }
 
   // Default fallback: ask for the next missing field, but vary the question
