@@ -102,10 +102,11 @@ function missingQualificationFields(fields: Record<string, string | undefined>, 
 }
 
 function isQualified(fields: Record<string, string | undefined>, mode?: "b2b" | "b2c") {
+  const isFilled = (val?: string) => !!val && !/^not yet collected$/i.test(val) && !/^none$/i.test(val);
   if (mode === "b2c") {
-    return Boolean(fields.name && fields.phone && fields.email && fields.budget);
+    return Boolean(isFilled(fields.name) && isFilled(fields.phone) && isFilled(fields.email) && isFilled(fields.budget));
   }
-  return Boolean(fields.company && fields.need && (fields.budget || fields.timeline) && fields.authority);
+  return Boolean(isFilled(fields.company) && isFilled(fields.need) && (isFilled(fields.budget) || isFilled(fields.timeline)) && isFilled(fields.authority));
 }
 
 function escalationRequested(text: string, agent?: TeamMember | null) {
@@ -472,7 +473,7 @@ export async function runAgentForInboundLead(input: AgentRunInput): Promise<Agen
 
   const fields = context.qualificationFields;
   const contactPhone = lead.contact.phone || lead.contact.waId;
-  if (isQualified(fields)) {
+  if (isQualified(fields, context.workspace.leadMode) && lead.qualificationStage !== "qualified") {
     const owner = await findPipelineOwner(input, "qualified");
     const windowStart = addMinutes(now, 19);
     const windowEnd = addMinutes(now, 180);
@@ -584,17 +585,18 @@ export async function runAgentForInboundLead(input: AgentRunInput): Promise<Agen
 
   if (isNewlyQualified && !isAlreadyAssignedToAgent) {
     const owner = await findPipelineOwner(input, "qualified");
+    await editLeadKnowledgeRecord({
+      ...input,
+      leadId: input.leadId,
+      crmStatus: "interested",
+      qualificationStage: "qualified",
+      productPipelineStatus: "qualified",
+      assigneeId: owner?.id ?? lead.assigneeId,
+      assigneeName: owner?.name ?? lead.assigneeName,
+      nextAction: owner ? "Qualified lead assigned to pipeline owner." : "Qualified lead, but no pipeline owner was configured."
+    });
+
     if (owner && owner.id !== agent.id) {
-      await editLeadKnowledgeRecord({
-        ...input,
-        leadId: input.leadId,
-        crmStatus: "interested",
-        qualificationStage: "qualified",
-        productPipelineStatus: "qualified",
-        assigneeId: owner.id,
-        assigneeName: owner.name,
-        nextAction: "Qualified lead assigned to pipeline owner."
-      });
       await assignLeadOwner({
         ...input,
         leadId: input.leadId,

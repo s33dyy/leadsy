@@ -276,10 +276,17 @@ function deterministicReply(context: LeadAiRuntimeContext, purpose: LeadAiReplyP
   }
 
   const prefix = company || need || Object.keys(extracted).length > 0 ? "Got it." : "I can help with your business enquiries.";
+  const isFirstMessage = context.recentMessages.length <= 1;
 
-  const reply = purpose === "initial_outbound"
-    ? `Hi ${firstName}, this is ${ownerBusiness.externalIdentity}. ${prefix} ${question}`
-    : `${prefix} ${question}`;
+  let reply = `${prefix} ${question}`;
+  if (purpose === "initial_outbound" || isFirstMessage) {
+    const greeting = purpose === "initial_outbound" ? `Hi ${firstName}` : `Hi there`;
+    const intro = `I am ${ownerBusiness.externalIdentity} from the ${ownerBusiness.businessName} team`;
+    const education = ownerBusiness.services.length > 0
+      ? `We specialize in ${ownerBusiness.services.slice(0, 3).join(", ")}.`
+      : `We're here to help you achieve your goals.`;
+    reply = `${greeting}, ${intro}. ${education} ${question}`;
+  }
 
   return { reply: sanitizeLeadFacingReply(reply, context), extractedFields: extracted, nextMissingField: nextMissing, shouldEscalate: false, confidence: 0.55, provider: "deterministic" };
 }
