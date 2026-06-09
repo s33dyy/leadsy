@@ -220,6 +220,7 @@ export async function sendInitialAiOutboundForLead(input: Scope & {
   leadId: string;
   memberId: string;
   trigger: string;
+  now?: string;
 }): Promise<InitialAiOutboundResult> {
   const member = await getTeamMember({ ...input, memberId: input.memberId });
   if (!member || !member.type.startsWith("ai_agent")) {
