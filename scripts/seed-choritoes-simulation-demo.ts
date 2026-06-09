@@ -11,11 +11,12 @@ function argValue(name: string) {
 async function main() {
   const email = argValue("email")?.trim();
   if (!email) {
-    console.error("Usage: npm run seed:choritoes-simulation-demo -- --email pratikisawesom3@gmail.com");
+    console.error("Usage: npm run seed:choritoes-simulation-demo -- --email pratikisawesom3@gmail.com --mode stress");
     process.exit(1);
   }
+  const mode = argValue("mode") === "standard" ? "standard" : "stress";
   const confirm = process.env.CONFIRM_CHORITOES_SIMULATION_DEMO?.trim() ?? "";
-  const result = await seedChoritoesSimulationDemo({ email, confirm });
+  const result = await seedChoritoesSimulationDemo({ email, confirm, mode });
   console.log(JSON.stringify(result, null, 2));
 }
 

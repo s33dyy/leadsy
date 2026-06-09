@@ -13,6 +13,7 @@ import {
 } from "./crm-store";
 import { getCostReceipt } from "./cost-receipt";
 import { listAiUsageRuns } from "./ai-usage-store";
+import { buildConversationsSnapshot, buildSimulatorSnapshot } from "./live-conversation-snapshots";
 import {
   appendManualLeadMessage,
   listLeadKnowledgeRecords,
@@ -42,6 +43,7 @@ export type ChoritoesSeedInput = {
   email: string;
   confirm: string;
   dataDir?: string;
+  mode?: "standard" | "stress";
 };
 
 type Scope = {
@@ -69,6 +71,7 @@ type SeedCredential = {
 
 type ChoritoesScenario = {
   index: number;
+  kind: "whatsapp_first" | "mixed_channel" | "email_call_heavy";
   name: string;
   company: string;
   phone: string;
@@ -82,11 +85,28 @@ type ChoritoesScenario = {
   authority: string;
   source: string;
   assignmentKey: keyof TeamMap;
+  whatsappTurnCount: number;
+  emailActivityCount: number;
+  callActivityCount: number;
   meeting: boolean;
-  emailActivity: boolean;
-  callActivity: boolean;
-  extraInbound?: string;
   crmEvent?: "follow_up_due" | "stale_needs_reply" | "human_review_needed" | "escalation";
+};
+
+type StressTurnOutcome = {
+  scenarioIndex: number;
+  leadId: string;
+  turn: number;
+  action: string;
+  responderName?: string;
+  responderType?: string;
+  openRouterBefore: number;
+  openRouterAfter: number;
+  skippedReason?: string;
+};
+
+type StressTracker = {
+  turns: StressTurnOutcome[];
+  behavioralFindings: string[];
 };
 
 type TeamMap = {
@@ -552,7 +572,7 @@ async function createProvisionedMember(scope: Scope, credentials: SeedCredential
   return result.member;
 }
 
-function buildScenarios(): ChoritoesScenario[] {
+function buildScenarios(mode: ChoritoesSeedInput["mode"] = "stress"): ChoritoesScenario[] {
   const names = [
     "Aarav Mehta", "Devika Menon", "Rohan Kapoor", "Maya Iyer", "Vikram Shah", "Nisha Gupta", "Imran Khan", "Priya Saha", "Ankit Jain", "Samar Bose",
     "Kavya Rao", "Farhan Ali", "Ritika Dutta", "Manish Agarwal", "Sneha Pillai", "Aditya Sen", "Pooja Nair", "Harsh Vyas", "Leena Thomas", "Arjun Bedi",
@@ -626,21 +646,30 @@ function buildScenarios(): ChoritoesScenario[] {
   const cities = ["Kolkata", "Bengaluru", "Mumbai", "Delhi NCR", "Pune", "Hyderabad", "Ahmedabad", "Chennai", "Jaipur", "Kochi"];
   const timelines = ["this week", "next week", "within 10 days", "by month end", "before next Friday", "in two weeks"];
   const sources = ["WhatsApp Simulator", "Website form", "Retail referral", "Distributor event", "Email enquiry", "Call log"];
-  return names.map((name, index) => {
+  const total = mode === "standard" ? 50 : 75;
+  return Array.from({ length: total }, (_, index) => {
+    const baseName = names[index % names.length];
     const segment = segments[index % segments.length];
     const city = cities[index % cities.length];
     const volume = index % 9 === 0 ? "1,000 cartons per month" : segment.volume;
-    const extraInbound = index % 4 === 0
-      ? `Also, we will need samples in ${city} before the first purchase order. Our owner can approve after tasting.`
-      : index % 6 === 0
-        ? `Can you share what pack sizes Choritoes offers for ${segment.segment} buyers?`
-        : undefined;
+    const kind: ChoritoesScenario["kind"] =
+      mode === "standard" ? "whatsapp_first" : index < 60 ? "whatsapp_first" : index < 70 ? "mixed_channel" : "email_call_heavy";
+    const assignmentKey: keyof TeamMap =
+      index % 14 === 1 ? "distributorAi"
+      : index % 14 === 3 ? "samplingAi"
+      : index % 14 === 5 ? "pricingAi"
+      : index % 14 === 7 ? "pratik"
+      : segment.assignmentKey;
+    const whatsappTurnCount = kind === "whatsapp_first" ? 10 : kind === "mixed_channel" ? 6 : 0;
+    const emailActivityCount = kind === "email_call_heavy" ? 4 + (index % 2) : kind === "mixed_channel" ? 2 : index % 2 === 0 ? 1 : 0;
+    const callActivityCount = kind === "email_call_heavy" ? 3 : kind === "mixed_channel" ? 1 : index % 3 === 1 ? 1 : 0;
     return {
       index,
-      name,
-      company: companies[index],
+      kind,
+      name: index < names.length ? baseName : `${baseName} ${index + 1}`,
+      company: index < companies.length ? companies[index] : `${companies[index % companies.length]} ${city} Desk ${index + 1}`,
       phone: `+9198${String(11110000 + index).padStart(8, "0")}`,
-      email: `${name.split(" ")[0].toLowerCase()}.${index + 1}@example-buyer.test`,
+      email: `${baseName.split(" ")[0].toLowerCase()}.${index + 1}@example-buyer.test`,
       city,
       segment: segment.segment,
       need: segment.need,
@@ -649,11 +678,11 @@ function buildScenarios(): ChoritoesScenario[] {
       timeline: timelines[index % timelines.length],
       authority: index % 5 === 0 ? "final approval is with our founder" : index % 3 === 0 ? "the purchase lead will approve" : "I can approve the first order",
       source: sources[index % sources.length],
-      assignmentKey: segment.assignmentKey,
+      assignmentKey,
+      whatsappTurnCount,
+      emailActivityCount,
+      callActivityCount,
       meeting: index % 3 === 0 || segment.segment === "distributor" || segment.segment === "modern trade",
-      emailActivity: index % 2 === 0,
-      callActivity: index % 3 === 1,
-      extraInbound,
       crmEvent: index % 11 === 0 ? "stale_needs_reply" : index % 13 === 0 ? "follow_up_due" : index % 17 === 0 ? "human_review_needed" : undefined
     };
   });
@@ -668,123 +697,144 @@ function addMinutes(iso: string, minutes: number) {
   return new Date(Date.parse(iso) + minutes * 60_000).toISOString();
 }
 
-function leadInputBody(scenario: ChoritoesScenario) {
-  return `Hi, I'm ${scenario.name} from ${scenario.company} in ${scenario.city}. We ${scenario.need}. Volume is around ${scenario.volume}; budget is around ${scenario.budget}. ${scenario.authority}, and we want to start ${scenario.timeline}.`;
+function whatsappTurnBody(scenario: ChoritoesScenario, turn: number) {
+  const bodies = [
+    `Hi, I'm ${scenario.name} from ${scenario.company} in ${scenario.city}. We are checking if Choritoes can work for our ${scenario.segment}.`,
+    `What pack sizes and flavors do you usually suggest for ${scenario.segment} buyers?`,
+    `We ${scenario.need}, but I need to understand the right first order before I take this to my team.`,
+    `Expected volume is around ${scenario.volume}. Can you support that without stock delays?`,
+    `Budget range is ${scenario.budget}. Is that realistic for Choritoes with samples and delivery?`,
+    `${scenario.authority}. What details should I share internally to get approval?`,
+    `We want to start ${scenario.timeline}. Do you recommend a sample box first or direct carton order?`,
+    `Our location is ${scenario.city}. Who handles Choritoes supply or distributor coordination there?`,
+    turn % 5 === 0
+      ? `One concern: do you offer credit or exclusive territory? I may need a manager if that is complicated.`
+      : `Can we plan a short call or tasting sample before confirming the purchase order?`,
+    `Thanks, this still looks interesting for ${scenario.company}. What is the best next step from Choritoes?`
+  ];
+  return bodies[turn] ?? `Follow-up ${turn + 1}: please help us move the Choritoes ${scenario.segment} discussion forward for ${scenario.company}.`;
 }
 
 async function aiUsageCount(scope: Scope) {
   return (await listAiUsageRuns(scope)).agentRuns.length;
 }
 
-async function requireOpenRouterUsageGrowth(scope: Scope, before: number, scenarioId: string) {
-  const after = await aiUsageCount(scope);
-  if (after <= before) throw new Error(`openrouter_generation_required:${scenarioId}`);
-  return after;
+function isAiReplyAction(action: string) {
+  return action === "auto_replied" || action === "assigned_to_pipeline_owner" || action === "escalated_to_human";
 }
 
-export async function simulateWhatsappLeadScenario(scope: Scope, scenario: ChoritoesScenario) {
-  let usageBefore = await aiUsageCount(scope);
+export async function simulateWhatsappLeadScenario(scope: Scope, scenario: ChoritoesScenario, members: TeamMap, tracker: StressTracker) {
   const receivedAt = daysAgo(scenario.index, 4, scenario.index % 55);
-  const inbound = await saveSimulatedTwilioInboundMessage({
-    ...scope,
-    from: scenario.phone,
-    profileName: scenario.name,
-    body: leadInputBody(scenario),
-    receivedAt
-  });
-  const trigger = inbound.saved[0];
-  if (!trigger) throw new Error(`simulator_inbound_not_saved:${scenario.index}`);
-  await routeCrmEventToTasks({
-    ...scope,
-    eventType: "inbound_message",
-    leadId: inbound.lead.id,
-    assigneeId: inbound.lead.assigneeId,
-    source: "choritoes_whatsapp_input",
-    reason: `${scenario.name} sent a WhatsApp enquiry to Choritoes.`
-  });
-  await runAgentForInboundLead({
-    ...scope,
-    leadId: inbound.lead.id,
-    conversationId: inbound.conversation.id,
-    triggerMessageId: trigger.id,
-    now: addMinutes(receivedAt, 1)
-  });
-  usageBefore = await requireOpenRouterUsageGrowth(scope, usageBefore, `first:${scenario.index}`);
-
-  let lead = (await listLeadKnowledgeRecords(scope)).find((record) => record.id === inbound.lead.id);
-  if (!lead) throw new Error(`lead_missing_after_inbound:${scenario.index}`);
-
-  if (scenario.extraInbound && lead.assigneeName === "Qualification AI") {
-    const secondInbound = await saveSimulatedTwilioInboundMessage({
+  let lead: LeadKnowledgeRecord | undefined;
+  let conversationId = "";
+  for (let turn = 0; turn < scenario.whatsappTurnCount; turn += 1) {
+    const turnTime = addMinutes(receivedAt, turn * 6);
+    const inbound = await saveSimulatedTwilioInboundMessage({
       ...scope,
       from: scenario.phone,
       profileName: scenario.name,
-      body: scenario.extraInbound,
-      receivedAt: addMinutes(receivedAt, 6)
+      body: whatsappTurnBody(scenario, turn),
+      receivedAt: turnTime
     });
-    const secondTrigger = secondInbound.saved[0];
-    if (secondTrigger) {
-      await routeCrmEventToTasks({
-        ...scope,
-        eventType: "inbound_message",
-        leadId: secondInbound.lead.id,
-        assigneeId: secondInbound.lead.assigneeId,
-        source: "choritoes_whatsapp_input",
-        reason: `${scenario.name} added more Choritoes buying context.`
-      });
-      await runAgentForInboundLead({
-        ...scope,
-        leadId: secondInbound.lead.id,
-        conversationId: secondInbound.conversation.id,
-        triggerMessageId: secondTrigger.id,
-        now: addMinutes(receivedAt, 7)
-      });
-      await requireOpenRouterUsageGrowth(scope, usageBefore, `second:${scenario.index}`);
+    const trigger = inbound.saved[0];
+    if (!trigger) throw new Error(`simulator_inbound_not_saved:${scenario.index}:${turn}`);
+    lead = inbound.lead;
+    conversationId = inbound.conversation.id;
+    await routeCrmEventToTasks({
+      ...scope,
+      eventType: "inbound_message",
+      leadId: inbound.lead.id,
+      assigneeId: inbound.lead.assigneeId,
+      source: "choritoes_whatsapp_input",
+      reason: `${scenario.name} sent Choritoes WhatsApp turn ${turn + 1}.`
+    });
+    const before = await aiUsageCount(scope);
+    const result = await runAgentForInboundLead({
+      ...scope,
+      leadId: inbound.lead.id,
+      conversationId: inbound.conversation.id,
+      triggerMessageId: trigger.id,
+      now: addMinutes(turnTime, 1)
+    });
+    const after = await aiUsageCount(scope);
+    tracker.turns.push({
+      scenarioIndex: scenario.index,
+      leadId: inbound.lead.id,
+      turn: turn + 1,
+      action: result.action,
+      responderName: result.responderName,
+      responderType: result.responderType,
+      openRouterBefore: before,
+      openRouterAfter: after,
+      skippedReason: result.skippedReason ?? result.reason
+    });
+    if (isAiReplyAction(result.action) && after <= before) {
+      tracker.behavioralFindings.push(`Scenario ${scenario.index + 1} turn ${turn + 1} reported ${result.action} without a new OpenRouter usage record.`);
     }
-    lead = (await listLeadKnowledgeRecords(scope)).find((record) => record.id === inbound.lead.id) ?? lead;
+    const refreshed = (await listLeadKnowledgeRecords(scope)).find((record) => record.id === inbound.lead.id);
+    if (refreshed) lead = refreshed;
+    if (turn === 1 && lead) {
+      const assigned = await assignScenarioOwner(scope, lead, scenario, members);
+      lead = (await listLeadKnowledgeRecords(scope)).find((record) => record.id === assigned.id) ?? assigned;
+    }
   }
-
+  if (!lead) throw new Error(`lead_missing_after_whatsapp:${scenario.index}`);
+  if (conversationId && !lead.conversations.some((conversation) => conversation.id === conversationId)) {
+    tracker.behavioralFindings.push(`Scenario ${scenario.index + 1} WhatsApp conversation ${conversationId} was not visible on the refreshed lead record.`);
+  }
   return lead;
 }
 
-export async function simulateEmailActivity(scope: Scope, leadId: string, scenario: ChoritoesScenario) {
+export async function simulateEmailActivity(scope: Scope, leadId: string | undefined, scenario: ChoritoesScenario, activityIndex = 0) {
   const record = await appendManualLeadMessage({
     ...scope,
     leadId,
     contact: { displayName: scenario.name, phone: scenario.phone, email: scenario.email },
     channel: "email",
     direction: "inbound",
-    body: `Email from ${scenario.company}: please share Choritoes pack sizes, carton pricing, and sample steps for ${scenario.segment} in ${scenario.city}.`,
-    occurredAt: addMinutes(daysAgo(scenario.index, 8), 12)
+    body: [
+      `Email from ${scenario.company}: please share Choritoes pack sizes, carton pricing, and sample steps for ${scenario.segment} in ${scenario.city}.`,
+      `Follow-up email: our expected volume is ${scenario.volume}; please confirm how sample dispatch works.`,
+      `Email reply: budget is ${scenario.budget}, and ${scenario.authority}.`,
+      `Email note: we want to start ${scenario.timeline}; send a concise next-step plan.`,
+      `Email concern: please flag if margins, credit, or territory need Pratik's approval.`
+    ][activityIndex % 5],
+    occurredAt: addMinutes(daysAgo(scenario.index, 8), 12 + activityIndex * 22)
   });
   await routeCrmEventToTasks({
     ...scope,
     eventType: "inbound_message",
-    leadId,
+    leadId: record.id,
     assigneeId: record.assigneeId,
     source: "choritoes_email_input",
-    reason: `${scenario.name} sent a Choritoes email enquiry.`
+    reason: `${scenario.name} sent Choritoes email activity ${activityIndex + 1}.`
   });
   return record;
 }
 
-export async function simulateCallActivity(scope: Scope, leadId: string, scenario: ChoritoesScenario) {
+export async function simulateCallActivity(scope: Scope, leadId: string | undefined, scenario: ChoritoesScenario, activityIndex = 0) {
   const record = await appendManualLeadMessage({
     ...scope,
     leadId,
     contact: { displayName: scenario.name, phone: scenario.phone, email: scenario.email },
     channel: "call",
     direction: "inbound",
-    body: `Call log: ${scenario.name} asked whether Choritoes can support ${scenario.volume} for ${scenario.company}; asked for sample timing and distributor margin basics.`,
-    occurredAt: addMinutes(daysAgo(scenario.index, 10), 18)
+    body: [
+      `Call log: ${scenario.name} asked whether Choritoes can support ${scenario.volume} for ${scenario.company}; asked for sample timing and distributor margin basics.`,
+      `Missed-call summary: ${scenario.name} wants a callback about ${scenario.segment} supply in ${scenario.city}.`,
+      `Call note: buyer asked whether ${scenario.budget} is enough for first Choritoes order and tasting samples.`,
+      `Call note: ${scenario.authority}; they asked for one clear next step.`,
+      `Escalation call note: buyer mentioned credit terms and wants manager confirmation before PO.`
+    ][activityIndex % 5],
+    occurredAt: addMinutes(daysAgo(scenario.index, 10), 18 + activityIndex * 19)
   });
   await routeCrmEventToTasks({
     ...scope,
     eventType: "inbound_message",
-    leadId,
+    leadId: record.id,
     assigneeId: record.assigneeId,
     source: "choritoes_call_input",
-    reason: `${scenario.name} called about Choritoes supply.`
+    reason: `${scenario.name} logged Choritoes call activity ${activityIndex + 1}.`
   });
   return record;
 }
@@ -831,11 +881,21 @@ async function assignScenarioOwner(scope: Scope, lead: LeadKnowledgeRecord, scen
   });
 }
 
-async function runScenarioInputs(scope: Scope, members: TeamMap, scenario: ChoritoesScenario) {
-  const lead = await simulateWhatsappLeadScenario(scope, scenario);
-  if (scenario.emailActivity) await simulateEmailActivity(scope, lead.id, scenario);
-  if (scenario.callActivity) await simulateCallActivity(scope, lead.id, scenario);
-  const assigned = await assignScenarioOwner(scope, lead, scenario, members);
+async function runScenarioInputs(scope: Scope, members: TeamMap, scenario: ChoritoesScenario, tracker: StressTracker) {
+  let lead: LeadKnowledgeRecord | undefined;
+  if (scenario.whatsappTurnCount > 0) {
+    lead = await simulateWhatsappLeadScenario(scope, scenario, members, tracker);
+  }
+  for (let index = 0; index < scenario.emailActivityCount; index += 1) {
+    lead = await simulateEmailActivity(scope, lead?.id, scenario, index);
+  }
+  for (let index = 0; index < scenario.callActivityCount; index += 1) {
+    lead = await simulateCallActivity(scope, lead?.id, scenario, index);
+  }
+  if (!lead) throw new Error(`scenario_lead_not_created:${scenario.index}`);
+  const assigned = lead.assigneeId && lead.assigneeName !== "Qualification AI"
+    ? lead
+    : await assignScenarioOwner(scope, lead, scenario, members);
   const refreshed = (await listLeadKnowledgeRecords(scope)).find((record) => record.id === assigned.id) ?? assigned;
   const conversationId = refreshed.conversations.find((conversation) => conversation.channel === "whatsapp")?.id;
   if (scenario.meeting) {
@@ -854,6 +914,132 @@ async function runScenarioInputs(scope: Scope, members: TeamMap, scenario: Chori
   return refreshed;
 }
 
+function countMessages(leads: LeadKnowledgeRecord[], channel: string, direction?: "inbound" | "outbound") {
+  return leads
+    .flatMap((lead) => lead.messages)
+    .filter((message) => message.channel === channel && (!direction || message.direction === direction)).length;
+}
+
+function documentedSkippedTurns(tracker: StressTracker) {
+  return tracker.turns.filter((turn) => turn.action !== "auto_replied" && turn.action !== "assigned_to_pipeline_owner").length;
+}
+
+function summarizeBehavioralFindings(input: {
+  leads: LeadKnowledgeRecord[];
+  tracker: StressTracker;
+  simulatorConversations: number;
+  inboxItems: number;
+  receiptSimulatorMessages: number;
+}) {
+  const findings = [...input.tracker.behavioralFindings];
+  const whatsappLeadIds = new Set(
+    input.leads
+      .filter((lead) => lead.messages.some((message) => message.channel === "whatsapp" && message.source === "twilio_simulator"))
+      .map((lead) => lead.id)
+  );
+  if (input.simulatorConversations !== whatsappLeadIds.size) {
+    findings.push(`Simulator snapshot shows ${input.simulatorConversations} conversations, but ${whatsappLeadIds.size} leads have simulator WhatsApp messages.`);
+  }
+  if (input.inboxItems < input.leads.length) {
+    findings.push(`Inbox snapshot shows ${input.inboxItems} lead rows for ${input.leads.length} seeded leads.`);
+  }
+  const projectedMessages = countMessages(input.leads, "whatsapp");
+  if (input.receiptSimulatorMessages < projectedMessages) {
+    findings.push(`Cost receipt projects ${input.receiptSimulatorMessages} simulator messages for ${projectedMessages} stored WhatsApp messages.`);
+  }
+  const shallowStressLeads = input.leads.filter((lead) => {
+    const inbound = lead.messages.filter((message) => message.channel === "whatsapp" && message.direction === "inbound").length;
+    return inbound > 0 && inbound < 6;
+  });
+  if (shallowStressLeads.length) {
+    findings.push(`${shallowStressLeads.length} WhatsApp leads have fewer than 6 inbound turns.`);
+  }
+  if (!findings.length) {
+    findings.push("No server-side snapshot mismatches were detected during the stress seed.");
+  }
+  return findings;
+}
+
+async function writeStressReport(input: {
+  dataDir: string;
+  backupDir: string;
+  owner: AuthUser;
+  scenarios: ChoritoesScenario[];
+  leads: LeadKnowledgeRecord[];
+  tracker: StressTracker;
+  failedScenarios: Array<{ scenario: string; error: string }>;
+  counts: Record<string, number>;
+}) {
+  const [simulatorSnapshot, conversationsSnapshot, receipt] = await Promise.all([
+    buildSimulatorSnapshot({ tenantId: input.owner.tenantId, ownerId: input.owner.id }),
+    buildConversationsSnapshot({ tenantId: input.owner.tenantId, ownerId: input.owner.id }),
+    getCostReceipt({ tenantId: input.owner.tenantId, ownerId: input.owner.id })
+  ]);
+  const findings = summarizeBehavioralFindings({
+    leads: input.leads,
+    tracker: input.tracker,
+    simulatorConversations: simulatorSnapshot.simulatedConversations.length,
+    inboxItems: conversationsSnapshot.items.length,
+    receiptSimulatorMessages: receipt.summary.twilio.projectedSimulatorMessages
+  });
+  const skipped = documentedSkippedTurns(input.tracker);
+  const report = [
+    "# Choritoes Stress Test Report",
+    "",
+    `Generated: ${new Date().toISOString()}`,
+    `Backup path: ${input.backupDir}`,
+    `Owner: ${input.owner.name} (${input.owner.emailOrPhone})`,
+    `Tenant: ${input.owner.tenantId}`,
+    "",
+    "## Seed Counts",
+    "",
+    `- Leads: ${input.counts.leads}`,
+    `- Scenarios: ${input.counts.scenarios}`,
+    `- WhatsApp conversations: ${input.counts.whatsappConversations}`,
+    `- WhatsApp-first deep leads: ${input.counts.whatsappFirstDeepLeads}`,
+    `- Mixed-channel leads: ${input.counts.mixedChannelLeads}`,
+    `- Email/call-heavy leads: ${input.counts.emailCallHeavyLeads}`,
+    `- WhatsApp inbound messages: ${input.counts.whatsappInboundMessages}`,
+    `- WhatsApp outbound messages: ${input.counts.whatsappOutboundMessages}`,
+    `- Email activities: ${input.counts.emailActivities}`,
+    `- Call activities: ${input.counts.callActivities}`,
+    `- Human tasks: ${input.counts.humanTasks}`,
+    `- AI approval tasks: ${input.counts.aiApprovalTasks}`,
+    `- Calendar events: ${input.counts.calendarEvents}`,
+    `- Notifications: ${input.counts.notifications}`,
+    "",
+    "## Cost Snapshot",
+    "",
+    `- OpenRouter requests: ${input.counts.openRouterRequests}`,
+    `- OpenRouter cost INR: ${input.counts.openRouterCostInr}`,
+    `- Projected simulator messages: ${input.counts.projectedSimulatorMessages}`,
+    `- Projected simulator cost INR: ${input.counts.projectedSimulatorCostInr}`,
+    "",
+    "## UI Snapshot Checks",
+    "",
+    `- Simulator snapshot conversations: ${simulatorSnapshot.simulatedConversations.length}`,
+    `- Inbox snapshot rows: ${conversationsSnapshot.items.length}`,
+    `- Simulator snapshot version: ${simulatorSnapshot.version}`,
+    `- Conversations snapshot version: ${conversationsSnapshot.version}`,
+    "",
+    "## Behavioral Findings",
+    "",
+    `- Documented skipped inbound turns: ${skipped}`,
+    ...findings.map((finding) => `- ${finding}`),
+    "",
+    "## Failed Scenario Inputs",
+    "",
+    input.failedScenarios.length
+      ? input.failedScenarios.map((failure) => `- ${failure.scenario}: ${failure.error}`).join("\n")
+      : "- None",
+    ""
+  ].join("\n");
+  const reportPath = join(input.dataDir, "CHORITOES_STRESS_TEST_REPORT.md");
+  await writeFile(reportPath, report);
+  await writeFile(join(input.backupDir, "CHORITOES_STRESS_TEST_REPORT.md"), report);
+  return { reportPath, findings, skipped };
+}
+
 export async function seedChoritoesSimulationDemo(input: ChoritoesSeedInput) {
   const dataDir = activeDataDir(input.dataDir);
   const normalizedEmail = assertConfirmation(input);
@@ -866,11 +1052,12 @@ export async function seedChoritoesSimulationDemo(input: ChoritoesSeedInput) {
   const backupDir = await backupStores(dataDir);
   await resetAccountWorkspaceData(scope, true, dataDir);
   const { members, credentials } = await configureChoritoesWorkspace(scope, owner);
-  const scenarios = buildScenarios();
+  const scenarios = buildScenarios(input.mode ?? "stress");
+  const tracker: StressTracker = { turns: [], behavioralFindings: [] };
   const failedScenarios: Array<{ scenario: string; error: string }> = [];
   for (const scenario of scenarios) {
     try {
-      await runScenarioInputs(scope, members, scenario);
+      await runScenarioInputs(scope, members, scenario, tracker);
     } catch (error) {
       failedScenarios.push({ scenario: `${scenario.index + 1}:${scenario.company}`, error: (error as Error).message });
     }
@@ -892,36 +1079,54 @@ export async function seedChoritoesSimulationDemo(input: ChoritoesSeedInput) {
     getCostReceipt(scope)
   ]);
 
-  const allMessages = leads.flatMap((lead) => lead.messages);
+  const counts = {
+    scenarios: scenarios.length,
+    leads: leads.length,
+    conversations: leads.reduce((total, lead) => total + lead.conversations.length, 0),
+    whatsappConversations: leads.flatMap((lead) => lead.conversations).filter((conversation) => conversation.channel === "whatsapp").length,
+    whatsappFirstDeepLeads: scenarios.filter((scenario) => scenario.kind === "whatsapp_first").length,
+    mixedChannelLeads: scenarios.filter((scenario) => scenario.kind === "mixed_channel").length,
+    emailCallHeavyLeads: scenarios.filter((scenario) => scenario.kind === "email_call_heavy").length,
+    emailActivities: countMessages(leads, "email"),
+    callActivities: countMessages(leads, "call"),
+    whatsappMessages: countMessages(leads, "whatsapp"),
+    whatsappInboundMessages: countMessages(leads, "whatsapp", "inbound"),
+    whatsappOutboundMessages: countMessages(leads, "whatsapp", "outbound"),
+    documentedSkippedInboundTurns: documentedSkippedTurns(tracker),
+    humanTasks: tasks.length,
+    aiApprovalTasks: aiTasks.length,
+    calendarEvents: calendarEvents.length,
+    assignmentHistory: assignmentHistory.length,
+    teamMembers: teamMembers.length,
+    workspaceTeamEvents: teamThreadMessages.length,
+    notifications: notifications.length,
+    openRouterRequests: receipt.summary.openrouter.requests || aiUsage.agentRuns.length,
+    openRouterCostInr: receipt.summary.openrouter.totalInr,
+    projectedSimulatorMessages: receipt.summary.twilio.projectedSimulatorMessages,
+    projectedSimulatorCostInr: receipt.summary.twilio.projectedSimulatorInr
+  };
+  const stressReport = await writeStressReport({
+    dataDir,
+    backupDir,
+    owner,
+    scenarios,
+    leads,
+    tracker,
+    failedScenarios,
+    counts
+  });
   return {
     ok: true as const,
     backupDir,
+    stressReportPath: stressReport.reportPath,
     owner: {
       id: owner.id,
       tenantId: owner.tenantId,
       emailOrPhone: owner.emailOrPhone,
       name: owner.name
     },
-    counts: {
-      scenarios: scenarios.length,
-      leads: leads.length,
-      conversations: leads.reduce((total, lead) => total + lead.conversations.length, 0),
-      whatsappConversations: leads.flatMap((lead) => lead.conversations).filter((conversation) => conversation.channel === "whatsapp").length,
-      emailActivities: allMessages.filter((message) => message.channel === "email").length,
-      callActivities: allMessages.filter((message) => message.channel === "call").length,
-      whatsappMessages: allMessages.filter((message) => message.channel === "whatsapp").length,
-      humanTasks: tasks.length,
-      aiApprovalTasks: aiTasks.length,
-      calendarEvents: calendarEvents.length,
-      assignmentHistory: assignmentHistory.length,
-      teamMembers: teamMembers.length,
-      workspaceTeamEvents: teamThreadMessages.length,
-      notifications: notifications.length,
-      openRouterRequests: receipt.summary.openrouter.requests || aiUsage.agentRuns.length,
-      openRouterCostInr: receipt.summary.openrouter.totalInr,
-      projectedSimulatorMessages: receipt.summary.twilio.projectedSimulatorMessages,
-      projectedSimulatorCostInr: receipt.summary.twilio.projectedSimulatorInr
-    },
+    counts,
+    behavioralFindings: stressReport.findings,
     credentials,
     failedScenarios
   };

@@ -172,21 +172,30 @@ async function main() {
     const result = await seed.seedChoritoesSimulationDemo({
       email: targetOwner.emailOrPhone,
       confirm: targetOwner.emailOrPhone,
-      dataDir
+      dataDir,
+      mode: "stress"
     });
     assert.equal(result.ok, true);
     assert.equal(result.owner.id, targetOwner.id);
-    assert.equal(result.counts.leads, 50);
-    assert(result.counts.whatsappConversations >= 30);
+    assert.equal(result.counts.leads, 75);
+    assert.equal(result.counts.whatsappConversations, 70);
+    assert.equal(result.counts.whatsappFirstDeepLeads, 60);
+    assert.equal(result.counts.mixedChannelLeads, 10);
+    assert.equal(result.counts.emailCallHeavyLeads, 5);
+    assert(result.counts.whatsappInboundMessages >= 660);
+    assert(result.counts.whatsappOutboundMessages > 0);
+    assert(result.counts.documentedSkippedInboundTurns > 0);
     assert(result.counts.emailActivities > 0);
     assert(result.counts.callActivities > 0);
     assert(result.counts.calendarEvents > 0);
     assert(result.counts.humanTasks > 0);
     assert(result.counts.aiApprovalTasks > 0);
-    assert(result.counts.openRouterRequests >= 50);
+    assert(result.counts.openRouterRequests >= 120);
     assert(result.counts.projectedSimulatorMessages > 0);
-    assert(openRouter.calls() >= 50, "seed must call OpenRouter for AI replies");
+    assert(openRouter.calls() >= 120, "stress seed must call OpenRouter across multi-turn AI replies");
+    assert(result.stressReportPath.endsWith("CHORITOES_STRESS_TEST_REPORT.md"));
     await stat(result.backupDir);
+    await stat(result.stressReportPath);
   } finally {
     openRouter.restore();
   }
@@ -201,13 +210,23 @@ async function main() {
   const knowledge = await readJson(join(dataDir, "lead-knowledge.json"));
   const targetLeads = knowledge.leads.filter((lead: Json) => lead.tenantId === targetOwner.tenantId && lead.ownerId === targetOwner.id);
   const targetMessages = knowledge.messages.filter((message: Json) => message.tenantId === targetOwner.tenantId && message.ownerId === targetOwner.id);
-  assert.equal(targetLeads.length, 50);
+  assert.equal(targetLeads.length, 75);
   assert(!targetLeads.some((lead: Json) => lead.id === "old_pratik_lead"));
   assert(knowledge.leads.some((lead: Json) => lead.id === "other_lead"));
   assert(targetMessages.some((message: Json) => message.channel === "whatsapp" && message.source === "twilio_simulator" && message.direction === "inbound"));
   assert(targetMessages.some((message: Json) => message.channel === "whatsapp" && message.source === "twilio_simulator" && message.direction === "outbound"));
   assert(targetMessages.some((message: Json) => message.channel === "email"));
   assert(targetMessages.some((message: Json) => message.channel === "call"));
+  const whatsappInboundByLead = new Map<string, number>();
+  for (const message of targetMessages) {
+    if (message.channel === "whatsapp" && message.source === "twilio_simulator" && message.direction === "inbound") {
+      whatsappInboundByLead.set(message.leadId, (whatsappInboundByLead.get(message.leadId) ?? 0) + 1);
+    }
+  }
+  const deepWhatsappLeads = [...whatsappInboundByLead.values()].filter((count) => count >= 10).length;
+  const mixedWhatsappLeads = [...whatsappInboundByLead.values()].filter((count) => count >= 6 && count < 10).length;
+  assert(deepWhatsappLeads >= 60, "at least 60 WhatsApp-first leads need 10 lead-side turns");
+  assert(mixedWhatsappLeads >= 10, "at least 10 mixed-channel leads need 6 lead-side turns");
   assert(targetMessages.filter((message: Json) => message.direction === "outbound").every((message: Json) => !/\bLeadsy\b/i.test(message.body)));
   assert(targetMessages.filter((message: Json) => message.direction === "outbound").some((message: Json) => /\bChoritoes\b/.test(message.body)));
 
@@ -235,15 +254,21 @@ async function main() {
 
   const aiUsage = await readJson(join(dataDir, "ai-usage.json"));
   assert(!aiUsage.agentRuns.some((run: Json) => run.id === "old_ai"));
-  assert(aiUsage.agentRuns.length >= 50);
+  assert(aiUsage.agentRuns.length >= 120);
   assert(aiUsage.agentRuns.every((run: Json) => run.cost?.provider === "openrouter"));
 
   const { getCostReceipt } = await import("../apps/web/src/lib/cost-receipt");
   const receipt = await getCostReceipt({ tenantId: targetOwner.tenantId, ownerId: targetOwner.id });
-  assert(receipt.summary.openrouter.requests >= 50);
+  assert(receipt.summary.openrouter.requests >= 120);
   assert(receipt.summary.openrouter.totalInr > 0);
   assert(receipt.summary.twilio.projectedSimulatorMessages > 0);
   assert(receipt.summary.totalInr >= receipt.summary.openrouter.totalInr);
+
+  const stressReport = await readFile(join(dataDir, "CHORITOES_STRESS_TEST_REPORT.md"), "utf8");
+  assert.match(stressReport, /# Choritoes Stress Test Report/);
+  assert.match(stressReport, /Behavioral Findings/);
+  assert.match(stressReport, /WhatsApp-first deep leads: 60/);
+  assert.match(stressReport, /Documented skipped inbound turns:/);
 
   console.log("choritoes simulation demo seed regression passed");
 }
