@@ -583,6 +583,7 @@ export async function generateLeadAiReply(input: Scope & {
     });
     return { ...parsed, provider: "openrouter", cost };
   } catch (error) {
+    console.error("[generateLeadAiReply] OpenRouter fallback triggered:", error);
     if (strictRemoteAi) {
       throw new Error(`openrouter_failed:${(error as Error).message}`);
     }

@@ -197,7 +197,7 @@ export function defaultAiSettings(): AiWorkspaceSettings {
     humanReviewThreshold: 0.75,
     escalationKeywords: ["human", "manager", "refund", "legal", "stop"],
     blockedTopics: ["medical advice", "legal promises", "guaranteed discounts"],
-    taskRouting: Object.fromEntries(aiTasks.map((task) => [task, { enabled: true, model: "google/gemini-2.5-flash:free" }])) as Record<AiWorkspaceTask, AiTaskRoute>,
+    taskRouting: Object.fromEntries(aiTasks.map((task) => [task, { enabled: true, model: "google/gemini-2.5-flash" }])) as Record<AiWorkspaceTask, AiTaskRoute>,
     promptTemplates: {
       "qualification-reply": "Ask exactly one concise question that helps qualify the lead.",
       "message-draft": "Draft a helpful WhatsApp reply for human review.",

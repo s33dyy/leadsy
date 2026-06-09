@@ -1604,10 +1604,14 @@ export function selectLeadsyAiModel(
   }
 
   const fallbackModel = configured(env, "LEADSY_FREE_AI_MODEL") ?? defaultRoutineOpenRouterModel;
-  const candidate = modelCandidateForTask(task, env) ?? fallbackModel;
-  const resolvedCandidate = candidate === "openrouter/free" ? "google/gemini-2.5-flash:free" : candidate;
-  if (isFreeAiModel(resolvedCandidate)) {
-    return { task, provider: "openrouter", model: resolvedCandidate, costTier: "free", reason: "free_model" };
+  let candidate = modelCandidateForTask(task, env) ?? fallbackModel;
+  
+  if (candidate === "openrouter/free" || candidate === "google/gemini-2.5-flash:free") {
+    candidate = "google/gemini-2.5-flash";
+  }
+
+  if (isFreeAiModel(candidate)) {
+    return { task, provider: "openrouter", model: candidate, costTier: "free", reason: "free_model" };
   }
 
   const expensiveAllowed = envFlag(env, "LEADSY_ALLOW_EXPENSIVE_AI_MODELS") || env.LEADSY_AI_COST_MODE?.trim().toLowerCase() === "premium";
