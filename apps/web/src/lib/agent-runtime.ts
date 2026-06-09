@@ -94,11 +94,17 @@ function addMinutes(iso: string, minutes: number) {
   return new Date(Date.parse(iso) + minutes * 60 * 1000).toISOString();
 }
 
-function missingQualificationFields(fields: Record<string, string | undefined>) {
-  return coreQualificationFields.filter((field) => !fields[field]?.trim());
+function missingQualificationFields(fields: Record<string, string | undefined>, mode?: "b2b" | "b2c") {
+  const required = mode === "b2c"
+    ? ["name", "phone", "email", "budget"]
+    : coreQualificationFields;
+  return required.filter((field) => !fields[field]?.trim());
 }
 
-function isQualified(fields: Record<string, string | undefined>) {
+function isQualified(fields: Record<string, string | undefined>, mode?: "b2b" | "b2c") {
+  if (mode === "b2c") {
+    return Boolean(fields.name && fields.phone && fields.email && fields.budget);
+  }
   return Boolean(fields.company && fields.need && (fields.budget || fields.timeline) && fields.authority);
 }
 
@@ -142,7 +148,7 @@ export async function buildLeadAiContext(input: Scope & {
     workspace,
     operator,
     qualificationFields,
-    missingFields: missingQualificationFields(qualificationFields),
+    missingFields: missingQualificationFields(qualificationFields, workspace.leadMode),
     recentMessages,
     internalNotes: internalThread.slice(-6).map((message) => message.body),
     assignmentHistory,
@@ -569,7 +575,7 @@ export async function runAgentForInboundLead(input: AgentRunInput): Promise<Agen
   const updatedContext = await buildLeadAiContext({ ...input, memberId: agent.id });
   const effectiveFields = updatedContext?.qualificationFields ?? mergedQualificationFields(context, ai);
   const replyBody = ai.reply;
-  if (isQualified(effectiveFields)) {
+  if (isQualified(effectiveFields, context.workspace.leadMode)) {
     const owner = await findPipelineOwner(input, "qualified");
     if (owner) {
       await editLeadKnowledgeRecord({

@@ -165,7 +165,10 @@ export function buildOwnerBusinessContext(context: Pick<LeadAiContext, "workspac
 }
 
 function nextMissingField(context: LeadAiContext) {
-  return coreFields.find((field) => !fieldValue(context, field));
+  const fields = context.workspace.leadMode === "b2c"
+    ? ["name", "phone", "email", "budget"]
+    : coreFields;
+  return fields.find((field) => !fieldValue(context, field));
 }
 
 function latestInboundBody(context: LeadAiContext) {
@@ -232,7 +235,10 @@ function deterministicReply(context: LeadAiRuntimeContext, purpose: LeadAiReplyP
     need: "What outcome are you hoping to achieve?",
     budget: "What budget range should we plan around?",
     timeline: "When would you like to get started?",
-    authority: "Who will approve the plan before we move ahead?"
+    authority: "Who will approve the plan before we move ahead?",
+    name: "Could I have your name to update our records?",
+    phone: "What is the best phone number to reach you?",
+    email: "What is your email address?"
   };
   const question = missing ? questions[missing] || "What's the next detail I should know?" : "Would you like me to route this to the right sales owner?";
 
