@@ -496,17 +496,17 @@ export async function runAgentForInboundLead(input: AgentRunInput): Promise<Agen
     });
     const replyBody = ai.reply;
     await applyAiResultToLead(input, context, ai, "Qualified lead ready for handoff.");
-    if (owner) {
-      await editLeadKnowledgeRecord({
-        ...input,
-        leadId: input.leadId,
-        crmStatus: "interested",
-        qualificationStage: "qualified",
-        productPipelineStatus: "qualified",
-        assigneeId: owner.id,
-        assigneeName: owner.name,
-        nextAction: "Qualified lead assigned to pipeline owner."
-      });
+    await editLeadKnowledgeRecord({
+      ...input,
+      leadId: input.leadId,
+      crmStatus: "interested",
+      qualificationStage: "qualified",
+      productPipelineStatus: "qualified",
+      assigneeId: owner?.id ?? lead.assigneeId,
+      assigneeName: owner?.name ?? lead.assigneeName,
+      nextAction: owner ? "Qualified lead assigned to pipeline owner." : "Qualified lead, but no pipeline owner was configured."
+    });
+    if (owner && owner.id !== agent.id) {
       await assignLeadOwner({
         ...input,
         leadId: input.leadId,

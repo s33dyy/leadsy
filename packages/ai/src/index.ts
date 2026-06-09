@@ -1619,7 +1619,11 @@ export function selectLeadsyAiModel(
     if (expensiveAllowed) {
       return { task, provider: "openrouter", model: candidate, costTier: "premium", reason: "premium_model_allowed" };
     }
-    return { task, provider: "openrouter", model: fallbackModel, costTier: "free", reason: "blocked_paid_or_expensive_model" };
+    let fallbackToReturn = fallbackModel;
+    if (fallbackToReturn === "openrouter/free" || fallbackToReturn === "google/gemini-2.5-flash:free") {
+      fallbackToReturn = "google/gemini-2.5-flash";
+    }
+    return { task, provider: "openrouter", model: fallbackToReturn, costTier: "free", reason: "blocked_paid_or_expensive_model" };
   }
 
   const paidAllowed =
@@ -2082,7 +2086,7 @@ function researchBudgetForBrief(brief: LeadBrief, progress = campaignProgressFor
 }
 
 const defaultSpendCapInr = 1;
-const defaultRoutineOpenRouterModel = "google/gemini-2.5-flash:free";
+const defaultRoutineOpenRouterModel = "google/gemini-2.5-flash";
 
 function spendCapFromEnv() {
   const configured = parseNumber(process.env.LEADSY_SPEND_CAP_INR) ?? parseNumber(process.env.LEADSY_DEFAULT_SPEND_CAP_INR);
