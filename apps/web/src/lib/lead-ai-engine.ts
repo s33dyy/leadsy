@@ -243,9 +243,12 @@ function deterministicReply(context: LeadAiRuntimeContext, purpose: LeadAiReplyP
   const question = missing ? questions[missing] || "What's the next detail I should know?" : "Would you like me to route this to the right sales owner?";
 
   const asksAboutServices = /\b(service|services|offer|do you do)\b/i.test(inboundText);
-  if (asksAboutServices && ownerBusiness.services.length > 0) {
+  if (asksAboutServices) {
+    const serviceInfo = ownerBusiness.services.length > 0
+      ? `We offer ${ownerBusiness.services.join(", ")}.`
+      : `Our team can share our specific service details with you.`;
     return {
-      reply: `We offer ${ownerBusiness.services.join(", ")}. ${question}`,
+      reply: `${serviceInfo} ${question}`,
       extractedFields: {},
       shouldEscalate: false,
       confidence: 0.6,
@@ -253,17 +256,11 @@ function deterministicReply(context: LeadAiRuntimeContext, purpose: LeadAiReplyP
     };
   }
 
-  const knownLine = company && need
-    ? `${company} is looking at ${need}.`
-    : company
-      ? `This is for ${company}.`
-      : need
-      ? `You are looking at ${need}.`
-      : `I can help with your business enquiries.`;
+  const prefix = company || need ? "Got it." : "I can help with your business enquiries.";
 
   const reply = purpose === "initial_outbound"
-    ? `Hi ${firstName}, this is ${ownerBusiness.externalIdentity}. ${knownLine} ${question}`
-    : `${knownLine} ${question}`;
+    ? `Hi ${firstName}, this is ${ownerBusiness.externalIdentity}. ${prefix} ${question}`
+    : `${prefix} ${question}`;
 
   return { reply: sanitizeLeadFacingReply(reply, context), extractedFields: {}, nextMissingField: missing, shouldEscalate: false, confidence: 0.55, provider: "deterministic" };
 }
