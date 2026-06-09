@@ -153,8 +153,10 @@ function workspaceConfigurationFromProfile(profile: OnboardingProfile) {
   return {
     leadMode,
     businessName: profile.businessName,
+    website: profile.website,
     industry: profile.industry,
     teamSize: profile.teamSize,
+    services: profile.services,
     businessPhone: profile.phone,
     whatsappTransport: "leadsy_assigned_twilio",
     whatsappAssignment: "leadsy_assigned",
@@ -441,6 +443,11 @@ export function OnboardingWizard({ session }: { session: SessionUser }) {
                 {fieldErrors.businessName ? <span className="mt-2 block text-xs text-rose-200">{fieldErrors.businessName}</span> : null}
               </label>
               <label className="block">
+                <span className="mono text-[10px] uppercase text-[var(--muted)]">Website URL (optional)</span>
+                <input value={profile.website} onChange={(event) => updateField("website", event.target.value)} aria-invalid={Boolean(fieldErrors.website)} placeholder="https://example.com" className={inputClass} />
+                {fieldErrors.website ? <span className="mt-2 block text-xs text-rose-200">{fieldErrors.website}</span> : null}
+              </label>
+              <label className="block">
                 <span className="mono text-[10px] uppercase text-[var(--muted)]">Lead mode</span>
                 <select value={profile.leadMode} onChange={(event) => updateField("leadMode", event.target.value)} className={inputClass}>
                   <option value="b2b">B2B leads</option>
@@ -474,6 +481,15 @@ export function OnboardingWizard({ session }: { session: SessionUser }) {
                 options={options.leadSources}
                 error={fieldErrors.leadSources}
                 customValue={customOptions.leadSources}
+                {...multiSelectHandlers}
+              />
+              <MultiSelectField
+                keyName="services"
+                label="Services offered"
+                value={profile.services}
+                options={options.services}
+                error={fieldErrors.services}
+                customValue={customOptions.services}
                 {...multiSelectHandlers}
               />
               <MultiSelectField

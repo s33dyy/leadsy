@@ -3,6 +3,7 @@ import { z } from "zod";
 import { audit, rateLimit } from "@leadsy/security";
 import { requireApiSession } from "@/lib/api-auth";
 import { completeUserOnboarding, saveUserOnboarding } from "@/lib/auth-store";
+import { updateWorkspaceBusinessSettings } from "@/lib/user-settings-store";
 import { ensureDefaultQualificationAgent } from "@/lib/teamspace-store";
 import { ensureWorkspaceWhatsAppSender, provisionLeadsyAssignedWhatsAppSender } from "@/lib/workspace-whatsapp-sender-store";
 
@@ -43,7 +44,10 @@ export async function POST(request: NextRequest) {
     const config = workspaceConfiguration as Record<string, unknown>;
     const businessName = typeof config.businessName === "string" ? config.businessName : undefined;
     const industry = typeof config.industry === "string" ? config.industry : undefined;
-    const website = typeof input.profile.website === "string" ? input.profile.website : undefined;
+    const website = typeof config.website === "string" ? config.website : typeof input.profile.website === "string" ? input.profile.website : undefined;
+    const services = typeof config.services === "string" ? config.services.split(",").map(s => s.trim()).filter(Boolean) : undefined;
+    const leadMode = config.leadMode === "b2c" ? "b2c" : "b2b";
+    
     sender = input.complete
       ? await provisionLeadsyAssignedWhatsAppSender(
           {
@@ -61,6 +65,18 @@ export async function POST(request: NextRequest) {
           ownerId: auth.session.id,
           businessName
         });
+
+    if (input.complete) {
+      await updateWorkspaceBusinessSettings({
+        tenantId: auth.session.tenantId,
+        ownerId: auth.session.id,
+        businessName,
+        industry,
+        website,
+        services,
+        leadMode
+      });
+    }
   }
 
   audit({
