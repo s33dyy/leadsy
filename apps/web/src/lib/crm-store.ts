@@ -419,18 +419,21 @@ export async function assignLeadOwner(input: Scope & {
     createdAt: history.createdAt
   });
 
-  if (lead.contact.phone && lead.assigneeId !== assigneeId) {
+  if (lead.contact.phone && lead.assigneeId !== assigneeId && lead.outboundCount > 0) {
     try {
-      await sendAndStoreWhatsAppMessage({
-        tenantId: input.tenantId,
-        ownerId: input.ownerId,
-        to: lead.contact.phone,
-        leadId: lead.id,
-        contact: lead.contact,
-        body: `Hi, I'm ${assigneeName}, taking over this conversation.`,
-        sentAt: input.now,
-        receivedAt: input.now
-      });
+      const assignee = await getTeamMember({ tenantId: input.tenantId, ownerId: input.ownerId, memberId: assigneeId });
+      if (assignee?.type !== "ai_agent_assisted") {
+        await sendAndStoreWhatsAppMessage({
+          tenantId: input.tenantId,
+          ownerId: input.ownerId,
+          to: lead.contact.phone,
+          leadId: lead.id,
+          contact: lead.contact,
+          body: `Hi, I'm ${assigneeName}, taking over this conversation.`,
+          sentAt: input.now,
+          receivedAt: input.now
+        });
+      }
     } catch (e) {
       console.error("Failed to send handover message", e);
     }

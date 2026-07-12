@@ -6,6 +6,47 @@ import { tmpdir } from "node:os";
 async function main() {
   const tempDir = await mkdtemp(join(tmpdir(), "leadsy-ai-first-crm-"));
   process.env.LEADSY_DATA_DIR = tempDir;
+  process.env.NODE_ENV = "test";
+  process.env.OPENROUTER_API_KEY = "test-openrouter-key";
+  process.env.AI_PROVIDER = "openrouter";
+  process.env.LEADSY_ENABLE_REMOTE_AI = "true";
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (url, init) => {
+    if (!String(url).includes("/chat/completions")) {
+      return originalFetch(url, init);
+    }
+    const payload = JSON.parse(String(init?.body ?? "{}"));
+    let reply = "Hello from Leadsy! Thanks for reaching out.";
+    let extractedFields = {};
+    const messages = JSON.stringify(payload.messages || []);
+
+    if (messages.includes("LensMart")) {
+      reply = "Hi! Got it. Thanks for reaching out. We can help with your WhatsApp CRM follow-up requirement.";
+      extractedFields = { company: "LensMart", need: "WhatsApp CRM follow-up" };
+    }
+
+    return new Response(
+      JSON.stringify({
+        id: "mock_id",
+        choices: [
+          {
+            finish_reason: "stop",
+            message: {
+              content: JSON.stringify({
+                reply,
+                extractedFields,
+                crmNote: "Mock note",
+                shouldEscalate: false,
+                confidence: 0.9
+              })
+            }
+          }
+        ]
+      }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    );
+  }) as typeof fetch;
 
   try {
     const { ensureWorkspaceTwilioSimulator } = await import("../apps/web/src/lib/twilio-simulator");
