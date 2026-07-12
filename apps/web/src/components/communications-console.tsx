@@ -428,6 +428,7 @@ export function CommunicationsConsole({
                   senderStatus={sender?.status}
                   senderStatusReason={sender?.statusReason}
                   senderNumber={sender?.assignedPhoneNumber}
+                  crmStatus={contextLead?.crmStatus}
                 />
               ) : (
                 <div className="rounded-[6px] border border-border bg-surface p-3 text-[12.5px] text-muted-foreground">

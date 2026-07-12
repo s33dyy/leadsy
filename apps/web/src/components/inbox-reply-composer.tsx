@@ -7,11 +7,12 @@ import { useToast } from "@/components/toast-provider";
 type InboxReplyComposerProps = {
   leadId?: string;
   to?: string;
-  channel: string;
-  transportMode?: "twilio" | "simulator";
+  channel: "WhatsApp" | "Email" | "Call" | "Manual";
+  transportMode?: string;
   senderStatus?: string;
   senderStatusReason?: string;
   senderNumber?: string;
+  crmStatus?: string;
 };
 
 function sendBlockedReason(props: InboxReplyComposerProps) {
@@ -19,6 +20,7 @@ function sendBlockedReason(props: InboxReplyComposerProps) {
   if (!props.leadId || !props.to) return "This conversation needs a linked lead with a WhatsApp phone number before replying.";
   if (props.transportMode === "simulator") return "";
   if (props.senderStatus !== "approved") return props.senderStatusReason || "The workspace WhatsApp sender is not approved yet.";
+  if (props.crmStatus && props.crmStatus !== "human_takeover") return "Take over the conversation to reply manually.";
   return "";
 }
 
@@ -26,6 +28,7 @@ export function InboxReplyComposer(props: InboxReplyComposerProps) {
   const { toast } = useToast();
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
+  const [loadingControl, setLoadingControl] = useState(false);
   const blockedReason = sendBlockedReason(props);
 
   async function sendReply() {
@@ -58,6 +61,28 @@ export function InboxReplyComposer(props: InboxReplyComposerProps) {
     }
   }
 
+  async function handleControl(action: "takeover" | "release_to_ai") {
+    if (!props.leadId) return;
+    setLoadingControl(true);
+    try {
+      const response = await fetch("/api/leads/control", {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ leadId: props.leadId, action })
+      });
+      if (!response.ok) {
+        toast({ title: "Control action failed", tone: "error" });
+        return;
+      }
+      toast({ title: action === "takeover" ? "Conversation taken over" : "Released to AI", tone: "success" });
+      // The page will need to reload or the parent component needs to refresh state, 
+      // but usually the live snapshot stream will catch the CRM status update quickly.
+    } finally {
+      setLoadingControl(false);
+    }
+  }
+
   return (
     <div className="rounded-[6px] border border-border bg-surface-2 p-2.5">
       <textarea
@@ -80,15 +105,37 @@ export function InboxReplyComposer(props: InboxReplyComposerProps) {
                   : "Sender status pending"}
           </span>
         </div>
-        <button
-          type="button"
-          disabled={Boolean(blockedReason) || !body.trim() || sending}
-          onClick={sendReply}
-          className="inline-flex h-7 items-center gap-1.5 rounded-[5px] bg-primary px-2.5 text-[12px] font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-          Send
-        </button>
+        <div className="flex items-center gap-2">
+          {props.crmStatus && props.crmStatus !== "human_takeover" && (
+            <button
+              type="button"
+              disabled={loadingControl || sending}
+              onClick={() => handleControl("takeover")}
+              className="inline-flex h-7 items-center gap-1.5 rounded-[5px] bg-secondary px-2.5 text-[12px] font-medium text-secondary-foreground hover:bg-secondary/90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Take Over
+            </button>
+          )}
+          {props.crmStatus === "human_takeover" && (
+            <button
+              type="button"
+              disabled={loadingControl || sending}
+              onClick={() => handleControl("release_to_ai")}
+              className="inline-flex h-7 items-center gap-1.5 rounded-[5px] bg-secondary px-2.5 text-[12px] font-medium text-secondary-foreground hover:bg-secondary/90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Release to AI
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={Boolean(blockedReason) || !body.trim() || sending}
+            onClick={sendReply}
+            className="inline-flex h-7 items-center gap-1.5 rounded-[5px] bg-primary px-2.5 text-[12px] font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+            Send
+          </button>
+        </div>
       </div>
     </div>
   );

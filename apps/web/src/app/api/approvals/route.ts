@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
       tenantId: auth.session.tenantId,
       ownerId: auth.session.id,
       taskId: id,
-      closedAt: action === "approve" || action === "reject" ? new Date().toISOString() : undefined
+      status: action === "approve" ? "done" : "cancelled"
     });
 
     audit({

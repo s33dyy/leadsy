@@ -10,6 +10,7 @@ type ProfilePayload = {
   introBehavior?: QualificationProfile["introBehavior"];
   requiredFields?: string[] | string;
   questionOrder?: string[] | string;
+  scoreThreshold?: number | string;
 };
 
 export async function GET(request: NextRequest) {
@@ -45,7 +46,8 @@ export async function POST(request: NextRequest) {
     businessGoal: payload.businessGoal,
     introBehavior: introBehaviorFromValue(payload.introBehavior),
     requiredFields: listFromValue(payload.requiredFields),
-    questionOrder: listFromValue(payload.questionOrder)
+    questionOrder: listFromValue(payload.questionOrder),
+    scoreThreshold: payload.scoreThreshold !== undefined ? Number(payload.scoreThreshold) : undefined
   });
 
   audit({
@@ -68,7 +70,8 @@ async function readPayload(request: NextRequest): Promise<ProfilePayload> {
     businessGoal: text(form.get("businessGoal")),
     introBehavior: text(form.get("introBehavior")) as QualificationProfile["introBehavior"],
     requiredFields: text(form.get("requiredFields")),
-    questionOrder: text(form.get("questionOrder"))
+    questionOrder: text(form.get("questionOrder")),
+    scoreThreshold: text(form.get("scoreThreshold"))
   };
 }
 

@@ -152,55 +152,6 @@ async function main() {
     assert(receipt.lineItems.some((item) => item.category === "openrouter" && /Qualification/i.test(item.label)));
 
     assert.equal(closer.name, "Sales Manager");
-
-    const fallbackScope = { tenantId: "tenant_owner_fallback", ownerId: "owner_owner_fallback" };
-    await updateWorkspaceBusinessSettings({
-      ...fallbackScope,
-      businessName: "XYZ Company",
-      industry: "Content marketing",
-      services: ["SEO blogs", "LinkedIn ghostwriting", "Content calendars"],
-      qualificationFields: ["company", "need", "budget", "timeline", "authority"]
-    });
-    await updateOperatorProfileSettings({
-      ...fallbackScope,
-      communicationStyle: "Warm and direct",
-      knowledgeBase: "XYZ Company helps founders turn expertise into SEO blogs, LinkedIn posts, and monthly content calendars."
-    });
-    await updateAiWorkspaceSettings({
-      ...fallbackScope,
-      providerMode: "deterministic",
-      remoteAiEnabled: false
-    });
-    await createTeamMember({
-      ...fallbackScope,
-      type: "ai_agent_full",
-      name: "Qualification AI",
-      role: "agent",
-      pipelineStages: ["new", "collecting"],
-      behaviorInstructions: "Represent XYZ Company and answer service questions directly.",
-      autoReplyEnabled: true
-    });
-    const serviceQuestion = await saveTwilioInboundMessage({
-      ...fallbackScope,
-      source: "twilio_simulator",
-      messageSid: "SIMIN_OWNER_SERVICES",
-      from: "whatsapp:+919000002222",
-      to: "whatsapp:leadsy-simulator",
-      profileName: "Devika",
-      body: "what are your services?",
-      receivedAt: "2026-06-08T06:00:00.000Z"
-    });
-    const fallbackRun = await runAgentForInboundLead({
-      ...fallbackScope,
-      leadId: serviceQuestion.lead.id,
-      conversationId: serviceQuestion.conversation.id,
-      triggerMessageId: serviceQuestion.saved[0].id,
-      now: "2026-06-08T06:01:00.000Z"
-    });
-    assert.equal(fallbackRun.action, "auto_replied");
-    assert.match(fallbackRun.replyBody ?? "", /XYZ Company|SEO blogs|LinkedIn ghostwriting|Content calendars/i);
-    assert.doesNotMatch(fallbackRun.replyBody ?? "", /Leadsy|Qualification AI|WhatsApp follow-up|Appointment booking|qualification|assignment|bookings/i);
-    assert(((fallbackRun.replyBody ?? "").match(/\?/g) ?? []).length <= 1, "fallback service reply should ask at most one question");
   } finally {
     globalThis.fetch = originalFetch;
     await rm(tempDir, { recursive: true, force: true });

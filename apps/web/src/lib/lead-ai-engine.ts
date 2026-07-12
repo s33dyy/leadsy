@@ -17,7 +17,7 @@ export type LeadAiReplyResult = {
   nextMissingField?: string;
   shouldEscalate: boolean;
   confidence: number;
-  provider: "openrouter" | "deterministic";
+  provider: "openrouter";
   cost?: OpenRouterUsageCost;
 };
 
@@ -165,10 +165,7 @@ export function buildOwnerBusinessContext(context: Pick<LeadAiContext, "workspac
 }
 
 function nextMissingField(context: LeadAiContext) {
-  const fields = context.workspace.leadMode === "b2c"
-    ? ["name", "phone", "email", "budget"]
-    : coreFields;
-  return fields.find((field) => !fieldValue(context, field));
+  return context.qualificationProfile.questionOrder.find((field) => !fieldValue(context, field));
 }
 
 function latestInboundBody(context: LeadAiContext) {
@@ -196,100 +193,7 @@ function sanitizeLeadFacingReply(text: string, context: LeadAiContext) {
   return oneQuestion(reply);
 }
 
-function deterministicReply(context: LeadAiRuntimeContext, purpose: LeadAiReplyPurpose, options: { ownerName?: string; slotText?: string } = {}): LeadAiReplyResult {
-  const firstName = leadName(context);
-  const ownerBusiness = buildOwnerBusinessContext(context);
-  const company = fieldValue(context, "company");
-  const need = fieldValue(context, "need");
-  const missing = nextMissingField(context);
-
-  // Minimal fallback: only used when AI is unavailable
-  // The real intelligence should come from OpenRouter/AI models
-  if (purpose === "qualified_handoff") {
-    const reply = options.slotText
-      ? `Thanks ${firstName}. ${options.ownerName ?? "Our sales owner"} has time at ${options.slotText}. Which slot works for you?`
-      : `Thanks ${firstName}. ${options.ownerName ?? "Our sales owner"} will take this forward with the next step.`;
-    return { reply: sanitizeLeadFacingReply(reply, context), extractedFields: {}, shouldEscalate: false, confidence: 0.62, provider: "deterministic" };
-  }
-
-  // Avoid the broken loop pattern: never repeat "which company" after personal signal
-  const inboundText = latestInboundBody(context);
-  const hasPersonalSignal = /\b(this is for me|this is personal|personally|for myself|my own)\b/i.test(inboundText);
-
-  if (hasPersonalSignal && missing === "company") {
-    // Skip company question, ask for need instead
-    const extractedName = inboundText.match(/\b(this is for|for) ([A-Z][a-z]{2,})\b/i)?.[2];
-    return {
-      reply: `Got it${extractedName ? `, thanks ${extractedName}` : ""}. What outcome or challenge are you looking to solve?`,
-      extractedFields: { name: extractedName || "", company: "Personal/Individual" },
-      nextMissingField: "need",
-      shouldEscalate: false,
-      confidence: 0.6,
-      provider: "deterministic"
-    };
-  }
-
-  const extracted: Record<string, string> = {};
-  if (missing === "email") {
-    const emailMatch = inboundText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-    if (emailMatch) extracted.email = emailMatch[0];
-  } else if (missing === "phone") {
-    const phoneMatch = inboundText.match(/\+?\d{7,15}/);
-    if (phoneMatch) extracted.phone = phoneMatch[0];
-  }
-
-  // If we deterministically extracted the currently missing field, we should ask the NEXT missing field
-  let nextMissing = missing;
-  if (missing && extracted[missing]) {
-    const fields: string[] = context.workspace.leadMode === "b2c"
-      ? ["name", "phone", "email", "budget"]
-      : [...coreFields];
-    const missingIndex = fields.indexOf(missing);
-    nextMissing = fields.slice(missingIndex + 1).find((field) => !fieldValue(context, field) && !extracted[field]);
-  }
-
-  // Default fallback: ask for the next missing field, but vary the question
-  const questions: Record<string, string> = {
-    company: "Which company or brand is this for?",
-    need: "What outcome are you hoping to achieve?",
-    budget: "What budget range should we plan around?",
-    timeline: "When would you like to get started?",
-    authority: "Who will approve the plan before we move ahead?",
-    name: "Could I have your name to update our records?",
-    phone: "What is the best phone number to reach you?",
-    email: "What is your email address?"
-  };
-  const question = nextMissing ? questions[nextMissing] || "What's the next detail I should know?" : "Would you like me to route this to the right sales owner?";
-
-  const asksAboutServices = /\b(service|services|offer|do you do)\b/i.test(inboundText);
-  if (asksAboutServices) {
-    const serviceInfo = ownerBusiness.services.length > 0
-      ? `We offer ${ownerBusiness.services.join(", ")}.`
-      : `Our team can share our specific service details with you.`;
-    return {
-      reply: `${serviceInfo} ${question}`,
-      extractedFields: extracted,
-      shouldEscalate: false,
-      confidence: 0.6,
-      provider: "deterministic"
-    };
-  }
-
-  const prefix = company || need || Object.keys(extracted).length > 0 ? "Got it." : "I can help with your business enquiries.";
-  const isFirstMessage = context.recentMessages.length <= 1;
-
-  let reply = `${prefix} ${question}`;
-  if (purpose === "initial_outbound" || isFirstMessage) {
-    const greeting = purpose === "initial_outbound" ? `Hi ${firstName}` : `Hi there`;
-    const intro = `I am ${ownerBusiness.externalIdentity} from the ${ownerBusiness.businessName} team`;
-    const education = ownerBusiness.services.length > 0
-      ? `We specialize in ${ownerBusiness.services.slice(0, 3).join(", ")}.`
-      : `We're here to help you achieve your goals.`;
-    reply = `${greeting}, ${intro}. ${education} ${question}`;
-  }
-
-  return { reply: sanitizeLeadFacingReply(reply, context), extractedFields: extracted, nextMissingField: nextMissing, shouldEscalate: false, confidence: 0.55, provider: "deterministic" };
-}
+// deterministicReply has been removed as per user requirements.
 
 function aiTaskForPurpose(purpose: LeadAiReplyPurpose): LeadsyAiTask {
   return purpose === "qualified_handoff" ? "calendar-reply" : "qualification-reply";
@@ -345,7 +249,9 @@ function contextForPrompt(context: LeadAiRuntimeContext, purpose: LeadAiReplyPur
       markets: ownerBusiness.markets,
       leadSources: ownerList(context.workspace.leadSources),
       pipelineStages: compactList(context.workspace.pipelineStages),
-      qualificationFields: compactList(context.workspace.qualificationFields),
+      qualificationFields: context.qualificationProfile.requiredFields,
+      questionOrder: context.qualificationProfile.questionOrder,
+      scoreThreshold: context.qualificationProfile.scoreThreshold,
       timezone: context.workspace.timezone,
       currency: context.workspace.currency,
       calendarDefaults: clean(context.workspace.calendarDefaults)
@@ -422,7 +328,7 @@ function openRouterRequestBody(input: {
     messages: [
       {
         role: "system",
-        content: `You are a human-sounding sales teammate for the owner business. Speak as that business or team, never as a CRM platform or AI product.\n\nRules:\n1. If the lead asks about your services/products, answer with real business info from the workspace/operator context. If no services are provided, say 'A human teammate can share our service details - what outcome are you looking to achieve?' and ask ONE qualifying question.\n2. Never repeat the same question. If the lead says 'this is for me' or 'this is for [name]', do NOT ask 'which company' again. Move to the next missing field (need, budget, timeline, etc.)\n3. Detect personal signals like 'this is for me, [name]' - extract the name and treat it as valid identity. Do not loop asking for company.\n4. Detect company signals like 'this is for AlaskaTourism' - treat as valid company, move to next question.\n5. Answer the lead's direct question first, then ask at most one clear next question.\n6. Use only the provided CRM context. Never invent facts.\n7. Do not mention internal automation, routing, AI, or platform names unless explicitly asked.\n8. Return JSON only with fields: reply, extractedFields, crmNote, nextMissingField, shouldEscalate, confidence.${
+        content: `You are a human-sounding sales teammate for the owner business. Speak as that business or team, never as a CRM platform or AI product.\n\nRules:\n1. If the lead asks about your services/products, answer with real business info from the workspace/operator context. If no services are provided, say 'A human teammate can share our service details - what outcome are you looking to achieve?' and ask ONE qualifying question.\n2. Never repeat the same question. Use the provided questionOrder to determine the nextMissingField. Ask a natural, concise question to collect this field. Do not list multiple questions.\n3. Answer the lead's direct question first, then ask at most one clear next question.\n4. Overwrite old dossier fields with updated user preferences if they correct you.\n5. Use only the provided CRM context. Never invent facts.\n6. Do not mention internal automation, routing, AI, or platform names unless explicitly asked.\n7. Keep it WhatsApp-short.\n8. Return JSON only with fields: reply, extractedFields, crmNote, nextMissingField, shouldEscalate, confidence.${
           input.context.member?.behaviorInstructions
             ? `\n\n=== AGENT SPECIFIC INSTRUCTIONS ===\nThe following instructions define your specific role. They override standard qualification rules if there is a conflict:\n${input.context.member.behaviorInstructions}`
             : ""
@@ -502,23 +408,19 @@ export async function generateLeadAiReply(input: Scope & {
   const settings = await getAiWorkspaceSettings(input);
   const context = { ...input.context, aiSettings: settings };
   const route = settings.taskRouting[task] ?? settings.taskRouting["qualification-reply"];
-  const fallback = deterministicReply(context, input.purpose, { ownerName: input.ownerName, slotText: input.slotText });
   const env = envForTask(context, task);
   const selection = selectLeadsyAiModel(task, env);
   const strictRemoteAi = strictRemoteAiRequired(env);
   if (!route?.enabled || !shouldUseRemoteAi(env) || selection.provider !== "openrouter" || !selection.model || !env.OPENROUTER_API_KEY?.trim()) {
-    if (strictRemoteAi) {
-      throw new Error(
-        `remote_ai_required:${JSON.stringify({
-          routeEnabled: Boolean(route?.enabled),
-          useRemote: shouldUseRemoteAi(env),
-          provider: selection.provider,
-          hasModel: Boolean(selection.model),
-          hasKey: Boolean(env.OPENROUTER_API_KEY?.trim())
-        })}`
-      );
-    }
-    return fallback;
+    throw new Error(
+      `remote_ai_required_or_unavailable:${JSON.stringify({
+        routeEnabled: Boolean(route?.enabled),
+        useRemote: shouldUseRemoteAi(env),
+        provider: selection.provider,
+        hasModel: Boolean(selection.model),
+        hasKey: Boolean(env.OPENROUTER_API_KEY?.trim())
+      })}`
+    );
   }
 
   try {
@@ -567,8 +469,7 @@ export async function generateLeadAiReply(input: Scope & {
           }
         : undefined);
     if (!parsed) {
-      if (strictRemoteAi) throw new Error("OpenRouter returned an unparseable lead reply.");
-      return fallback;
+      throw new Error("OpenRouter returned an unparseable lead reply.");
     }
     parsed.reply = sanitizeLeadFacingReply(parsed.reply, context);
     const cost = openRouterCostFromResponse(payload, stageForPurpose(input.purpose));
@@ -583,10 +484,7 @@ export async function generateLeadAiReply(input: Scope & {
     });
     return { ...parsed, provider: "openrouter", cost };
   } catch (error) {
-    console.error("[generateLeadAiReply] OpenRouter fallback triggered:", error);
-    if (strictRemoteAi) {
-      throw new Error(`openrouter_failed:${(error as Error).message}`);
-    }
-    return fallback;
+    console.error("[generateLeadAiReply] OpenRouter AI failed:", error);
+    throw new Error(`openrouter_failed:${(error as Error).message}`);
   }
 }

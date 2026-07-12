@@ -5,6 +5,7 @@ import { leadsyDataDir } from "./data-dir";
 import { editLeadKnowledgeRecord, listLeadKnowledgeRecords, type LeadCrmStatus, type LeadKnowledgeRecord } from "./lead-knowledge-store";
 import { ensureDefaultQualificationAgent, getTeamMember, postTeamThreadMessage, postWorkspaceTeamEvent } from "./teamspace-store";
 import { createNotificationRecord } from "./user-settings-store";
+import { sendAndStoreWhatsAppMessage } from "./whatsapp-transport";
 
 const crmFile = join(leadsyDataDir, "lead-crm.json");
 
@@ -96,6 +97,7 @@ export type QualificationProfile = Scope & {
   introBehavior: "educate_then_qualify" | "qualify_first" | "human_first";
   requiredFields: string[];
   questionOrder: string[];
+  scoreThreshold: number;
   updatedAt: string;
 };
 
@@ -372,6 +374,7 @@ export async function assignLeadOwner(input: Scope & {
   assignedById?: string;
   assignedByName?: string;
   reason?: string;
+  now?: string;
 }) {
   const leads = await listLeadKnowledgeRecords(input);
   const lead = leadForAssignment(input, input.leadId, leads);
@@ -414,6 +417,47 @@ export async function assignLeadOwner(input: Scope & {
     reason: input.reason,
     historyId: history.id,
     createdAt: history.createdAt
+  });
+
+  if (lead.contact.phone && lead.assigneeId !== assigneeId) {
+    try {
+      await sendAndStoreWhatsAppMessage({
+        tenantId: input.tenantId,
+        ownerId: input.ownerId,
+        to: lead.contact.phone,
+        leadId: lead.id,
+        contact: lead.contact,
+        body: `Hi, I'm ${assigneeName}, taking over this conversation.`,
+        sentAt: input.now,
+        receivedAt: input.now
+      });
+    } catch (e) {
+      console.error("Failed to send handover message", e);
+    }
+  }
+  
+  const now = input.now ? new Date(input.now) : new Date();
+  const tmrw = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  const dayAfter = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+
+  await createCrmFollowUpTask({
+    tenantId: input.tenantId,
+    ownerId: input.ownerId,
+    leadId: input.leadId,
+    topic: "24h check-in",
+    dueAt: tmrw.toISOString(),
+    assigneeId,
+    assigneeName
+  });
+
+  await createCrmFollowUpTask({
+    tenantId: input.tenantId,
+    ownerId: input.ownerId,
+    leadId: input.leadId,
+    topic: "48h check-in",
+    dueAt: dayAfter.toISOString(),
+    assigneeId,
+    assigneeName
   });
   await routeCrmEventToTasks({
     tenantId: input.tenantId,
@@ -526,6 +570,7 @@ export async function getQualificationProfile(scope: Scope) {
     introBehavior: "educate_then_qualify" as const,
     requiredFields: ["name", "phone", "company", "need"],
     questionOrder: ["name", "phone", "company", "need", "teamOrQueryVolume", "budget", "timeline"],
+    scoreThreshold: 60,
     updatedAt: "default"
   };
 }
@@ -535,6 +580,7 @@ export async function updateQualificationProfile(input: Scope & {
   introBehavior?: QualificationProfile["introBehavior"];
   requiredFields?: string[];
   questionOrder?: string[];
+  scoreThreshold?: number;
 }) {
   const state = await readState();
   const now = new Date().toISOString();
@@ -546,6 +592,7 @@ export async function updateQualificationProfile(input: Scope & {
     introBehavior: input.introBehavior ?? current.introBehavior,
     requiredFields: input.requiredFields?.map((item) => item.trim()).filter(Boolean) ?? current.requiredFields,
     questionOrder: input.questionOrder?.map((item) => item.trim()).filter(Boolean) ?? current.questionOrder,
+    scoreThreshold: input.scoreThreshold ?? current.scoreThreshold,
     updatedAt: now
   };
   const index = state.qualificationProfiles.findIndex((profile) => scopeMatches(input, profile));
