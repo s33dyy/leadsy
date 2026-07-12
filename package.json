@@ -19,7 +19,7 @@
     "test:lead-assignment-agent-senders": "tsx scripts/lead-assignment-agent-senders.test.ts",
     "test:team-chat-comms-task-routing": "tsx scripts/team-chat-comms-task-routing.test.ts",
     "test:shortcut-calendar-summary": "tsx scripts/shortcut-calendar-summary.test.ts",
-    "test:ai-first-hubspot-crm": "tsx scripts/ai-first-hubspot-crm.test.ts",
+    "test:ai-first-hubspot-crm": "NODE_OPTIONS='--conditions=react-server' tsx scripts/ai-first-hubspot-crm.test.ts",
     "test:lead-knowledge": "tsx scripts/lead-knowledge-store.test.ts",
     "test:lead-magnet-retirement": "tsx scripts/lead-magnet-retirement.test.ts",
     "test:pre-twilio-reset": "tsx scripts/pre-twilio-reset.test.ts",
