@@ -17,25 +17,11 @@ export type LeadKnowledgeSource = "twilio" | "twilio_simulator" | "manual";
 export type LeadKnowledgeDirection = "inbound" | "outbound" | "system" | "note";
 export type LeadKnowledgeStatus = "lead" | "excluded";
 export type LeadConversationKnowledgeStatus = "included" | "excluded";
-export type LeadCrmStatus = "new_lead" | "interested" | "needs_reply" | "human_review";
+export type LeadCrmStatus = "new_lead" | "interested" | "needs_reply" | "human_review" | "human_takeover";
 export type LeadQualificationStage = "new" | "collecting" | "qualified" | "human_review";
 export type LeadProductPipelineStatus = "new" | "qualified" | "interested" | "contacted" | "won" | "lost";
-export type LeadQualificationFieldKey =
-  | "name"
-  | "phone"
-  | "email"
-  | "company"
-  | "need"
-  | "teamOrQueryVolume"
-  | "budget"
-  | "timeline"
-  | "authority"
-  | "location"
-  | "serviceInterest"
-  | "intent"
-  | "risk"
-  | "recommendedAction";
-export type LeadQualificationFields = Partial<Record<LeadQualificationFieldKey, string>>;
+export type LeadQualificationFieldKey = string;
+export type LeadQualificationFields = Record<string, string | undefined>;
 
 export const leadProductPipelineStatuses: ReadonlyArray<{ id: LeadProductPipelineStatus; label: string }> = [
   { id: "new", label: "New" },
@@ -173,8 +159,8 @@ function normalizedMessageBody(body: string) {
   return body.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
-const qualificationFieldOrder: LeadQualificationFieldKey[] = ["name", "phone", "email", "company", "need", "teamOrQueryVolume", "budget", "timeline", "authority", "location", "serviceInterest"];
-const qualificationQuestions: Partial<Record<LeadQualificationFieldKey, string>> = {
+const qualificationFieldOrder: string[] = ["name", "phone", "email", "company", "need", "teamOrQueryVolume", "budget", "timeline", "authority", "location", "serviceInterest"];
+const qualificationQuestions: Record<string, string> = {
   name: "Ask for the buyer's name before continuing qualification.",
   phone: "Confirm the preferred phone number for follow-up.",
   email: "Ask for the email address for follow-up.",
@@ -554,6 +540,15 @@ function qualificationDecisionForLead(input: {
   const coreQualified = Boolean(fields.company && fields.need && (fields.name || fields.phone));
   const missing = nextMissingQualificationField(fields);
   const latestText = latest?.body ?? "";
+
+  if (input.lead.crmStatus === "human_takeover") {
+    return {
+      fields,
+      crmStatus: "human_takeover" as const,
+      qualificationStage: "human_review" as const,
+      nextAction: "Manual human takeover. Auto-replies are paused."
+    };
+  }
 
   if (input.lead.crmStatus === "human_review" || (latestText && humanReviewPattern.test(latestText))) {
     return {
@@ -1060,7 +1055,7 @@ export async function listTenantLeadKnowledgeRecords(tenantId: string) {
 }
 
 export type QualificationInputAuditRow = {
-  field: Extract<LeadQualificationFieldKey, "need" | "budget" | "timeline" | "authority" | "location" | "company" | "serviceInterest" | "intent">;
+  field: string;
   value: string;
   state: "Collected" | "Missing" | "Uncertain";
   sourceMessage?: string;

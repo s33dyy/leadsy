@@ -5,6 +5,69 @@ import { join } from "node:path";
 
 async function main() {
   const tempDir = await mkdtemp(join(tmpdir(), "leadsy-agent-runtime-"));
+
+  process.env.NODE_ENV = "test";
+  process.env.OPENROUTER_API_KEY = "test-openrouter-key";
+  process.env.AI_PROVIDER = "openrouter";
+  process.env.LEADSY_ENABLE_REMOTE_AI = "true";
+
+  
+  
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (url, init) => {
+    if (!String(url).includes("/chat/completions")) {
+      return originalFetch(url, init);
+    }
+    const payload = JSON.parse(String(init?.body ?? "{}"));
+    let reply = "Default mock reply";
+    let extractedFields = {};
+    const messages = JSON.stringify(payload.messages || []);
+
+    if (messages.includes("Buyer Labs")) {
+      reply = "Are you available tomorrow at 10:30 AM for a quick slot?";
+      extractedFields = { name: "Rohan", phone: "+919000000002", company: "Buyer Labs", need: "CRM automation", budget: "₹50000", timeline: "tomorrow", authority: "decision maker" };
+    } else if (messages.includes("LensMart")) {
+      reply = "Thanks! Could you tell us your budget and authority?";
+      extractedFields = { company: "LensMart", need: "WhatsApp CRM follow-up", timeline: "today" };
+    } else if (messages.includes("this is for me, pratik")) {
+      reply = "We offer CRM automation! And more!";
+      extractedFields = { need: "CRM automation" };
+    } else if (messages.includes("services")) {
+      reply = "We offer CRM automation.";
+      extractedFields = { need: "CRM automation" };
+    } else if (messages.includes("AlaskaTourism")) {
+      reply = "Thanks for the company info.";
+      extractedFields = { company: "AlaskaTourism" };
+    } else if (messages.includes("human manager") || messages.includes("human")) {
+      reply = "Let me get a human for you.";
+    } else if (messages.includes("proposal")) {
+      reply = "Sure, I will ask my manager to prepare a proposal.";
+    }
+
+    return new Response(
+      JSON.stringify({
+        id: "mock_id",
+        choices: [
+          {
+            finish_reason: "stop",
+            message: {
+              content: JSON.stringify({
+                reply,
+                extractedFields,
+                crmNote: "Mock note",
+                shouldEscalate: messages.includes("human manager") || messages.includes("human"),
+                confidence: 0.9
+              })
+            }
+          }
+        ]
+      }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    );
+  }) as typeof fetch;
+
+
+
   process.env.LEADSY_DATA_DIR = tempDir;
 
   try {
@@ -25,6 +88,14 @@ async function main() {
       autoReplyEnabled: true,
       escalationKeywords: ["human", "manager"]
     });
+    
+    const { updateQualificationProfile } = await import("../apps/web/src/lib/crm-store");
+    await updateQualificationProfile({
+      ...scope,
+      requiredFields: ["name", "phone", "company", "need", "budget", "timeline", "authority"],
+      scoreThreshold: 100
+    });
+
     const closer = await createTeamMember({
       ...scope,
       type: "human",
@@ -62,6 +133,7 @@ async function main() {
       triggerMessageId: inbound.saved[0].id,
       now: "2026-06-08T04:01:00.000Z"
     });
+    console.log("RUN RESULT:", run);
     assert.equal(run.action, "auto_replied");
     assert.equal(run.memberId, qualificationAgent.id);
     assert.match(run.replyBody ?? "", /budget|scope|goal|decision|volume/i);
@@ -85,7 +157,8 @@ async function main() {
       assigneeId: retainerAi.id,
       assigneeName: retainerAi.name,
       assignedByName: "Account Owner",
-      reason: "Retainer stage owner"
+      reason: "Retainer stage owner",
+      now: "2026-06-08T04:02:00.000Z"
     });
     const followUpInbound = await saveTwilioInboundMessage({
       ...scope,
@@ -219,7 +292,8 @@ async function main() {
       assigneeId: closer.id,
       assigneeName: closer.name,
       assignedByName: "Account Owner",
-      reason: "Human owns this enquiry"
+      reason: "Human owns this enquiry",
+      now: "2026-06-08T04:04:30.000Z"
     });
     const humanRun = await runAgentForInboundLead({
       ...scope,
@@ -258,7 +332,8 @@ async function main() {
       assigneeId: assistedAi.id,
       assigneeName: assistedAi.name,
       assignedByName: "Account Owner",
-      reason: "Needs AI-assisted review"
+      reason: "Needs AI-assisted review",
+      now: "2026-06-08T04:06:30.000Z"
     });
     const assistedRun = await runAgentForInboundLead({
       ...scope,

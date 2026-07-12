@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { ArrowUpRight, Check, Filter, Inbox, Loader2, Pencil, Search, Sparkles, X } from "lucide-react";
 import { Badge } from "@/components/ui";
 

@@ -1,6 +1,13 @@
 import { appendTwilioOutboundMessage, editLeadKnowledgeRecord, listLeadKnowledgeRecords } from "./lead-knowledge-store";
 import { findCalendarFreeSlots } from "./calendar-store";
-import { assignLeadOwner, listCrmAssignmentHistory, listCrmFollowUpTasks, routeCrmEventToTasks } from "./crm-store";
+import {
+  assignLeadOwner,
+  getQualificationProfile,
+  type QualificationProfile,
+  listCrmAssignmentHistory,
+  listCrmFollowUpTasks,
+  routeCrmEventToTasks
+} from "./crm-store";
 import {
   findPipelineOwner,
   findPrimaryQualificationAgent,
@@ -73,6 +80,7 @@ export type LeadAiContext = {
   member?: TeamMember | null;
   workspace: Awaited<ReturnType<typeof getWorkspaceBusinessSettings>>;
   operator: Awaited<ReturnType<typeof getOperatorProfileSettings>>;
+  qualificationProfile: QualificationProfile;
   qualificationFields: Record<string, string | undefined>;
   missingFields: string[];
   recentMessages: Array<{ direction: string; body: string; sentAt: string }>;
@@ -101,12 +109,13 @@ function missingQualificationFields(fields: Record<string, string | undefined>, 
   return required.filter((field) => !fields[field]?.trim());
 }
 
-function isQualified(fields: Record<string, string | undefined>, mode?: "b2b" | "b2c") {
-  const isFilled = (val?: string) => !!val && !/^not yet collected$/i.test(val) && !/^none$/i.test(val);
-  if (mode === "b2c") {
-    return Boolean(isFilled(fields.name) && isFilled(fields.phone) && isFilled(fields.email) && isFilled(fields.budget));
+function calculateCandidateScore(fields: Record<string, string | undefined>, requiredFields: string[]) {
+  if (requiredFields.length === 0) return 100;
+  let filled = 0;
+  for (const field of requiredFields) {
+    if (fields[field] && !/^not yet collected$/i.test(fields[field]) && !/^none$/i.test(fields[field])) filled++;
   }
-  return Boolean(isFilled(fields.company) && isFilled(fields.need) && (isFilled(fields.budget) || isFilled(fields.timeline)) && isFilled(fields.authority));
+  return Math.round((filled / requiredFields.length) * 100);
 }
 
 function escalationRequested(text: string, agent?: TeamMember | null) {
@@ -130,9 +139,10 @@ export async function buildLeadAiContext(input: Scope & {
   const lead = (await listLeadKnowledgeRecords(input)).find((record) => record.id === input.leadId);
   if (!lead) return null;
   const member = input.memberId ? await getTeamMember({ ...input, memberId: input.memberId }) : null;
-  const [workspace, operator, assignmentHistory, openTasks, internalThread] = await Promise.all([
+  const [workspace, operator, qualificationProfile, assignmentHistory, openTasks, internalThread] = await Promise.all([
     getWorkspaceBusinessSettings(input),
     getOperatorProfileSettings(input),
+    getQualificationProfile(input),
     listCrmAssignmentHistory(input, { leadId: lead.id }),
     listCrmFollowUpTasks(input, { leadId: lead.id }),
     listTeamThreadMessages({ ...input, leadId: lead.id })
@@ -148,6 +158,7 @@ export async function buildLeadAiContext(input: Scope & {
     member,
     workspace,
     operator,
+    qualificationProfile,
     qualificationFields,
     missingFields: missingQualificationFields(qualificationFields, workspace.leadMode),
     recentMessages,
@@ -473,7 +484,8 @@ export async function runAgentForInboundLead(input: AgentRunInput): Promise<Agen
 
   const fields = context.qualificationFields;
   const contactPhone = lead.contact.phone || lead.contact.waId;
-  if (isQualified(fields, context.workspace.leadMode) && lead.qualificationStage !== "qualified") {
+  const currentScore = calculateCandidateScore(fields, context.qualificationProfile.requiredFields);
+  if (currentScore >= context.qualificationProfile.scoreThreshold && lead.productPipelineStatus !== "qualified") {
     const owner = await findPipelineOwner(input, "qualified");
     const windowStart = addMinutes(now, 19);
     const windowEnd = addMinutes(now, 180);
@@ -579,9 +591,10 @@ export async function runAgentForInboundLead(input: AgentRunInput): Promise<Agen
   await applyAiResultToLead(input, context, ai, "AI qualification reply sent. Wait for the lead response.");
   const updatedContext = await buildLeadAiContext({ ...input, memberId: agent.id });
   const effectiveFields = updatedContext?.qualificationFields ?? mergedQualificationFields(context, ai);
+  const newScore = calculateCandidateScore(effectiveFields, context.qualificationProfile.requiredFields);
+  const isNewlyQualified = newScore >= context.qualificationProfile.scoreThreshold && lead.productPipelineStatus !== "qualified";
   const replyBody = ai.reply;
   const isAlreadyAssignedToAgent = lead.assigneeId === agent.id;
-  const isNewlyQualified = isQualified(effectiveFields, context.workspace.leadMode) && lead.qualificationStage !== "qualified";
 
   if (isNewlyQualified && !isAlreadyAssignedToAgent) {
     const owner = await findPipelineOwner(input, "qualified");
@@ -658,11 +671,12 @@ export async function runAgentForInboundLead(input: AgentRunInput): Promise<Agen
       receivedAt: input.now
     });
   }
+  const isNewlyQualifiedCheck = calculateCandidateScore(effectiveFields, context.qualificationProfile.requiredFields) >= context.qualificationProfile.scoreThreshold;
   await editLeadKnowledgeRecord({
     ...input,
     leadId: input.leadId,
     crmStatus: "needs_reply",
-    qualificationStage: isQualified(effectiveFields, context.workspace.leadMode) ? "qualified" : "collecting",
+    qualificationStage: isNewlyQualifiedCheck ? "qualified" : "collecting",
     nextAction: "AI agent replied. Wait for the lead response."
   });
   await postTeamThreadMessage({

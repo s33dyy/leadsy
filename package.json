@@ -26,7 +26,7 @@
     "test:full-product-reset": "tsx scripts/full-product-reset.test.ts",
     "test:retired-features-removed": "tsx scripts/retired-features-removed.test.ts",
     "test:teamspace-agent-calendar": "NODE_OPTIONS='--conditions=react-server' tsx scripts/teamspace-agent-calendar.test.ts",
-    "test:agent-auto-qualification": "tsx scripts/agent-auto-qualification.test.ts",
+    "test:agent-auto-qualification": "NODE_OPTIONS='--conditions=react-server' tsx scripts/agent-auto-qualification.test.ts",
     "test:twilio-integration": "tsx scripts/twilio-integration.test.ts",
     "test:twilio-simulator": "tsx scripts/twilio-simulator.test.ts",
     "test:twilio-settings": "tsx scripts/twilio-settings-surface.test.ts",
